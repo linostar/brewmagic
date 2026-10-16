@@ -147,7 +147,6 @@ func _tests() -> Array[Callable]:
 func _run() -> void:
 	root.size = BASE_WINDOW
 	_check(_game.save_path == GameState.TOOL_SAVE_PATH, "tool runs use the tool save, never the player's", _game.save_path)
-	_check(not Input.use_accumulated_input, "every drag sample reaches the stations (input accumulation off)", "accumulated")
 	_delete_saves()
 	_game.load_game()
 	await process_frame

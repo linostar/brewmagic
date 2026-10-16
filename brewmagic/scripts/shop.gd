@@ -379,7 +379,7 @@ func open_mode_help(help: Button) -> void:
 	_mode_help.position = _pause_panel.position
 	_mode_help.size = _pause_panel.size
 	_help_callout.size = Vector2.ZERO
-	var at := _rect_in_panel(help)
+	var at := _mode_help.get_global_transform().affine_inverse() * help.get_global_rect()
 	var tail_x := at.get_center().x - _help_tail.size.x + 1.0
 	_help_tail.position = Vector2(tail_x, at.position.y - _help_tail.size.y).round()
 	var left := clampf(at.end.x - _help_callout.size.x, 0.0, _mode_help.size.x - _help_callout.size.x)
@@ -390,18 +390,6 @@ func open_mode_help(help: Button) -> void:
 	_mode_help.grab_focus(true)
 	Juice.squash(_help_callout, 0.12)
 	print("[Shop] Mode help: %s" % text)
-
-
-## `control`'s layout rect in the pause panel's own space (ModeHelp lies exactly over
-## the panel, so the same space), from positions only: a squash still running on the
-## panel (it pops open) or on the control does not move the callout's tail.
-func _rect_in_panel(control: Control) -> Rect2:
-	var at := Vector2.ZERO
-	var node := control
-	while node != _pause_panel:
-		at += node.position
-		node = node.get_parent() as Control
-	return Rect2(at, control.size)
 
 
 func close_mode_help() -> void:
