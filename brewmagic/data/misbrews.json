@@ -1,0 +1,29 @@
+[
+  { "id": "misbrew_ember_1", "essence": "ember", "effect": "singed", "text": "Poof! Eyebrows: gone. Fondly remembered." },
+  { "id": "misbrew_ember_2", "essence": "ember", "effect": "singed", "text": "Steam whistles out of both ears. And one boot." },
+  { "id": "misbrew_ember_3", "essence": "ember", "effect": "singed", "text": "Hiccups! Each one a tiny, polite fireball." },
+  { "id": "misbrew_ember_4", "essence": "ember", "effect": "singed", "text": "Hair now smoulders in a very fashionable way." },
+  { "id": "misbrew_ember_5", "essence": "ember", "effect": "singed", "text": "Every sneeze now comes with complimentary sparks." },
+  { "id": "misbrew_ember_6", "essence": "ember", "effect": "singed", "text": "Glowing gently, like a toasted marshmallow." },
+
+  { "id": "misbrew_frost_1", "essence": "frost", "effect": "frosted", "text": "A small personal blizzard has moved in." },
+  { "id": "misbrew_frost_2", "essence": "frost", "effect": "frosted", "text": "An icicle forms on the nose. Very distinguished." },
+  { "id": "misbrew_frost_3", "essence": "frost", "effect": "frosted", "text": "Every word now comes out as a little snowflake." },
+  { "id": "misbrew_frost_4", "essence": "frost", "effect": "frosted", "text": "Teeth chattering in a jaunty waltz rhythm." },
+  { "id": "misbrew_frost_5", "essence": "frost", "effect": "frosted", "text": "A penguin appears, sizes things up, waddles off." },
+  { "id": "misbrew_frost_6", "essence": "frost", "effect": "frosted", "text": "Fringe frozen into one crisp little wave." },
+
+  { "id": "misbrew_bloom_1", "essence": "bloom", "effect": "sprouting", "text": "A daisy sprouts on top. It looks very smug." },
+  { "id": "misbrew_bloom_2", "essence": "bloom", "effect": "sprouting", "text": "Ears are now about forty percent clover." },
+  { "id": "misbrew_bloom_3", "essence": "bloom", "effect": "sprouting", "text": "A turnip pops out of a pocket and waves hello." },
+  { "id": "misbrew_bloom_4", "essence": "bloom", "effect": "sprouting", "text": "Soft moss spreads over both elbows. Cosy, though." },
+  { "id": "misbrew_bloom_5", "essence": "bloom", "effect": "sprouting", "text": "Smells overpoweringly of spring. Bees approve." },
+  { "id": "misbrew_bloom_6", "essence": "bloom", "effect": "sprouting", "text": "A tiny tree grows on the hat. A bird moves in." },
+
+  { "id": "misbrew_gloom_1", "essence": "gloom", "effect": "gloomy", "text": "A personal rain cloud arrives. It's moody." },
+  { "id": "misbrew_gloom_2", "essence": "gloom", "effect": "gloomy", "text": "The shadow wanders off to run its own errands." },
+  { "id": "misbrew_gloom_3", "essence": "gloom", "effect": "gloomy", "text": "Cursed hiccups! Each one sounds like an owl." },
+  { "id": "misbrew_gloom_4", "essence": "gloom", "effect": "gloomy", "text": "A tiny thundercloud sulks overhead." },
+  { "id": "misbrew_gloom_5", "essence": "gloom", "effect": "gloomy", "text": "The hat now sighs dramatically every minute." },
+  { "id": "misbrew_gloom_6", "essence": "gloom", "effect": "gloomy", "text": "Local bats suddenly find this very relatable." }
+]

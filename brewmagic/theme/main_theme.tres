@@ -1,0 +1,170 @@
+[gd_resource type="Theme" load_steps=13 format=3]
+
+[ext_resource type="FontFile" uid="uid://doo1cc1vgtjdn" path="res://fonts/VT323-Regular.ttf" id="1_font"]
+[ext_resource type="Texture2D" uid="uid://btk1diowknufg" path="res://art/ui.png" id="2_ui"]
+[ext_resource type="FontFile" uid="uid://byosjee4r7iyp" path="res://fonts/Silkscreen-Regular.ttf" id="3_title_font"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_normal"]
+content_margin_left = 12.0
+content_margin_top = 6.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(0.541, 0.353, 0.235, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 4
+border_color = Color(0.11, 0.078, 0.125, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+anti_aliasing = false
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hover"]
+content_margin_left = 12.0
+content_margin_top = 6.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(0.722, 0.502, 0.298, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 4
+border_color = Color(0.11, 0.078, 0.125, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+anti_aliasing = false
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_pressed"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 6.0
+bg_color = Color(0.361, 0.235, 0.188, 1)
+border_width_left = 2
+border_width_top = 4
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.11, 0.078, 0.125, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+anti_aliasing = false
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_focus"]
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.788, 0.361, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+expand_margin_left = 3.0
+expand_margin_top = 3.0
+expand_margin_right = 3.0
+expand_margin_bottom = 3.0
+anti_aliasing = false
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_disabled"]
+content_margin_left = 12.0
+content_margin_top = 6.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(0.361, 0.235, 0.188, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 4
+border_color = Color(0.227, 0.157, 0.188, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+anti_aliasing = false
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_panel"]
+content_margin_left = 10.0
+content_margin_top = 10.0
+content_margin_right = 10.0
+content_margin_bottom = 10.0
+texture = ExtResource("2_ui")
+texture_margin_left = 5.0
+texture_margin_top = 5.0
+texture_margin_right = 5.0
+texture_margin_bottom = 5.0
+region_rect = Rect2(124, 0, 24, 24)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_slot"]
+bg_color = Color(0.11, 0.078, 0.125, 0.55)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.984, 0.929, 0.804, 0.35)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+anti_aliasing = false
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_slot_filled"]
+bg_color = Color(0.11, 0.078, 0.125, 0.75)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.788, 0.361, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+anti_aliasing = false
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_none"]
+
+[resource]
+default_font = ExtResource("1_font")
+default_font_size = 13
+Button/colors/font_color = Color(0.984, 0.929, 0.804, 1)
+Button/colors/font_focus_color = Color(0.984, 0.929, 0.804, 1)
+Button/colors/font_hover_color = Color(0.984, 0.929, 0.804, 1)
+Button/colors/font_pressed_color = Color(0.902, 0.706, 0.431, 1)
+Button/colors/font_hover_pressed_color = Color(0.902, 0.706, 0.431, 1)
+Button/colors/font_disabled_color = Color(0.549, 0.518, 0.58, 1)
+Button/font_sizes/font_size = 16
+Button/fonts/font = ExtResource("3_title_font")
+Button/styles/normal = SubResource("StyleBoxFlat_normal")
+Button/styles/hover = SubResource("StyleBoxFlat_hover")
+Button/styles/pressed = SubResource("StyleBoxFlat_pressed")
+Button/styles/hover_pressed = SubResource("StyleBoxFlat_pressed")
+Button/styles/disabled = SubResource("StyleBoxFlat_disabled")
+Button/styles/focus = SubResource("StyleBoxFlat_focus")
+Label/colors/font_color = Color(0.984, 0.929, 0.804, 1)
+DarkLabel/base_type = &"Label"
+DarkLabel/colors/font_color = Color(0.11, 0.078, 0.125, 1)
+TitleLabel/base_type = &"Label"
+TitleLabel/font_sizes/font_size = 16
+TitleLabel/fonts/font = ExtResource("3_title_font")
+DarkTitleLabel/base_type = &"DarkLabel"
+DarkTitleLabel/font_sizes/font_size = 16
+DarkTitleLabel/fonts/font = ExtResource("3_title_font")
+PanelContainer/styles/panel = SubResource("StyleBoxTexture_panel")
+SlotButton/base_type = &"Button"
+SlotButton/styles/disabled = SubResource("StyleBoxFlat_slot")
+SlotButton/styles/hover = SubResource("StyleBoxFlat_slot_filled")
+SlotButton/styles/hover_pressed = SubResource("StyleBoxFlat_slot_filled")
+SlotButton/styles/normal = SubResource("StyleBoxFlat_slot_filled")
+SlotButton/styles/pressed = SubResource("StyleBoxFlat_slot_filled")
+ShelfButton/base_type = &"Button"
+ShelfButton/styles/disabled = SubResource("StyleBoxEmpty_none")
+ShelfButton/styles/hover = SubResource("StyleBoxEmpty_none")
+ShelfButton/styles/hover_pressed = SubResource("StyleBoxEmpty_none")
+ShelfButton/styles/normal = SubResource("StyleBoxEmpty_none")
+ShelfButton/styles/pressed = SubResource("StyleBoxEmpty_none")

@@ -1,0 +1,118 @@
+{
+ "source": "art_src/brewing.px",
+ "texture": "brewing.png",
+ "size": [
+  256,
+  142
+ ],
+ "sprites": {
+  "cauldron": {
+   "x": 0,
+   "y": 0,
+   "w": 64,
+   "h": 56
+  },
+  "cauldron_liquid_0": {
+   "x": 65,
+   "y": 0,
+   "w": 64,
+   "h": 56
+  },
+  "cauldron_liquid_1": {
+   "x": 130,
+   "y": 0,
+   "w": 64,
+   "h": 56
+  },
+  "cauldron_liquid_2": {
+   "x": 0,
+   "y": 57,
+   "w": 64,
+   "h": 56
+  },
+  "fire_0": {
+   "x": 65,
+   "y": 57,
+   "w": 32,
+   "h": 16
+  },
+  "fire_1": {
+   "x": 98,
+   "y": 57,
+   "w": 32,
+   "h": 16
+  },
+  "fire_2": {
+   "x": 131,
+   "y": 57,
+   "w": 32,
+   "h": 16
+  },
+  "ladle": {
+   "x": 164,
+   "y": 57,
+   "w": 12,
+   "h": 40
+  },
+  "bottle_round": {
+   "x": 177,
+   "y": 57,
+   "w": 20,
+   "h": 28
+  },
+  "bottle_round_liquid": {
+   "x": 198,
+   "y": 57,
+   "w": 20,
+   "h": 28
+  },
+  "bottle_tall": {
+   "x": 219,
+   "y": 57,
+   "w": 20,
+   "h": 28
+  },
+  "bottle_tall_liquid": {
+   "x": 0,
+   "y": 114,
+   "w": 20,
+   "h": 28
+  },
+  "bottle_flask": {
+   "x": 21,
+   "y": 114,
+   "w": 20,
+   "h": 28
+  },
+  "bottle_flask_liquid": {
+   "x": 42,
+   "y": 114,
+   "w": 20,
+   "h": 28
+  },
+  "bottle_teardrop": {
+   "x": 63,
+   "y": 114,
+   "w": 20,
+   "h": 28
+  },
+  "bottle_teardrop_liquid": {
+   "x": 84,
+   "y": 114,
+   "w": 20,
+   "h": 28
+  },
+  "fill_line": {
+   "x": 105,
+   "y": 114,
+   "w": 24,
+   "h": 3
+  },
+  "cork": {
+   "x": 130,
+   "y": 114,
+   "w": 8,
+   "h": 7
+  }
+ }
+}

@@ -1,0 +1,53 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/stations/pour.gd" id="1_pour"]
+
+[node name="Pour" type="Control"]
+layout_mode = 3
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -288.0
+grow_horizontal = 2
+grow_vertical = 0
+script = ExtResource("1_pour")
+
+[node name="Prompt" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = 40.0
+grow_horizontal = 2
+theme_override_colors/font_outline_color = Color(0.11, 0.078, 0.125, 1)
+theme_override_constants/outline_size = 4
+text = "Hold to pour, let go on the line"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="Bottle" type="Node2D" parent="."]
+position = Vector2(135, 150)
+scale = Vector2(4, 4)
+
+[node name="Canvas" type="Node2D" parent="Bottle"]
+position = Vector2(-10, -14)
+
+[node name="Liquid" type="Sprite2D" parent="Bottle/Canvas"]
+centered = false
+region_enabled = true
+
+[node name="Stream" type="Node2D" parent="Bottle/Canvas"]
+
+[node name="Glass" type="Sprite2D" parent="Bottle/Canvas"]
+centered = false
+
+[node name="FillLine" type="Sprite2D" parent="Bottle/Canvas"]
+centered = false
+
+[node name="Cork" type="Sprite2D" parent="Bottle/Canvas"]
+visible = false
+centered = false

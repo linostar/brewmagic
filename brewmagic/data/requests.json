@@ -1,0 +1,65 @@
+[
+  { "id": "hearthglow_goat_farmer_1", "potion": "hearthglow_tonic", "archetype": "goat_farmer", "hints": ["hint_warm", "hint_heal"], "text": "Duchess ate a snowman. I need something warm and healing. For me." },
+  { "id": "hearthglow_goat_farmer_2", "potion": "hearthglow_tonic", "archetype": "goat_farmer", "hints": ["hint_warm", "hint_heal"], "text": "Back's gone stiff from hauling hay. Warm it up. Heal it. No chatter." },
+  { "id": "hearthglow_goat_farmer_3", "potion": "hearthglow_tonic", "archetype": "goat_farmer", "hints": ["hint_fire", "hint_fresh"], "text": "Duchess sat in the fire. Again. Need her fresh and unsmoky by noon." },
+
+  { "id": "hearthglow_dramatic_bard_1", "potion": "hearthglow_tonic", "archetype": "dramatic_bard", "hints": ["hint_heal", "hint_warm"], "text": "My voice, my GIFT, is cracked! Heal it with warmth, I beg!" },
+  { "id": "hearthglow_dramatic_bard_2", "potion": "hearthglow_tonic", "archetype": "dramatic_bard", "hints": ["hint_warm", "hint_heal"], "text": "Alas, my lute fingers are numb! Warm them, heal them, applaud them!" },
+  { "id": "hearthglow_dramatic_bard_3", "potion": "hearthglow_tonic", "archetype": "dramatic_bard", "hints": ["hint_fire", "hint_fresh"], "text": "A ballad needs fire, and a fresh throat to sing it. Brew me both!" },
+
+  { "id": "hearthglow_apprentice_knight_1", "potion": "hearthglow_tonic", "archetype": "apprentice_knight", "hints": ["hint_warm", "hint_heal"], "text": "Um. I fell off my horse. Twice. Something warm and healing? Please?" },
+  { "id": "hearthglow_apprentice_knight_2", "potion": "hearthglow_tonic", "archetype": "apprentice_knight", "hints": ["hint_warm", "hint_heal"], "text": "Sorry! Sword arm's sore. Is there a warm, um, healing sort of thing?" },
+  { "id": "hearthglow_apprentice_knight_3", "potion": "hearthglow_tonic", "archetype": "apprentice_knight", "hints": ["hint_heal", "hint_warm"], "text": "Sir Gregor says knights don't need healing. I do. Warmly, please." },
+
+  { "id": "hearthglow_gossip_granny_1", "potion": "hearthglow_tonic", "archetype": "gossip_granny", "hints": ["hint_warm", "hint_heal"], "text": "Between us, dearie, my hip creaks louder than the vicar. Warm healing?" },
+  { "id": "hearthglow_gossip_granny_2", "potion": "hearthglow_tonic", "archetype": "gossip_granny", "hints": ["hint_warm", "hint_fresh"], "text": "The baker's wife says I look peaky. Something warm and fresh, love." },
+  { "id": "hearthglow_gossip_granny_3", "potion": "hearthglow_tonic", "archetype": "gossip_granny", "hints": ["hint_warm", "hint_heal"], "text": "My knitting won't knit and my knees won't knee. A warm healing tonic?" },
+
+  { "id": "slumber_goat_farmer_1", "potion": "slumber_syrup", "archetype": "goat_farmer", "hints": ["hint_night", "hint_calm", "hint_sleep"], "text": "Duchess sings at night. Badly. Something calm so we all get sleep." },
+  { "id": "slumber_goat_farmer_2", "potion": "slumber_syrup", "archetype": "goat_farmer", "hints": ["hint_sleep", "hint_calm"], "text": "Not slept since the goat learned to open doors. Calm. Sleep. Now." },
+  { "id": "slumber_goat_farmer_3", "potion": "slumber_syrup", "archetype": "goat_farmer", "hints": ["hint_sleep", "hint_cool"], "text": "Need sleep. A cool head. And for that goat to stop staring at me." },
+
+  { "id": "slumber_dramatic_bard_1", "potion": "slumber_syrup", "archetype": "dramatic_bard", "hints": ["hint_calm", "hint_sleep"], "text": "Critics haunt my dreams! Grant me calm and a dreamless sleep!" },
+  { "id": "slumber_dramatic_bard_2", "potion": "slumber_syrup", "archetype": "dramatic_bard", "hints": ["hint_sleep", "hint_cool"], "text": "After an encore I cannot sleep. Too much genius. Cool it, please!" },
+  { "id": "slumber_dramatic_bard_3", "potion": "slumber_syrup", "archetype": "dramatic_bard", "hints": ["hint_night", "hint_calm"], "text": "The night is long, my sonnets longer. Something calm to end both." },
+
+  { "id": "slumber_apprentice_knight_1", "potion": "slumber_syrup", "archetype": "apprentice_knight", "hints": ["hint_night", "hint_sleep", "hint_calm"], "text": "Night watch tomorrow. Too nervous to sleep. Something calm? Please?" },
+  { "id": "slumber_apprentice_knight_2", "potion": "slumber_syrup", "archetype": "apprentice_knight", "hints": ["hint_spooky", "hint_calm"], "text": "There's a spooky noise under my bed. It's me, shaking. I need calm." },
+  { "id": "slumber_apprentice_knight_3", "potion": "slumber_syrup", "archetype": "apprentice_knight", "hints": ["hint_cool", "hint_sleep"], "text": "Um, is there a cool, sleepy sort of potion? For a friend. It's me." },
+
+  { "id": "slumber_gossip_granny_1", "potion": "slumber_syrup", "archetype": "gossip_granny", "hints": ["hint_night", "hint_calm", "hint_sleep"], "text": "The neighbours argue every night, love. I need calm and sleep. And notes." },
+  { "id": "slumber_gossip_granny_2", "potion": "slumber_syrup", "archetype": "gossip_granny", "hints": ["hint_calm", "hint_sleep"], "text": "Nine cups of tea and ten new secrets. Calm me down. Help me sleep." },
+  { "id": "slumber_gossip_granny_3", "potion": "slumber_syrup", "archetype": "gossip_granny", "hints": ["hint_cold", "hint_sleep"], "text": "Cold feet, hot gossip, no sleep. Something for an old dear?" },
+
+  { "id": "valour_goat_farmer_1", "potion": "valour_cordial", "archetype": "goat_farmer", "hints": ["hint_spooky", "hint_courage", "hint_calm"], "text": "Duchess wandered into the spooky woods. I need courage. And calm." },
+  { "id": "valour_goat_farmer_2", "potion": "valour_cordial", "archetype": "goat_farmer", "hints": ["hint_brave", "hint_calm", "hint_night"], "text": "Something brave and calm for the night shift. Goats don't milk themselves." },
+  { "id": "valour_goat_farmer_3", "potion": "valour_cordial", "archetype": "goat_farmer", "hints": ["hint_curse", "hint_courage", "hint_cool"], "text": "Cursed scarecrow's back. Need courage and a cool head. And a rake." },
+
+  { "id": "valour_dramatic_bard_1", "potion": "valour_cordial", "archetype": "dramatic_bard", "hints": ["hint_spooky", "hint_courage", "hint_calm"], "text": "I must sing in the spooky crypt! Give me courage, keep me calm!" },
+  { "id": "valour_dramatic_bard_2", "potion": "valour_cordial", "archetype": "dramatic_bard", "hints": ["hint_curse", "hint_brave", "hint_cool"], "text": "I duel a rival bard at the cursed inn! I must be brave, yet cool." },
+  { "id": "valour_dramatic_bard_3", "potion": "valour_cordial", "archetype": "dramatic_bard", "hints": ["hint_night", "hint_fire", "hint_calm"], "text": "A night show for ghosts! Fire in my heart, calm in my voice!" },
+
+  { "id": "valour_apprentice_knight_1", "potion": "valour_cordial", "archetype": "apprentice_knight", "hints": ["hint_night", "hint_courage", "hint_calm"], "text": "First night patrol. I need courage. And calm. And a hug, honestly." },
+  { "id": "valour_apprentice_knight_2", "potion": "valour_cordial", "archetype": "apprentice_knight", "hints": ["hint_spooky", "hint_brave", "hint_calm"], "text": "The spooky tower has a ghost. I must be brave. Calmly brave. Um." },
+  { "id": "valour_apprentice_knight_3", "potion": "valour_cordial", "archetype": "apprentice_knight", "hints": ["hint_curse", "hint_courage", "hint_cool"], "text": "There's a cursed bridge troll. Um. Courage and a cool head, please?" },
+
+  { "id": "valour_gossip_granny_1", "potion": "valour_cordial", "archetype": "gossip_granny", "hints": ["hint_spooky", "hint_courage", "hint_calm"], "text": "I'm sneaking into the spooky manor for gossip. Courage, calm, go." },
+  { "id": "valour_gossip_granny_2", "potion": "valour_cordial", "archetype": "gossip_granny", "hints": ["hint_curse", "hint_courage", "hint_cold"], "text": "The vicar's cursed hat needs returning. Courage and a cold stare, dear." },
+  { "id": "valour_gossip_granny_3", "potion": "valour_cordial", "archetype": "gossip_granny", "hints": ["hint_night", "hint_brave", "hint_calm"], "text": "Book club meets at night in the crypt. Make me brave but calm, love." },
+
+  { "id": "moonbloom_goat_farmer_1", "potion": "moonbloom_draught", "archetype": "goat_farmer", "hints": ["hint_grow", "hint_cold", "hint_night"], "text": "Turnips won't grow in the cold night air. Duchess blames me." },
+  { "id": "moonbloom_goat_farmer_2", "potion": "moonbloom_draught", "archetype": "goat_farmer", "hints": ["hint_curse", "hint_grow", "hint_calm"], "text": "Cursed pumpkin patch. It needs to grow back. Calmly. It bites." },
+  { "id": "moonbloom_goat_farmer_3", "potion": "moonbloom_draught", "archetype": "goat_farmer", "hints": ["hint_grow", "hint_night", "hint_cool"], "text": "A turnip started talking. Wants to grow at night, in the cool. Fine." },
+
+  { "id": "moonbloom_dramatic_bard_1", "potion": "moonbloom_draught", "archetype": "dramatic_bard", "hints": ["hint_grow", "hint_night", "hint_cold"], "text": "My moonflower muse won't grow! It needs night, cold and a sonnet!" },
+  { "id": "moonbloom_dramatic_bard_2", "potion": "moonbloom_draught", "archetype": "dramatic_bard", "hints": ["hint_heal", "hint_curse", "hint_calm"], "text": "Heal my cursed rose and keep it calm! It heckles my ballads!" },
+  { "id": "moonbloom_dramatic_bard_3", "potion": "moonbloom_draught", "archetype": "dramatic_bard", "hints": ["hint_fresh", "hint_spooky", "hint_cool"], "text": "A fresh garland for my spooky midnight show! Cool, eerie, FABULOUS!" },
+
+  { "id": "moonbloom_apprentice_knight_1", "potion": "moonbloom_draught", "archetype": "apprentice_knight", "hints": ["hint_curse", "hint_heal", "hint_calm"], "text": "Um, my lucky clover got cursed. Can you heal it? Calmly? It's scared." },
+  { "id": "moonbloom_apprentice_knight_2", "potion": "moonbloom_draught", "archetype": "apprentice_knight", "hints": ["hint_grow", "hint_night", "hint_cold"], "text": "The castle herbs won't grow. It's always night and cold up there. Help?" },
+  { "id": "moonbloom_apprentice_knight_3", "potion": "moonbloom_draught", "archetype": "apprentice_knight", "hints": ["hint_spooky", "hint_grow", "hint_calm"], "text": "Sorry, the spooky hedge maze won't grow. Can it be calm about it?" },
+
+  { "id": "moonbloom_gossip_granny_1", "potion": "moonbloom_draught", "archetype": "gossip_granny", "hints": ["hint_curse", "hint_night", "hint_heal", "hint_cool"], "text": "My cursed petunias gossip all night. Heal them, cool them down, dear." },
+  { "id": "moonbloom_gossip_granny_2", "potion": "moonbloom_draught", "archetype": "gossip_granny", "hints": ["hint_grow", "hint_spooky", "hint_cold"], "text": "Help my roses grow for the vicar's ghost. Spooky, cold, lovely." },
+  { "id": "moonbloom_gossip_granny_3", "potion": "moonbloom_draught", "archetype": "gossip_granny", "hints": ["hint_night", "hint_grow", "hint_calm"], "text": "My night garden needs to grow, dearie. Quietly. Calmly. Edna's watching." }
+]

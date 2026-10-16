@@ -1,0 +1,146 @@
+[
+  {
+    "id": "goat_farmer",
+    "name": "Farmer Bramblewick",
+    "patience_seconds": 40,
+    "tip_tendency": 0.2,
+    "voice": { "pitch": 0.7, "timbre": "growl" },
+    "speech_style": "Terse and grumpy, short sentences, blames everything on Duchess the goat, secretly adores her.",
+    "parts": { "body": "apron", "head": "round", "hair": "straw_hat", "accessory": "goat" },
+    "reactions": {
+      "perfect": [
+        "Hmph. Good. Don't let it go to your head.",
+        "Duchess nodded at you. She's never nodded at me.",
+        "Fine. Excellent, even. I'll deny I said that."
+      ],
+      "good": [
+        "Not bad. Not great. Like most goats.",
+        "It'll work. Probably. Duchess is sniffing it.",
+        "Acceptable. I've had worse. Mostly from Duchess."
+      ],
+      "meh": [
+        "Tastes like a wet barn. Familiar, at least.",
+        "Duchess ate the cork. Best part, she says.",
+        "I've been mildly helped. I hate it."
+      ],
+      "misbrew": [
+        "Right. Duchess, we're leaving.",
+        "This is why I don't come into town.",
+        "I'll be telling the goat about this."
+      ],
+      "stormed_off": [
+        "Duchess could've brewed it by now. Goodbye.",
+        "I've a farm to scowl at. I'm off.",
+        "Slower than a sheep's thoughts. Bah."
+      ]
+    }
+  },
+  {
+    "id": "dramatic_bard",
+    "name": "Florian Fairweather",
+    "patience_seconds": 55,
+    "tip_tendency": 0.6,
+    "voice": { "pitch": 1.2, "timbre": "bell" },
+    "speech_style": "Theatrical, exclamation marks, CAPITALISED drama, treats every errand as an epic ballad starring himself.",
+    "parts": { "body": "robe", "head": "long", "hair": "curly", "accessory": "none" },
+    "reactions": {
+      "perfect": [
+        "BRAVO! I shall write you a ballad! Nine verses!",
+        "Exquisite! The muses weep! I weep! Hanky?",
+        "A masterpiece! Like me, but in a bottle!"
+      ],
+      "good": [
+        "Lovely! Not an encore, but a fine first act.",
+        "A solid three stars. I shall round up to four.",
+        "Charming! Worth a sonnet. A short sonnet."
+      ],
+      "meh": [
+        "Hm. A limerick of a potion. It barely rhymes.",
+        "The critics would call this 'bold'. Not kindly.",
+        "A work in progress. Like my third album."
+      ],
+      "misbrew": [
+        "A TRAGEDY in one act! I shall sing of it!",
+        "Alas! Calamity! Material for my next ballad!",
+        "My reviews were cruel, but THIS, darling?"
+      ],
+      "stormed_off": [
+        "I do not queue. I make ENTRANCES and EXITS!",
+        "The audience has left the building. It's me.",
+        "A star cannot wait in a line! Farewell!"
+      ]
+    }
+  },
+  {
+    "id": "apprentice_knight",
+    "name": "Sir Wendell (Apprentice)",
+    "patience_seconds": 70,
+    "tip_tendency": 0.4,
+    "voice": { "pitch": 1.4, "timbre": "chirp" },
+    "speech_style": "Nervous, polite, says 'um' and 'sorry' a lot, scared of most things, always measuring himself against Sir Gregor.",
+    "parts": { "body": "armour", "head": "square", "hair": "curly", "accessory": "lantern" },
+    "reactions": {
+      "perfect": [
+        "Wow! Thank you! I feel ten percent less scared!",
+        "It's perfect! Can I salute you? I'm saluting.",
+        "Sir Gregor will be so jealous. Um. Don't tell him."
+      ],
+      "good": [
+        "Oh, that's good! Mostly good! Thank you!",
+        "I feel braver already! About the same. Thanks!",
+        "Nice! I only dropped my sword once just now."
+      ],
+      "meh": [
+        "Oh. Um. It's fine! It's fine. I'm fine.",
+        "Is it meant to taste like a sock? Sorry! Sorry.",
+        "I'll, um, drink it anyway. Knights are polite."
+      ],
+      "misbrew": [
+        "Is that... normal? Is this a test? Did I fail?",
+        "I'll tell Sir Gregor it was a dragon.",
+        "Totally fine! Knights love surprises! Ow."
+      ],
+      "stormed_off": [
+        "Sorry! I have to go! I'm late for being scared!",
+        "I'll come back! Maybe! Sorry for leaving! Bye!",
+        "My horse got bored. I'm following it. Sorry!"
+      ]
+    }
+  },
+  {
+    "id": "gossip_granny",
+    "name": "Granny Marigold",
+    "patience_seconds": 60,
+    "tip_tendency": 0.8,
+    "voice": { "pitch": 1.1, "timbre": "reed" },
+    "speech_style": "Warm, nosy, calls everyone 'dearie' or 'love', drops village gossip mid-sentence, best friends and rivals with Edna.",
+    "parts": { "body": "robe", "head": "round", "hair": "witch_hat", "accessory": "none" },
+    "reactions": {
+      "perfect": [
+        "Oh, lovely! I'll tell everyone. EVERYONE, dearie.",
+        "Perfect! Better than the last shop. Shh.",
+        "Wonderful, love. Have a toffee. It's only a bit fluffy."
+      ],
+      "good": [
+        "Very nice, dear. I'll only tell half the village.",
+        "Good! Not as good as my sister's jam. Close.",
+        "That'll do nicely, pet. Ta very much."
+      ],
+      "meh": [
+        "Oh. Well. I won't tell anyone. Except Edna.",
+        "It's... fine, dearie. Like the vicar's sermons.",
+        "Hmm. I've tasted better. In the olden days."
+      ],
+      "misbrew": [
+        "Ooh! Wait till the knitting circle hears this!",
+        "Well! That's going in the parish newsletter.",
+        "I've not had this much fun since the scandal."
+      ],
+      "stormed_off": [
+        "I've grown older waiting, dear. Older-er.",
+        "Edna's got fresh gossip waiting. Toodle-oo!",
+        "My tea's gone cold. So has my patience. Bye!"
+      ]
+    }
+  }
+]

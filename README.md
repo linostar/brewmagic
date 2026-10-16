@@ -8,3 +8,9 @@ Entry for [Jamference: AI Game Jam Hack 2](https://itch.io/jam/jamference-ai-gam
 sound, music and writing) is made by Claude.
 
 Work in progress.
+
+## Credits
+
+- Fonts: [Silkscreen](https://fonts.google.com/specimen/Silkscreen) (Copyright 2001 The Silkscreen Project Authors) and
+  [VT323](https://fonts.google.com/specimen/VT323) (Copyright 2011 The VT323 Project Authors), both under the SIL Open Font License 1.1
+  (licence files in `brewmagic/fonts/`, shipped in the web build zip).

@@ -1,0 +1,53 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/customer.gd" id="1_customer"]
+
+[node name="Customer" type="Node2D"]
+script = ExtResource("1_customer")
+
+[node name="Body" type="Node2D" parent="."]
+position = Vector2(24, 72)
+
+[node name="BodyPart" type="Sprite2D" parent="Body"]
+position = Vector2(-24, -72)
+centered = false
+
+[node name="Head" type="Sprite2D" parent="Body"]
+position = Vector2(-24, -72)
+centered = false
+
+[node name="Hair" type="Sprite2D" parent="Body"]
+position = Vector2(-24, -72)
+centered = false
+
+[node name="Face" type="Sprite2D" parent="Body"]
+position = Vector2(-24, -72)
+centered = false
+
+[node name="Accessory" type="Sprite2D" parent="Body"]
+position = Vector2(-24, -72)
+centered = false
+
+[node name="Effect" type="Node2D" parent="."]
+
+[node name="Patience" type="Node2D" parent="."]
+position = Vector2(49, 16)
+
+[node name="Hourglass" type="Sprite2D" parent="Patience"]
+centered = false
+
+[node name="Heart0" type="Sprite2D" parent="Patience"]
+position = Vector2(11, 0)
+centered = false
+
+[node name="Heart1" type="Sprite2D" parent="Patience"]
+position = Vector2(21, 0)
+centered = false
+
+[node name="Heart2" type="Sprite2D" parent="Patience"]
+position = Vector2(31, 0)
+centered = false
+
+[node name="Heart3" type="Sprite2D" parent="Patience"]
+position = Vector2(41, 0)
+centered = false

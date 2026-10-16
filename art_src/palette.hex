@@ -1,0 +1,37 @@
+; BrewMagic locked palette: 32 colours, one #rrggbb per line, in index order.
+; Lines starting with ';' are comments; text after a colour's ';' is its role.
+; In art_src/*.px, index N is written as the Nth character of 0123456789abcdefghijklmnopqrstuv.
+; Ramps run dark -> light. Essence ramps: ember a-d, frost e-h, bloom i-l, gloom m-p.
+; Swappable on customer parts (palette_swap shader), contract in customer.px: cloth A = e f g, cloth B = i j k, hair = 1 2 3, hand skin = r s (remapped to the head's skin pair).
+#1c1420 ; 0 outline (near-black plum), deepest shadow
+#3a2830 ; 1 deep shadow brown
+#5c3c30 ; 2 wood dark, deep-skin shade
+#8a5a3c ; 3 wood mid
+#b8804c ; 4 wood light
+#e6b46e ; 5 wood highlight, straw, brass
+#fbedcd ; 6 cream highlight, parchment
+#8c8494 ; 7 stone mid
+#5c5668 ; 8 stone dark
+#c8c0c8 ; 9 stone light, neutral liquid base (tinted by code)
+#6e2028 ; a ember 1 dark red
+#c43c2c ; b ember 2 red
+#f07c2c ; c ember 3 orange
+#ffc95c ; d ember 4 candle yellow, gold
+#1e3866 ; e frost 1 deep blue (cloth A dark)
+#3a74b4 ; f frost 2 blue (cloth A mid)
+#68bede ; g frost 3 ice blue (cloth A light)
+#c8f0f0 ; h frost 4 frost white-mint
+#1c4632 ; i bloom 1 deep green (cloth B dark)
+#38883e ; j bloom 2 green (cloth B mid)
+#7cc44c ; k bloom 3 leaf green (cloth B light)
+#cce878 ; l bloom 4 spring yellow-green
+#2a1a48 ; m gloom 1 deep indigo, night sky
+#583088 ; n gloom 2 purple
+#9058c0 ; o gloom 3 violet
+#d0a0e8 ; p gloom 4 lilac
+#e8789a ; q blossom pink, cheeks
+#f6cca4 ; r skin light
+#c88a5c ; s skin medium, light-skin shade
+#8a5634 ; t skin deep, medium-skin shade
+#4a3440 ; u wall plum-brown
+#ffffff ; v pure highlight (glints only)
