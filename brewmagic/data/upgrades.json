@@ -1,0 +1,34 @@
+[
+  {
+    "id": "balanced_ladle",
+    "station": "stir",
+    "name": "Balanced Ladle",
+    "description": "Weighted so it practically stirs itself. Practically. Stir timing is more forgiving.",
+    "unlock_day": 2,
+    "levels": [ { "tolerance": 1.25, "cost": 30 }, { "tolerance": 1.5, "cost": 70 } ]
+  },
+  {
+    "id": "wide_neck_funnel",
+    "station": "pour",
+    "name": "Wide-Neck Funnel",
+    "description": "A funnel with ambition. Pouring to the line is more forgiving.",
+    "unlock_day": 2,
+    "levels": [ { "tolerance": 1.25, "cost": 25 }, { "tolerance": 1.5, "cost": 60 } ]
+  },
+  {
+    "id": "granite_pestle",
+    "station": "mortar",
+    "name": "Granite Pestle",
+    "description": "Heavy, honest and slightly smug. Grinding is more forgiving.",
+    "unlock_day": 3,
+    "levels": [ { "tolerance": 1.25, "cost": 35 }, { "tolerance": 1.5, "cost": 80 } ]
+  },
+  {
+    "id": "steady_bellows",
+    "station": "bellows",
+    "name": "Steady Bellows",
+    "description": "Patched twice, wheezes once. Keeping the heat in the band is more forgiving.",
+    "unlock_day": 4,
+    "levels": [ { "tolerance": 1.25, "cost": 35 }, { "tolerance": 1.5, "cost": 80 } ]
+  }
+]
