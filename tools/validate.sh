@@ -52,11 +52,14 @@ fi
 # On a fresh clone (no import cache) the first import reports errors because the
 # project's default font is loaded before its TTF has been imported. A priming
 # import fills the cache; the checked import below then must be clean.
-# Only those font errors are tolerated there.
+# The project theme loads at startup too, with the font and the art atlases it references.
+# Only cache-miss errors (a not-yet-imported file and the loads that fail because of it)
+# are tolerated there; any other problem (a script or scene parse error) still fails.
+CACHE_MISS="Cannot open file 'res://\.godot/imported/|Unable to open file: res://\.godot/imported/|Failed loading resource: res://|referenced non-existent resource at: res://|Error loading custom project (font|theme) 'res://"
 if [ ! -d brewmagic/.godot/imported ]; then
   godot "$LOG_DIR/import_prime.log" --headless --path brewmagic --import || true
-  if grep -E "ERROR|WARNING" "$LOG_DIR/import_prime.log" | grep -qvE "PixelifySans-Variable\.ttf"; then
-    fail "priming import reported problems besides the project font" "$LOG_DIR/import_prime.log"
+  if grep -E "ERROR|WARNING" "$LOG_DIR/import_prime.log" | grep -qvE "$CACHE_MISS"; then
+    fail "priming import reported problems besides import-cache misses" "$LOG_DIR/import_prime.log"
   fi
 fi
 godot "$LOG_DIR/import.log" --headless --path brewmagic --import || fail "import exited non-zero" "$LOG_DIR/import.log"
