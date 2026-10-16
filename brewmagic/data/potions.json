@@ -1,0 +1,46 @@
+[
+  {
+    "id": "hearthglow_tonic",
+    "name": "Hearthglow Tonic",
+    "target": [2, 0, 2, 0],
+    "color": "#f07c2c",
+    "bottle": "round",
+    "unlock_day": 1,
+    "steps": ["stir", "pour"],
+    "price": 12,
+    "description": "Warmth and healing in one gulp. Tastes like a fireside hug."
+  },
+  {
+    "id": "slumber_syrup",
+    "name": "Slumber Syrup",
+    "target": [0, 2, 0, 2],
+    "color": "#9058c0",
+    "bottle": "tall",
+    "unlock_day": 1,
+    "steps": ["stir", "pour"],
+    "price": 12,
+    "description": "Calm, then sleep, then a dream about a very polite owl."
+  },
+  {
+    "id": "valour_cordial",
+    "name": "Valour Cordial",
+    "target": [2, 1, 0, 2],
+    "color": "#c43c2c",
+    "bottle": "flask",
+    "unlock_day": 2,
+    "steps": ["stir", "pour"],
+    "price": 18,
+    "description": "Courage with a cool head, for anything spooky. Side effect: heroic posing."
+  },
+  {
+    "id": "moonbloom_draught",
+    "name": "Moonbloom Draught",
+    "target": [0, 1, 2, 2],
+    "color": "#7cc44c",
+    "bottle": "teardrop",
+    "unlock_day": 2,
+    "steps": ["stir", "pour"],
+    "price": 18,
+    "description": "Makes things grow in cold, cursed or night-time places. Turnips may get chatty."
+  }
+]

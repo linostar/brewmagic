@@ -1,0 +1,31 @@
+[
+  {
+    "id": "day_1",
+    "day": 1,
+    "title": "Grand Opening",
+    "morning_note": "Grand opening! Listen for hint words, then pick 2 ingredients.",
+    "patience_scale": 1.5,
+    "starting_coins": 20,
+    "starting_stock": { "ember_pepper": 4, "frost_mint": 4, "sunpetal": 4, "nightshade_cap": 4 },
+    "customers": [
+      { "archetype": "gossip_granny", "potion": "hearthglow_tonic", "request": "hearthglow_gossip_granny_1" },
+      { "archetype": "apprentice_knight", "potion": "slumber_syrup", "request": "slumber_apprentice_knight_1" },
+      { "archetype": "goat_farmer", "potion": "hearthglow_tonic" }
+    ]
+  },
+  {
+    "id": "day_2",
+    "day": 2,
+    "title": "Word Gets Around",
+    "morning_note": "New stock: honeycomb and moonmoss. Each one holds two essences.",
+    "patience_scale": 1.0,
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4 },
+    "customers": [
+      { "archetype": "goat_farmer", "potion": "valour_cordial", "request": "valour_goat_farmer_1" },
+      { "archetype": "dramatic_bard", "potion": "hearthglow_tonic" },
+      { "archetype": "gossip_granny", "potion": "slumber_syrup" },
+      { "archetype": "apprentice_knight", "potion": "moonbloom_draught" },
+      { "archetype": "dramatic_bard", "potion": "valour_cordial" }
+    ]
+  }
+]

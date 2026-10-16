@@ -1,0 +1,56 @@
+[
+  {
+    "id": "ember_pepper",
+    "name": "Ember Pepper",
+    "essence": [2, 0, 0, 0],
+    "unlock_day": 1,
+    "base_price": 2,
+    "grind": false,
+    "description": "Hot enough to toast bread. Do not keep it in a back pocket."
+  },
+  {
+    "id": "frost_mint",
+    "name": "Frost Mint",
+    "essence": [0, 2, 0, 0],
+    "unlock_day": 1,
+    "base_price": 2,
+    "grind": false,
+    "description": "So cooling that sniffing it counts as a short holiday."
+  },
+  {
+    "id": "sunpetal",
+    "name": "Sunpetal",
+    "essence": [0, 0, 2, 0],
+    "unlock_day": 1,
+    "base_price": 2,
+    "grind": false,
+    "description": "Turns towards whoever is talking. Mends things. Likes compliments."
+  },
+  {
+    "id": "nightshade_cap",
+    "name": "Nightshade Cap",
+    "essence": [0, 0, 0, 2],
+    "unlock_day": 1,
+    "base_price": 3,
+    "grind": false,
+    "description": "A mushroom that sighs when picked. Brings sleep and the spooky sort of dark."
+  },
+  {
+    "id": "honeycomb",
+    "name": "Honeycomb",
+    "essence": [1, 0, 2, 0],
+    "unlock_day": 2,
+    "base_price": 4,
+    "grind": false,
+    "description": "A little warmth, a lot of healing. The bees would like a receipt."
+  },
+  {
+    "id": "moonmoss",
+    "name": "Moonmoss",
+    "essence": [0, 1, 0, 2],
+    "unlock_day": 2,
+    "base_price": 4,
+    "grind": false,
+    "description": "Grows only on north-facing gravestones. A touch of calm, a lot of spooky."
+  }
+]
