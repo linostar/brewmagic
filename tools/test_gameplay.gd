@@ -104,6 +104,8 @@ func _tests() -> Array[Callable]:
 		_test_shop_shelf_essence_pips,
 		_test_shop_pot_preview_needs,
 		_test_shop_stir_real_touch,
+		_test_shop_grade_stamps,
+		_test_shop_patience_row,
 	]
 
 
@@ -580,6 +582,7 @@ func _test_shop_patience_timeout() -> void:
 		var bubble := shop.get_node("Column/Stage/Bubble") as SpeechBubble
 		_check(bubble.text in who.reactions["stormed_off"], "storming off says a stormed_off line", bubble.text)
 		_check(shop.reputation == Economy.STORMED_OFF_REPUTATION and shop.coins == Content.day(1).starting_coins and shop.served == 0, "storming off costs reputation only", "%d %d" % [shop.reputation, shop.coins])
+		_check(not (shop.get_node("Column/Stage/Stamp") as Control).visible and _pay_texts(shop).is_empty(), "storming off shows no grade stamp and no coins", str(_pay_texts(shop)))
 		await _skip_lines(shop)
 	if await _wait_for_order(shop, "timeout mid-brew"):
 		var recipe := _exact_recipe(shop.customer.potion, shop.stock)
@@ -645,8 +648,8 @@ func _test_shop_pause_toggles() -> void:
 		for i in 30:
 			await process_frame
 		_check(is_equal_approx(shop.customer.patience_left, patience), "patience stops while paused", "%f -> %f" % [patience, shop.customer.patience_left])
-		await _tap(shop.get_node("Modal/PausePanel/List/AssistButton") as Button)
-		await _tap(shop.get_node("Modal/PausePanel/List/GentleButton") as Button)
+		await _tap(shop.get_node("Modal/PausePanel/List/AssistRow/AssistButton") as Button)
+		await _tap(shop.get_node("Modal/PausePanel/List/GentleRow/GentleButton") as Button)
 		_check(_game.assist_mode and _game.gentle_mode, "pause toggles set the settings", "%s %s" % [_game.assist_mode, _game.gentle_mode])
 		_check((shop.get_node("Column/Hud/AssistTag") as Control).visible, "HUD shows the Assist tag", "hidden")
 		await _tap(shop.get_node("Modal/PausePanel/List/ResumeButton") as Button)
@@ -657,7 +660,7 @@ func _test_shop_pause_toggles() -> void:
 		_check(await _until(func() -> bool: return shop.station != null and shop.station.is_running(), FLOW_FRAMES), "brew starts a station", "no station")
 		_check(shop.station.assist and is_equal_approx(shop.station.tolerance_scale, GameState.GENTLE_TOLERANCE_SCALE), "station gets the toggled settings", "%s %f" % [shop.station.assist, shop.station.tolerance_scale])
 		await _tap(pause)
-		await _tap(shop.get_node("Modal/PausePanel/List/AssistButton") as Button)
+		await _tap(shop.get_node("Modal/PausePanel/List/AssistRow/AssistButton") as Button)
 		await process_frame
 		_check(not _game.assist_mode and not shop.station.assist and shop.station.get_node_or_null("AssistButton") == null and shop.station.is_running(), "assist off restarts the station as a gesture", "assist %s" % shop.station.assist)
 		await _tap(shop.get_node("Modal/PausePanel/List/ResumeButton") as Button)
@@ -763,7 +766,7 @@ func _test_shop_pause_focus() -> void:
 			reached.append(root.gui_get_focus_owner())
 		_check(reached.all(func(control: Control) -> bool: return control not in under_dim), "Tab never reaches controls under the dim", str(reached))
 		await _tap(shop.get_node("Column/Hud/PauseButton") as Button)
-		var assist_toggle := shop.get_node("Modal/PausePanel/List/AssistButton") as Button
+		var assist_toggle := shop.get_node("Modal/PausePanel/List/AssistRow/AssistButton") as Button
 		await _tap(assist_toggle)
 		await _tap(assist_toggle)
 		await process_frame
@@ -790,9 +793,9 @@ func _test_shop_controls_size_and_zone() -> void:
 		for item in shop.get_node("Column/Stage/ShelfItems").get_children():
 			play.append(item as Control)
 		var pause_buttons: Array[Control] = []
-		for button in shop.get_node("Modal/PausePanel/List").get_children():
-			if button is Button:
-				pause_buttons.append(button as Control)
+		for button in shop.get_node("Modal/PausePanel/List").find_children("*", "Button", true, false):
+			pause_buttons.append(button as Control)
+		_check(pause_buttons.size() == 6, "layout: pause panel has Resume, two toggles with their \"?\" and Quit", str(pause_buttons))
 		var summary := shop.get_node("Modal/SummaryPanel") as Control
 		var back: Array[Control] = [shop.get_node("Modal/SummaryPanel/List/BackButton") as Control]
 		for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
@@ -938,6 +941,7 @@ func _test_shop_perfect_serve_reaction() -> void:
 		var bubble_text := (shop.get_node("Column/Stage/Bubble") as SpeechBubble).text
 		_check(shop.grades == ([Brew.Grade.PERFECT] as Array[Brew.Grade]), "perfect gestures on the exact recipe are Perfect", str(shop.grades))
 		_check(bubble_text in who.reactions["perfect"], "perfect: says a perfect reaction line", bubble_text)
+		await _check_stamp(shop, Brew.Grade.PERFECT, Economy.pay(shop.customer.potion.price, Brew.Grade.PERFECT), "perfect")
 	await _close_shop()
 
 
@@ -980,9 +984,12 @@ func _test_shop_keyboard_day1_assist() -> void:
 
 
 ## Criterion 3: the pause button reads "Menu", is at least 32x32 in the top-right
-## corner of the safe area and has an accessibility name. Criteria 5 and 6: right
-## under each mode toggle, an always-visible one-line description, and the same
-## text as the toggle's tooltip, shown without delay.
+## corner of the safe area and has an accessibility name. Mode help (no hover,
+## no always-visible text): each toggle keeps its description as an instant
+## tooltip, and the "?" right after it (32x32+, focusable, named) opens the same
+## text in a callout inside the pause panel and the safe area at 9:16, 9:19.5 and
+## 16:9. A tap on the callout, a tap on the dim, Enter and Escape each close it,
+## Tab cannot leave it, and focus goes back to the "?".
 func _test_shop_menu_and_mode_info() -> void:
 	var shop := await _open_shop()
 	var safe := _game.safe_rect()
@@ -996,12 +1003,47 @@ func _test_shop_menu_and_mode_info() -> void:
 	shop.open_pause()
 	await _frames(5)
 	var list := shop.get_node("Modal/PausePanel/List")
-	for pair: Array in [["AssistButton", "AssistInfo", Shop.ASSIST_INFO], ["GentleButton", "GentleInfo", Shop.GENTLE_INFO]]:
-		var toggle := list.get_node(pair[0] as String) as Button
-		var info := list.get_node(pair[1] as String) as Label
-		_check(info.get_index() == toggle.get_index() + 1 and info.is_visible_in_tree() and info.text == pair[2], "%s sits right under %s, visible" % [info.name, toggle.name], "index %d/%d '%s'" % [info.get_index(), toggle.get_index(), info.text])
-		_check(info.get_line_count() == 1 and info.get_global_rect().end.x <= _game.safe_rect().end.x, "%s is one line inside the screen" % info.name, "%d lines, %s" % [info.get_line_count(), info.get_global_rect()])
-		_check(toggle.tooltip_text == info.text, "%s tooltip matches its description" % toggle.name, toggle.tooltip_text)
+	var panel := shop.get_node("Modal/PausePanel") as Control
+	var help := shop.get_node("Modal/ModeHelp") as Button
+	var callout := shop.get_node("Modal/ModeHelp/Callout") as Control
+	var text := shop.get_node("Modal/ModeHelp/Callout/Text") as Label
+	var dim := shop.get_node("Modal/Dim") as Control
+	_check(list.find_children("*Info", "", true, false).is_empty(), "no always-visible mode descriptions remain", str(list.find_children("*Info", "", true, false)))
+	for mode: Array in [["Assist", Shop.ASSIST_INFO], ["Gentle", Shop.GENTLE_INFO]]:
+		var toggle := list.get_node("%sRow/%sButton" % [mode[0], mode[0]]) as Button
+		var question := list.get_node("%sRow/%sHelp" % [mode[0], mode[0]]) as Button
+		var label := "%s \"?\"" % mode[0]
+		_check(toggle.tooltip_text == mode[1], "%s tooltip is its description" % toggle.name, toggle.tooltip_text)
+		_check(question.text == "?" and question.get_index() == toggle.get_index() + 1 and question.focus_mode == Control.FOCUS_ALL and question.accessibility_name == "What does %s mode do?" % mode[0], label + " sits right after its toggle, focusable and named", "index %d/%d '%s'" % [question.get_index(), toggle.get_index(), question.accessibility_name])
+		await _tap(question)
+		_check(help.visible and text.text.replace("\n", " ") == mode[1] and root.gui_get_focus_owner() == help, label + " tap shows its description", "visible %s '%s' focus %s" % [help.visible, text.text, root.gui_get_focus_owner()])
+		_check(help.get_global_rect().is_equal_approx(panel.get_global_rect()), label + " help covers exactly the pause panel", "%s vs %s" % [help.get_global_rect(), panel.get_global_rect()])
+		var tail := (shop.get_node("Modal/ModeHelp/Tail") as Control).get_global_rect()
+		_check(absf(tail.end.x - question.get_global_rect().get_center().x) <= tail.size.x and tail.end.y <= question.get_global_rect().position.y + 1.0, label + " callout points at its \"?\"", "tail %s, ? %s" % [tail, question.get_global_rect()])
+		for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
+			root.size = window
+			await _frames(10)
+			var at := callout.get_global_rect()
+			_check(panel.get_global_rect().encloses(at) and _game.safe_rect().encloses(at), "%s callout inside the panel and safe area at %s" % [label, window], "%s in %s" % [at, panel.get_global_rect()])
+			_check_targets([question] as Array[Control], menu, "%s at %s" % [label, window])
+		root.size = BASE_WINDOW
+		await _frames(5)
+		await _tap(callout)
+		_check(not help.visible and root.gui_get_focus_owner() == question, label + " callout tap closes it, focus back on the \"?\"", "visible %s focus %s" % [help.visible, root.gui_get_focus_owner()])
+		await _tap(question)
+		await _tap_at(dim.get_global_rect().position + Vector2(dim.size.x / 2.0, 20.0))
+		_check(not help.visible and paused, label + " a tap on the dim closes it, still paused", "visible %s" % help.visible)
+		question.grab_focus()
+		await _action(&"ui_accept")
+		_check(help.visible and root.gui_get_focus_owner() == help, label + " Enter opens it", "visible %s focus %s" % [help.visible, root.gui_get_focus_owner()])
+		await _action(&"ui_focus_next")
+		await _action(&"ui_focus_prev")
+		_check(root.gui_get_focus_owner() == help, label + " Tab stays on the open help", str(root.gui_get_focus_owner()))
+		await _action(&"ui_accept")
+		_check(not help.visible and root.gui_get_focus_owner() == question, label + " Enter again closes it, focus back on the \"?\"", "visible %s focus %s" % [help.visible, root.gui_get_focus_owner()])
+		await _action(&"ui_accept")
+		await _key(KEY_ESCAPE)
+		_check(not help.visible and root.gui_get_focus_owner() == question and paused, label + " Escape closes it, focus back on the \"?\"", "visible %s focus %s" % [help.visible, root.gui_get_focus_owner()])
 	_check("Good" in Shop.ASSIST_INFO and "never Perfect" in Shop.ASSIST_INFO, "Assist info says Good, never Perfect", Shop.ASSIST_INFO)
 	_check(("%sx" % GameState.GENTLE_TOLERANCE_SCALE) in Shop.GENTLE_INFO, "Gentle info names the tolerance scale", Shop.GENTLE_INFO)
 	_check(is_zero_approx(float(ProjectSettings.get_setting("gui/timers/tooltip_delay_sec", -1.0))), "tooltips appear without delay", str(ProjectSettings.get_setting("gui/timers/tooltip_delay_sec")))
@@ -1230,6 +1272,82 @@ func _test_shop_stir_real_touch() -> void:
 		await _close_shop()
 
 
+## Day 1 with Assist on: the exact recipe (Good), a recipe 2 away (Meh) and one
+## 3+ away (Misbrew) each get their stamp (words, colour, icon) in the reading
+## zone clear of the bubble, with "+pay" (Economy.pay) flying to the coins; the
+## Misbrew pays nothing and shows no "+". (Perfect: _test_shop_perfect_serve_reaction;
+## storming off shows none: _test_shop_patience_timeout.)
+func _test_shop_grade_stamps() -> void:
+	_game.assist_mode = true
+	var shop := await _open_shop()
+	for case: Array in [[Brew.Grade.GOOD, 0, 0], [Brew.Grade.MEH, 2, 2], [Brew.Grade.MISBREW, 3, 99]]:
+		var grade: Brew.Grade = case[0]
+		var label := "stamp %s" % Brew.Grade.keys()[grade]
+		if not await _wait_for_order(shop, label):
+			break
+		var wants := shop.customer.potion
+		if not await _serve(shop, _recipe_between(wants, shop.stock, case[1], case[2]), label):
+			break
+		_check(shop.grades.back() == grade, label + ": served at that grade", str(shop.grades))
+		await _check_stamp(shop, grade, Economy.pay(wants.price, grade), label)
+		await _skip_lines(shop)
+	await _close_shop()
+
+
+## The waiting customer's patience row: the hourglass first, then the 4 hearts;
+## hidden once the potion arrives and when the customer storms off. The mood
+## shows on the face only (no emote node).
+func _test_shop_patience_row() -> void:
+	_game.assist_mode = true
+	var shop := await _open_shop()
+	if await _wait_for_order(shop, "patience row"):
+		var visitor := shop.customer
+		var row := visitor.get_node("Patience") as Node2D
+		var parts := row.get_children()
+		var hourglass := parts[0] as Sprite2D
+		var hearts_after := parts.slice(1).all(func(heart: Node) -> bool: return heart.name.begins_with("Heart") and (heart as Sprite2D).position.x > hourglass.position.x + 8.0)
+		_check(row.is_visible_in_tree() and hourglass.name == "Hourglass" and (hourglass.texture as AtlasTexture).region == Art.texture("ui", "hourglass").region and parts.size() == 5 and hearts_after, "patience row: hourglass, then 4 hearts, while waiting", str(parts))
+		var stray := visitor.find_children("*", "Sprite2D", true, false).filter(func(sprite: Node) -> bool: return sprite.get_parent() != row and sprite.get_parent().name != "Body")
+		_check(visitor.get_node_or_null("Emote") == null and stray.is_empty(), "no mood emote on the customer (only body parts and the patience row)", str(stray))
+		await _serve(shop, _exact_recipe(visitor.potion, shop.stock), "patience row")
+		_check(not row.is_visible_in_tree(), "patience row hides once the potion arrives", "visible")
+		await _skip_lines(shop)
+	if await _wait_for_order(shop, "patience row storm"):
+		var row := shop.customer.get_node("Patience") as Node2D
+		_check(row.is_visible_in_tree(), "patience row shows for the next customer", "hidden")
+		shop.customer.patience_left = 0.2
+		_check(await _until(func() -> bool: return shop.stormed_off == 1, FLOW_FRAMES), "patience row storm: storms off", str(shop.stormed_off))
+		_check(not row.is_visible_in_tree(), "patience row hides when the customer storms off", "visible")
+	await _close_shop()
+
+
+## The grade stamp right after a serve: `grade`'s words, colour and icon; "+pay"
+## flying in Fx (none when `pay` is 0); once landed, in the stage's reading zone
+## (above the workspace) and clear of the speech bubble.
+func _check_stamp(shop: Shop, grade: Brew.Grade, pay: int, label: String) -> void:
+	var stamp := shop.get_node("Column/Stage/Stamp") as Control
+	var text := shop.get_node("Column/Stage/Stamp/Row/Text") as Label
+	var icon := (shop.get_node("Column/Stage/Stamp/Row/Icon") as TextureRect).texture as AtlasTexture
+	var expected_icon := Art.texture("ui", Shop.STAMP_ICONS[grade])
+	_check(stamp.visible and text.text == Shop.STAMP_TEXTS[grade] and icon != null and icon.region == expected_icon.region and text.get_theme_color(&"font_color") == Shop.STAMP_COLORS[grade], label + ": stamp reads %s with its icon and colour" % Shop.STAMP_TEXTS[grade], "visible %s '%s' %s" % [stamp.visible, text.text, icon.region if icon != null else Rect2()])
+	var expected_pay := PackedStringArray(["+%d" % pay]) if pay > 0 else PackedStringArray()
+	_check(_pay_texts(shop) == expected_pay, label + ": coins fly as %s" % expected_pay, str(_pay_texts(shop)))
+	await _frames(25)
+	var rect := stamp.get_global_rect()
+	var bubble := (shop.get_node("Column/Stage/Bubble/Box") as Control).get_global_rect()
+	var workspace_top := (shop.get_node("Column/Stage") as Control).get_global_rect().position.y + 192.0
+	_check(stamp.visible and rect.end.y <= workspace_top and not rect.intersects(bubble), label + ": stamp held in the reading zone, clear of the bubble", "%s, bubble %s, workspace at %.0f" % [rect, bubble, workspace_top])
+
+
+## Texts of the "+pay" labels flying in the shop's Fx layer.
+func _pay_texts(shop: Shop) -> PackedStringArray:
+	var texts := PackedStringArray()
+	for node in shop.get_node("Fx").get_children():
+		if node is Label and (node as Label).text.begins_with("+"):
+			texts.append((node as Label).text)
+	return texts
+
+
 func _open_shop() -> Shop:
 	_game.goto(GameState.Flow.SHOP)
 	await _game.transition_finished
@@ -1289,7 +1407,8 @@ func _exact_recipe(potion: PotionType, stock: Dictionary[String, int]) -> Array[
 	return _recipe_between(potion, stock, 0, 0)
 
 
-## Two ingredient ids from `stock` whose brew is `low`..`high` away from `potion`.
+## Two ingredient ids from `stock` whose brew is `low`..`high` away from `potion`,
+## else three.
 func _recipe_between(potion: PotionType, stock: Dictionary[String, int], low: int, high := 99) -> Array[String]:
 	var ids: Array[String] = []
 	ids.assign(stock.keys())
@@ -1300,6 +1419,15 @@ func _recipe_between(potion: PotionType, stock: Dictionary[String, int], low: in
 			var distance := Brew.distance(Content.ingredient(a).essence + Content.ingredient(b).essence, potion.target)
 			if distance >= low and distance <= high:
 				return [a, b] as Array[String]
+	for a in ids:
+		for b in ids:
+			for c in ids:
+				var recipe: Array[String] = [a, b, c]
+				if recipe.any(func(id: String) -> bool: return recipe.count(id) > stock[id]):
+					continue
+				var distance := Brew.distance(Content.ingredient(a).essence + Content.ingredient(b).essence + Content.ingredient(c).essence, potion.target)
+				if distance >= low and distance <= high:
+					return recipe
 	_check(false, "recipe for %s at distance %d..%d" % [potion.id, low, high], "none in %s" % stock)
 	return [] as Array[String]
 
@@ -1314,12 +1442,28 @@ func _until(condition: Callable, frames: int) -> bool:
 
 ## A real touch (press and release) at the centre of `control`.
 func _tap(control: Control) -> void:
-	var at := root.get_final_transform() * control.get_global_rect().get_center()
+	await _tap_at(control.get_global_rect().get_center())
+
+
+## A real touch (press and release) at canvas point `point`.
+func _tap_at(point: Vector2) -> void:
+	var at := root.get_final_transform() * point
 	for pressed: bool in [true, false]:
 		var touch := InputEventScreenTouch.new()
 		touch.position = at
 		touch.pressed = pressed
 		Input.parse_input_event(touch)
+		await process_frame
+
+
+## Presses and releases key `keycode`, as a keyboard would.
+func _key(keycode: Key) -> void:
+	for pressed: bool in [true, false]:
+		var event := InputEventKey.new()
+		event.keycode = keycode
+		event.physical_keycode = keycode
+		event.pressed = pressed
+		Input.parse_input_event(event)
 		await process_frame
 
 

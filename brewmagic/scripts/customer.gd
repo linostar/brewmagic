@@ -9,9 +9,10 @@ extends Node2D
 ##
 ## States: ENTER -> WAIT_ORDER -> WAIT_BREW -> RECEIVE -> REACT -> LEAVE -> GONE.
 ## Patience (seconds, set by setup()) drains only in WAIT_ORDER and WAIT_BREW;
-## the hearts show what is left and the emote shows the mood. At zero the
-## customer turns STORMING (it takes no order or brew any more), emits
-## patience_ran_out once and waits for the shop to make it leave.
+## the patience row (an hourglass, then the hearts) shows what is left and the
+## face shows the mood. At zero the customer turns STORMING (it takes no order or
+## brew any more), emits patience_ran_out once and waits for the shop to make it
+## leave. The patience row hides once the potion arrives or the customer storms off.
 ## Palette swaps and part variety come with plan step 4.
 
 signal arrived
@@ -43,7 +44,6 @@ const HEARTS := 4
 ## Patience fractions at or above which the mood is HAPPY, then NEUTRAL; above 0 ANNOYED.
 const HAPPY_PATIENCE := 0.66
 const NEUTRAL_PATIENCE := 0.33
-const EMOTES: Array[String] = ["emote_happy", "emote_neutral", "emote_annoyed", "emote_storming"]
 ## Mood -> face part (art_src/customer.px has three expressions).
 const FACES: Array[String] = ["face_happy", "face_neutral", "face_annoyed", "face_annoyed"]
 ## Index of the face in the part layers.
@@ -68,8 +68,8 @@ var _part_names: Array[String] = []
 
 @onready var _body: Node2D = $Body
 @onready var _parts: Array[Sprite2D] = [$Body/BodyPart, $Body/Head, $Body/Hair, $Body/Face, $Body/Accessory]
-@onready var _hearts: Array[Sprite2D] = [$Hearts/Heart0, $Hearts/Heart1, $Hearts/Heart2, $Hearts/Heart3]
-@onready var _emote: Sprite2D = $Emote
+@onready var _patience_row: Node2D = $Patience
+@onready var _hearts: Array[Sprite2D] = [$Patience/Heart0, $Patience/Heart1, $Patience/Heart2, $Patience/Heart3]
 @onready var _effect_root: Node2D = $Effect
 
 
@@ -85,6 +85,7 @@ func setup(who: Archetype, wants: PotionType, says: RequestLine, patience_second
 
 
 func _ready() -> void:
+	($Patience/Hourglass as Sprite2D).texture = Art.texture("ui", "hourglass")
 	_show_frame(0)
 	_update_patience()
 	position = Vector2(DOOR_X, CANVAS_Y)
@@ -106,9 +107,10 @@ func start_brew() -> void:
 		state = State.WAIT_BREW
 
 
-## The bottle reached the customer: patience stops.
+## The bottle reached the customer: patience stops and its row hides.
 func receive() -> void:
 	state = State.RECEIVE
+	_patience_row.hide()
 
 
 ## Reacts to a finished brew: a happy hop for Perfect and Good, a slump for Meh,
@@ -225,6 +227,7 @@ func _process(delta: float) -> void:
 	_update_patience()
 	if patience_left <= 0.0:
 		state = State.STORMING
+		_patience_row.hide()
 		print("[Customer] %s ran out of patience" % archetype.id)
 		Juice.shake(_body, 2.0, 0.3)
 		patience_ran_out.emit()
@@ -259,7 +262,6 @@ func _update_patience() -> void:
 
 
 func _show_mood(value: Mood) -> void:
-	_emote.texture = Art.texture("ui", EMOTES[value])
 	if _part_names.size() > FACE_LAYER and _part_names[FACE_LAYER] != FACES[value]:
 		_part_names[FACE_LAYER] = FACES[value]
 		_show_frame(_frame)

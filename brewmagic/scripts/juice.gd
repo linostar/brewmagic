@@ -82,6 +82,31 @@ static func arc(node: Node2D, from: Vector2, to: Vector2, height: float, duratio
 ## A short text that pops at `at` (in `parent`'s space, centred), floats up and
 ## fades. Frees itself when done.
 static func pop_text(parent: Node, at: Vector2, text: String, color: Color, font_size := 25) -> Label:
+	var label := _popped_label(parent, at, text, color, font_size)
+	var tween := label.create_tween()
+	tween.tween_property(label, "scale", Vector2.ONE, 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(label, "position:y", label.position.y - 14.0, 0.7)
+	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.35).set_delay(0.35)
+	tween.tween_callback(label.queue_free)
+	return label
+
+
+## A short text that pops at `from` (in `parent`'s space, centred), waits `hold`
+## seconds, then flies to `to` shrinking and fades as it lands. Frees itself when done.
+static func fly_text(parent: Node, from: Vector2, to: Vector2, text: String, color: Color, hold: float, font_size := 25) -> Label:
+	var label := _popped_label(parent, from, text, color, font_size)
+	var tween := label.create_tween()
+	tween.tween_property(label, "scale", Vector2.ONE, 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_interval(hold)
+	tween.tween_property(label, "position", (to - label.size / 2.0).round(), 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.parallel().tween_property(label, "scale", Vector2(0.5, 0.5), 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.15).set_delay(0.3)
+	tween.tween_callback(label.queue_free)
+	return label
+
+
+## An outlined label centred on `at`, starting at 0.4 scale for a pop-in.
+static func _popped_label(parent: Node, at: Vector2, text: String, color: Color, font_size: int) -> Label:
 	var label := Label.new()
 	label.text = text
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -94,9 +119,4 @@ static func pop_text(parent: Node, at: Vector2, text: String, color: Color, font
 	label.pivot_offset = label.size / 2.0
 	label.position = (at - label.size / 2.0).round()
 	label.scale = Vector2(0.4, 0.4)
-	var tween := label.create_tween()
-	tween.tween_property(label, "scale", Vector2.ONE, 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween.tween_property(label, "position:y", label.position.y - 14.0, 0.7)
-	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.35).set_delay(0.35)
-	tween.tween_callback(label.queue_free)
 	return label

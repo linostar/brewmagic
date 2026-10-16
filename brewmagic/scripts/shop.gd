@@ -27,6 +27,15 @@ extends Control
 ## Column takes no focus while one is open); the shelf and Brew take no focus
 ## while a station runs under its dim. Resume returns focus to the running
 ## station's Assist button, else to the control focused before pausing.
+##
+## Mode help: the "?" next to each mode toggle opens ModeHelp, a flat button over
+## the whole pause panel with the mode's description in a callout above that row.
+## Any tap (on the panel or the dim around it), Enter or ui_cancel (its shortcut)
+## closes it and focus goes back to the "?".
+##
+## Grade stamp: a served customer gets a stamp on the counter front (the grade in
+## words, its colour and its own icon) while "+pay" flies to the coin counter with
+## the coins; a customer storming off gets none.
 
 const CUSTOMER_SCENE := preload("res://scenes/customer.tscn")
 const SHELF_ITEM_SCENE := preload("res://scenes/shelf_item.tscn")
@@ -60,7 +69,7 @@ const COIN_FLIGHTS_MAX := 8
 ## Each pour's fill line lies in this range of the bottle's liquid height.
 const POUR_LINE_MIN := 0.45
 const POUR_LINE_MAX := 0.85
-## What each mode does, always shown under its toggle in the pause panel and as its tooltip.
+## What each mode does: its toggle's tooltip, and the callout its "?" button opens.
 const ASSIST_INFO := "Auto stir & pour; scores Good, never Perfect"
 const GENTLE_INFO := "Stir & pour timing is %sx more forgiving" % GameState.GENTLE_TOLERANCE_SCALE
 const GOLD := Color("#ffc95c")
@@ -68,6 +77,19 @@ const CREAM := Color("#fbedcd")
 const RED := Color("#c43c2c")
 const GREEN := Color("#7cc44c")
 const OUTLINE := Color("#1c1420")
+const STONE := Color("#c8c0c8")
+## Per Brew.Grade: the stamp's words, colour and icon (ui atlas; the shape tells the
+## grades apart without colour: sparkle, check, tilde, cross).
+const STAMP_TEXTS: Array[String] = ["PERFECT!", "GOOD", "MEH", "MISBREW"]
+const STAMP_COLORS: Array[Color] = [GOLD, GREEN, STONE, RED]
+const STAMP_ICONS: Array[String] = ["grade_perfect", "grade_good", "grade_meh", "grade_misbrew"]
+## Stage-space centre of the stamp: the counter front, under the customer and the bubble.
+const STAMP_CENTER := Vector2(135, 168)
+const STAMP_HOLD := 1.2
+## Stage-space point "+pay" pops at before flying to the coin counter (where the
+## patience row was, right of the customer's head).
+const PAY_FROM := Vector2(186, 116)
+const PAY_HOLD := 0.35
 ## The pot preview's mark after "in pot/needed" for each essence of the current order.
 ## Its shape carries the result as well as its colour: a check (MATCHED), a plus
 ## (MISSING: add more) or a minus (OVER: take some out). NONE: no order, no mark.
@@ -128,6 +150,9 @@ var _essence_counts: Array[Label] = []
 var _essence_marks: Array[Control] = []
 ## The control that had focus when the pause panel opened.
 var _focus_before_pause: Control
+## The "?" button whose mode help is open.
+var _help_opener: Button
+var _stamp_tween: Tween
 
 @onready var _fill: Control = $Fill
 @onready var _column: Control = $Column
@@ -155,8 +180,18 @@ var _focus_before_pause: Control
 @onready var _modal: Control = $Modal
 @onready var _modal_dim: ColorRect = $Modal/Dim
 @onready var _pause_panel: PanelContainer = $Modal/PausePanel
-@onready var _assist_button: Button = $Modal/PausePanel/List/AssistButton
-@onready var _gentle_button: Button = $Modal/PausePanel/List/GentleButton
+@onready var _pause_list: Control = $Modal/PausePanel/List
+@onready var _assist_button: Button = $Modal/PausePanel/List/AssistRow/AssistButton
+@onready var _gentle_button: Button = $Modal/PausePanel/List/GentleRow/GentleButton
+@onready var _assist_help: Button = $Modal/PausePanel/List/AssistRow/AssistHelp
+@onready var _gentle_help: Button = $Modal/PausePanel/List/GentleRow/GentleHelp
+@onready var _mode_help: Button = $Modal/ModeHelp
+@onready var _help_callout: PanelContainer = $Modal/ModeHelp/Callout
+@onready var _help_text: Label = $Modal/ModeHelp/Callout/Text
+@onready var _help_tail: TextureRect = $Modal/ModeHelp/Tail
+@onready var _stamp: PanelContainer = $Column/Stage/Stamp
+@onready var _stamp_icon: TextureRect = $Column/Stage/Stamp/Row/Icon
+@onready var _stamp_text: Label = $Column/Stage/Stamp/Row/Text
 @onready var _summary_panel: PanelContainer = $Modal/SummaryPanel
 @onready var _summary_title: Label = $Modal/SummaryPanel/List/Title
 @onready var _summary_stats: Label = $Modal/SummaryPanel/List/Stats
@@ -179,8 +214,10 @@ func _ready() -> void:
 	$Modal/PausePanel/List/QuitButton.pressed.connect(_on_quit_pressed)
 	_assist_button.tooltip_text = ASSIST_INFO
 	_gentle_button.tooltip_text = GENTLE_INFO
-	($Modal/PausePanel/List/AssistInfo as Label).text = ASSIST_INFO
-	($Modal/PausePanel/List/GentleInfo as Label).text = GENTLE_INFO
+	_assist_help.pressed.connect(open_mode_help.bind(_assist_help))
+	_gentle_help.pressed.connect(open_mode_help.bind(_gentle_help))
+	_mode_help.pressed.connect(close_mode_help)
+	_modal_dim.gui_input.connect(_on_modal_dim_input)
 	$Modal/SummaryPanel/List/BackButton.pressed.connect(_on_quit_pressed)
 	var number := int(_game.flow_args.get("day", Content.FIRST_DAY))
 	day = Content.day(number)
@@ -272,6 +309,8 @@ func open_pause() -> void:
 
 
 func close_pause() -> void:
+	if _mode_help.visible:
+		close_mode_help()
 	_pause_panel.hide()
 	_modal_dim.hide()
 	get_tree().paused = false
@@ -285,6 +324,45 @@ func close_pause() -> void:
 	print("[Shop] Resumed")
 
 
+## Shows the description of `help`'s mode (ASSIST_INFO or GENTLE_INFO) in a
+## callout above its row, its tail pointing at `help`, and holds focus until closed.
+func open_mode_help(help: Button) -> void:
+	var text := ASSIST_INFO if help == _assist_help else GENTLE_INFO
+	_help_opener = help
+	_help_text.text = "\n".join(Content.wrap_bubble(text))
+	_mode_help.accessibility_name = text
+	_mode_help.position = _pause_panel.position
+	_mode_help.size = _pause_panel.size
+	_help_callout.size = Vector2.ZERO
+	var at := _mode_help.get_global_transform().affine_inverse() * help.get_global_rect()
+	var tail_x := at.get_center().x - _help_tail.size.x + 1.0
+	_help_tail.position = Vector2(tail_x, at.position.y - _help_tail.size.y).round()
+	var left := clampf(at.end.x - _help_callout.size.x, 0.0, _mode_help.size.x - _help_callout.size.x)
+	_help_callout.position = Vector2(left, _help_tail.position.y - _help_callout.size.y + 1.0).round()
+	_help_callout.pivot_offset = Vector2(tail_x - left, _help_callout.size.y)
+	_pause_list.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_DISABLED
+	_mode_help.show()
+	_mode_help.grab_focus(true)
+	Juice.squash(_help_callout, 0.12)
+	print("[Shop] Mode help: %s" % text)
+
+
+func close_mode_help() -> void:
+	_mode_help.hide()
+	_pause_list.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_INHERITED
+	if is_instance_valid(_help_opener):
+		_help_opener.grab_focus(true)
+		Juice.squash(_help_opener, 0.2)
+	_help_opener = null
+
+
+## A tap on the dim around the pause panel closes the mode help.
+func _on_modal_dim_input(event: InputEvent) -> void:
+	var touch := event as InputEventScreenTouch
+	if touch != null and touch.pressed and _mode_help.visible:
+		close_mode_help()
+
+
 func _setup_art() -> void:
 	($Column/Stage/Backdrop as TextureRect).texture = Art.texture("shop", "shop_backdrop")
 	($Column/Stage/Counter as TextureRect).texture = Art.texture("shop", "shop_counter")
@@ -295,6 +373,14 @@ func _setup_art() -> void:
 	_liquid.modulate = WATER_COLOR
 	_fire.texture = Art.texture("brewing", "fire_0")
 	_coin_icon.texture = Art.texture("ui", "coin_0")
+	var bubble := Art.texture("ui", "bubble")
+	var callout_style := StyleBoxTexture.new()
+	callout_style.texture = bubble.atlas
+	callout_style.region_rect = bubble.region
+	callout_style.set_texture_margin_all(4.0)
+	callout_style.set_content_margin_all(6.0)
+	_help_callout.add_theme_stylebox_override(&"panel", callout_style)
+	_help_tail.texture = Art.texture("ui", "bubble_tail")
 	for k in Content.ESSENCES.size():
 		var group := HBoxContainer.new()
 		group.add_theme_constant_override(&"separation", 2)
@@ -727,6 +813,7 @@ func _deliver(grade: Brew.Grade, quality: float) -> void:
 		perfect += 1
 	print("[Shop] Served customer %d/%d (%s): %s, quality %.2f, paid %d, reputation %+d, coins %d" % [_next_customer, day.customers.size(), customer.archetype.id, Brew.Grade.keys()[grade], quality, pay, reputation_change, coins])
 	_update_hud()
+	_show_stamp(grade)
 	var grade_key: String = Archetype.GRADES[grade]
 	var reaction := _pick("reaction/%s/%s" % [customer.archetype.id, grade_key], customer.archetype.reactions[grade_key])
 	if grade == Brew.Grade.MISBREW:
@@ -742,9 +829,40 @@ func _deliver(grade: Brew.Grade, quality: float) -> void:
 		return
 	customer.react(grade)
 	_coin_burst(pay)
-	var label := "+%d" % pay
-	Juice.pop_text(_fx, customer.get_global_transform() * Vector2(68, 4), label, GOLD)
+	if pay > 0:
+		var stage := _stage.get_global_transform()
+		Juice.fly_text(_fx, stage * PAY_FROM, _coin_icon.get_global_rect().get_center(), "+%d" % pay, GOLD, PAY_HOLD)
 	_say(reaction, REACTION_HOLD, customer.leave)
+
+
+## Slams the grade stamp onto the counter front (overshooting scale, an ink puff,
+## a shake for a Misbrew), holds it STAMP_HOLD seconds, then fades it out.
+func _show_stamp(grade: Brew.Grade) -> void:
+	if _stamp_tween != null:
+		_stamp_tween.kill()
+	var color := STAMP_COLORS[grade]
+	_stamp_text.text = STAMP_TEXTS[grade]
+	_stamp_text.add_theme_color_override(&"font_color", color)
+	_stamp_icon.texture = Art.texture("ui", STAMP_ICONS[grade])
+	(_stamp.get_theme_stylebox(&"panel") as StyleBoxFlat).border_color = color
+	_stamp.size = Vector2.ZERO
+	Juice.reset_shake(_stamp)
+	_stamp.position = (STAMP_CENTER - _stamp.size / 2.0).round()
+	_stamp.pivot_offset = _stamp.size / 2.0
+	_stamp.scale = Vector2(2.4, 2.4)
+	_stamp.modulate.a = 0.0
+	_stamp.show()
+	_stamp_tween = _stamp.create_tween()
+	_stamp_tween.tween_property(_stamp, "modulate:a", 1.0, 0.08)
+	_stamp_tween.parallel().tween_property(_stamp, "scale", Vector2(0.9, 0.9), 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	_stamp_tween.tween_callback(func() -> void:
+		Juice.burst(_stage, STAMP_CENTER, color, 16)
+		if grade == Brew.Grade.MISBREW:
+			Juice.shake(_stamp, 3.0, 0.3))
+	_stamp_tween.tween_property(_stamp, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_stamp_tween.tween_interval(STAMP_HOLD)
+	_stamp_tween.tween_property(_stamp, "modulate:a", 0.0, 0.25)
+	_stamp_tween.tween_callback(_stamp.hide)
 
 
 func _coin_burst(pay: int) -> void:

@@ -78,29 +78,35 @@
    "w": 24,
    "h": 24
   },
-  "emote_happy": {
+  "grade_perfect": {
    "x": 149,
    "y": 0,
-   "w": 12,
-   "h": 12
+   "w": 9,
+   "h": 9
   },
-  "emote_neutral": {
-   "x": 162,
+  "grade_good": {
+   "x": 159,
    "y": 0,
-   "w": 12,
-   "h": 12
+   "w": 9,
+   "h": 9
   },
-  "emote_annoyed": {
-   "x": 175,
+  "grade_meh": {
+   "x": 169,
    "y": 0,
-   "w": 12,
-   "h": 12
+   "w": 9,
+   "h": 9
   },
-  "emote_storming": {
-   "x": 188,
+  "grade_misbrew": {
+   "x": 179,
    "y": 0,
-   "w": 12,
-   "h": 12
+   "w": 9,
+   "h": 9
+  },
+  "hourglass": {
+   "x": 189,
+   "y": 0,
+   "w": 9,
+   "h": 9
   }
  }
 }

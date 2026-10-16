@@ -2,7 +2,9 @@
 ; essence_*: 9x9 icons with distinct shapes (flame, snowflake, leaf, crescent).
 ; bubble: 24x24 9-slice source, margins 4px (fill 6 cream); bubble_tail 8x6 attaches under the bottom edge, its
 ; top row overlaps the bubble's bottom outline. panel: 24x24 9-slice, margins 5px (wood frame, parchment fill).
-; heart_*: patience, 9x9. emote_*: 12x12 mood icons (happy, neutral, annoyed, storming cloud).
+; heart_*: patience, 9x9; hourglass: 9x9, labels the patience row (same outline style as the hearts).
+; Sprites added later go at the end so the packed regions of earlier ones (the theme hard-codes panel) never move.
+; grade_*: 9x9 grade stamp icons with distinct shapes (perfect sparkle, good check, meh tilde, misbrew cross).
 
 @ essence_ember 9x9
 ...0.....
@@ -163,58 +165,57 @@ egeegeege
 042222222222222222222220
 .0000000000000000000000.
 
-@ emote_happy 12x12
-....0000....
-..00dddd00..
-.0dddddddd0.
-.0d0dddd0d0.
-0d0d0dd0d0c0
-0ddddddddcc0
-0dd0dddd0cc0
-0ddd0000ccc0
-.0dddddccc0.
-.0ddcccccc0.
-..00cccc00..
-....0000....
+@ grade_perfect 9x9
+...000...
+...0d0...
+..00d00..
+000d6d000
+0dd666dd0
+000d6d000
+..00d00..
+...0d0...
+...000...
 
-@ emote_neutral 12x12
-....0000....
-..00dddd00..
-.0dddddddd0.
-.0dddddddd0.
-0dd00dd00cc0
-0dd00dd00cc0
-0ddddddddcc0
-0ddd0000ccc0
-.0dddddccc0.
-.0ddcccccc0.
-..00cccc00..
-....0000....
+@ grade_good 9x9
+......000
+.....00k0
+....00kj0
+00000kj00
+0k00kj00.
+0jkkj00..
+00jj00...
+.0000....
+.........
 
-@ emote_annoyed 12x12
-....0000....
-..00ccccb0..
-.00cccbbb00.
-.0c00bb00b0.
-0ccb0bb0baa0
-0cc00bb00aa0
-0cbbbbbbbaa0
-0cbb0000aaa0
-.0b0bbba0a0.
-.0bbaaaaaa0.
-..00aaaa00..
-....0000....
+@ grade_meh 9x9
+.........
+.0000....
+009900000
+097790090
+090097790
+000000000
+.........
+.........
+.........
 
-@ emote_storming 12x12
-......000...
-...0007770..
-..077777780.
-.07777788880
-077088080880
-077888888888
-.08888888888
-.08888dd8880
-..008dd8000.
-....00d0....
-....0d0.....
-.....0......
+@ grade_misbrew 9x9
+0000.0000
+0cb000cb0
+00cb0cb00
+.00cba00.
+.00bba00.
+00ba0ba00
+0ba000ba0
+0000.0000
+.........
+
+@ hourglass 9x9
+.0000000.
+045555540
+.09dddd0.
+..0ddc0..
+...0d0...
+..09d90..
+.09ddc90.
+043333340
+.0000000.
