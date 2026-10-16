@@ -114,6 +114,10 @@ var _told_audio_locked := false
 
 
 func _ready() -> void:
+	# Every drag sample reaches the stations: accumulated input merges a frame's drags
+	# into one, and on a slow frame (a phone hitch, the 3x canvas in CI) one merged
+	# drag can jump over half a stir circle, which reads as a turn backwards.
+	Input.use_accumulated_input = false
 	if AudioServer.get_bus_index(SFX_BUS) < 0:
 		push_error("[Game] Audio bus '%s' is missing from default_bus_layout.tres; sound effects play on Master" % SFX_BUS)
 	_sfx = AudioStreamPlayer.new()
