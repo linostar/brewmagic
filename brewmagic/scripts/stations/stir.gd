@@ -13,8 +13,9 @@ extends Station
 ## Each full rotation scores TEMPO_WEIGHT * tempo accuracy + the rest * roundness
 ## (how constant the finger's distance to the centre stays), both through
 ## window_score(); the station finishes after ROTATIONS rotations with their mean.
-## A rotation's time runs from the end of the previous one (the first from the
-## first touch), so pauses with the finger lifted count as slow stirring.
+## A rotation's time runs from the end of the previous one, so pauses with the
+## finger lifted count as slow stirring; the first one's from when the finger has
+## swept START_SWEEP, so touching down and lining up with the ghost does not count.
 ## Idle: without touches the station never finishes (the customer's patience is
 ## the only clock). Feedback: "stir_rotation" on every completed rotation.
 
@@ -25,6 +26,9 @@ const TEMPO_WINDOW := 0.12
 ## Coefficient of variation of the finger's radius within a rotation that still scores 1.
 const ROUND_WINDOW := 0.12
 const TEMPO_WEIGHT := 0.7
+## Angle (radians) the finger sweeps before the first rotation's clock starts; it
+## filters out touch jitter while the finger rests.
+const START_SWEEP := 0.1
 ## Touches closer than this to the centre give no direction and are skipped.
 const MIN_RADIUS := 12.0
 ## The stirring centre (the liquid surface) and the radius of the finger's circle
@@ -170,7 +174,7 @@ func _sample(at: Vector2) -> void:
 		return
 	var angle := offset.angle()
 	_ladle_target = CENTRE + offset / radius * SURFACE_RADII
-	if _rotation_start < 0.0:
+	if _scores.is_empty() and absf(_swept) < START_SWEEP:
 		_rotation_start = _clock
 	if _has_angle:
 		var step := wrapf(angle - _last_angle, -PI, PI)

@@ -3,7 +3,8 @@ class_name Economy
 ##   pay = round(potion price * PAY_SCALE[grade]).
 ##   tip = round(potion price * TIP_SCALE[grade] * archetype tip_tendency) on top of the pay.
 ##   reputation: REPUTATION_DELTA[grade] per served customer, STORMED_OFF_REPUTATION
-##   (and no pay) when a customer's patience runs out.
+##   (and no pay) when a customer's patience runs out, REFUSED_REPUTATION (no pay) when
+##   the shop refuses one.
 ##   market price of an ingredient: the day's `market` price, else its base_price (SCHEMA.md).
 ##   upgrade cost: the cost of the next level; tolerance: the owned level's multiplier.
 
@@ -14,6 +15,8 @@ const TIP_SCALE: Array[float] = [0.5, 0.25, 0.0, 0.0]
 ## Reputation change per grade, indexed by Brew.Grade.
 const REPUTATION_DELTA: Array[int] = [2, 1, 0, -1]
 const STORMED_OFF_REPUTATION := -2
+## Reputation change when the shop refuses a customer (Shop.refuse_customer), no pay.
+const REFUSED_REPUTATION := -1
 ## upgrade_cost() of an upgrade at its last level.
 const MAXED := -1
 

@@ -7,7 +7,7 @@ extends Control
 ## thumb zone.
 
 ## Every key Shop.day_result() provides.
-const RESULT_KEYS: Array[String] = ["day", "title", "customers", "served", "stormed_off", "grades", "earned", "tips", "reputation", "coins"]
+const RESULT_KEYS: Array[String] = ["day", "title", "customers", "served", "stormed_off", "refused", "grades", "earned", "tips", "reputation", "coins"]
 const GRADE_WORDS: Array[String] = ["Perfect", "Good", "Meh", "Misbrew"]
 
 var _game: GameState
@@ -53,8 +53,8 @@ func _show(result: Dictionary) -> void:
 		cell.add_child(icon)
 		cell.add_child(count)
 		grid.add_child(cell)
-	($Column/Card/List/Money as Label).text = "Coins earned: %+d\nTips: %+d\nReputation: %+d (now %d)\nStormed off: %d\nCoins in the till: %d" % [
-		int(result["earned"]), int(result["tips"]), int(result["reputation"]), _game.reputation, int(result["stormed_off"]), int(result["coins"])]
+	($Column/Card/List/Money as Label).text = "Coins earned: %+d\nTips: %+d\nReputation: %+d (now %d)\nStormed off: %d  Refused: %d\nCoins in the till: %d" % [
+		int(result["earned"]), int(result["tips"]), int(result["reputation"]), _game.reputation, int(result["stormed_off"]), int(result["refused"]), int(result["coins"])]
 	Juice.squash(_card, 0.12)
 	print("[Summary] Day %d: %s" % [int(result["day"]), result])
 

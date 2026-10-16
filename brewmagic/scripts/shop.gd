@@ -84,6 +84,8 @@ const STEP_GAP := 0.5
 const REACTION_HOLD := 2.4
 const MISBREW_HOLD := 2.8
 const STORMED_HOLD := 2.2
+## Side margins of a button whose caption needs more room than the theme's 12 (Refuse).
+const NARROW_MARGIN := 6.0
 const LIQUID_FRAME_TIME := 0.25
 const FIRE_FRAME_TIME := 0.12
 const COIN_FLIGHTS_MAX := 8
@@ -144,6 +146,7 @@ var pot: Array[Ingredient] = []
 var served := 0
 var perfect := 0
 var stormed_off := 0
+var refused := 0
 ## The grade of every served customer, in order.
 var grades: Array[Brew.Grade] = []
 ## The customer at the counter (or walking up to it), or null when the line is empty.
@@ -212,6 +215,7 @@ var _day_over := false
 @onready var _essences: HBoxContainer = $Column/Stage/Essences
 @onready var _shelf_row: Control = $Column/Stage/ShelfItems
 @onready var _brew_button: Button = $Column/Stage/BrewButton
+@onready var _refuse_button: Button = $Column/Stage/RefuseButton
 @onready var _station_host: Control = $Column/Stage/StationHost
 @onready var _station_dim: ColorRect = $Column/Stage/StationHost/Dim
 @onready var _coin_icon: TextureRect = $Column/Hud/CoinIcon
@@ -246,6 +250,8 @@ func _ready() -> void:
 	_bubble.blip.connect(_on_bubble_blip)
 	_skip_button.pressed.connect(_bubble.skip)
 	_brew_button.pressed.connect(_on_brew_pressed)
+	_refuse_button.pressed.connect(refuse_customer)
+	_narrow_margins(_refuse_button)
 	for i in _slots.size():
 		_slots[i].pressed.connect(_on_slot_pressed.bind(i))
 	_pause_button.pressed.connect(open_pause)
@@ -344,6 +350,7 @@ func open_pause() -> void:
 	if _day_over:
 		return
 	get_tree().paused = true
+	_update_pot()
 	_focus_before_pause = get_viewport().gui_get_focus_owner()
 	_column.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_DISABLED
 	_modal_dim.show()
@@ -359,6 +366,7 @@ func close_pause() -> void:
 	_pause_panel.hide()
 	_modal_dim.hide()
 	get_tree().paused = false
+	_update_pot()
 	_column.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_INHERITED
 	var before := _focus_before_pause
 	_focus_before_pause = null
@@ -727,6 +735,7 @@ func _update_pot() -> void:
 	_bubbles.color = color.lightened(0.3)
 	_bubbles.emitting = not pot.is_empty()
 	_brew_button.disabled = not _can_brew()
+	_refuse_button.disabled = not _can_refuse()
 
 
 func _can_brew() -> bool:
@@ -835,6 +844,7 @@ func _show_station_layer(on: bool) -> void:
 	var behavior := Control.FOCUS_BEHAVIOR_DISABLED if on else Control.FOCUS_BEHAVIOR_INHERITED
 	_shelf_row.focus_behavior_recursive = behavior
 	_brew_button.focus_behavior_recursive = behavior
+	_refuse_button.focus_behavior_recursive = behavior
 
 
 func _station_params(step: String) -> Dictionary:
@@ -845,7 +855,7 @@ func _station_params(step: String) -> Dictionary:
 		"pour":
 			return {"color": _potion_color(), "bottle": wants.bottle, "line": pour_line(wants.bottle)}
 		"mortar":
-			return {"color": _mix_color(_brew), "ingredients": _ground.duplicate(), "speed": Mortar.DEFAULT_SPEED}
+			return {"color": _mix_color(_brew), "ingredients": _ground.duplicate()}
 		"bellows":
 			return {"color": _mix_color(_brew)}
 	return {}
@@ -883,7 +893,7 @@ func _end_step(finished_station: Station) -> void:
 ## stations already animate their own part (the stream, the swirl, the pips).
 func _on_station_feedback(kind: StringName) -> void:
 	match kind:
-		&"stir_rotation", &"mortar_turn":
+		&"stir_rotation", &"mortar_stroke":
 			Juice.shake(_stage, 1.0, 0.08)
 		&"bellows_out":
 			Juice.shake(_stage, 1.0, 0.12)
@@ -1039,6 +1049,43 @@ func _on_patience_ran_out(who: Customer) -> void:
 	_say(_pick("reaction/%s/stormed_off" % customer.archetype.id, lines), STORMED_HOLD, _send_off.bind(customer))
 
 
+## Gives `button` copies of its theme styles with NARROW_MARGIN side margins, so a
+## caption wider than the standard 12-unit margins allow fits a narrow frame.
+func _narrow_margins(button: Button) -> void:
+	for state: StringName in [&"normal", &"hover", &"pressed", &"hover_pressed", &"disabled", &"focus"]:
+		var style := button.get_theme_stylebox(state).duplicate() as StyleBox
+		style.content_margin_left = NARROW_MARGIN
+		style.content_margin_right = NARROW_MARGIN
+		button.add_theme_stylebox_override(state, style)
+
+
+## The counter customer can be refused while it waits for an order, nothing brews
+## and the game is not paused.
+func _can_refuse() -> bool:
+	return not _brewing and not _day_over and not get_tree().paused and customer != null and customer.state == Customer.State.WAIT_ORDER
+
+
+## Refuse: the counter customer is sent away (the player cannot or will not make
+## its order). Anything in the pot goes back to stock, it costs
+## Economy.REFUSED_REPUTATION and no pay, the customer says a refused line and
+## leaves, and the queue steps forward.
+func refuse_customer() -> void:
+	if not _can_refuse():
+		return
+	var who := customer
+	while not pot.is_empty():
+		remove_from_pot(0)
+	refused += 1
+	reputation += Economy.REFUSED_REPUTATION
+	who.turn_away()
+	_update_pot()
+	_update_hud()
+	Juice.squash(_refuse_button, 0.2)
+	print("[Shop] Refused customer %d/%d (%s): reputation %+d" % [who.number, shift.customers.size(), who.archetype.id, Economy.REFUSED_REPUTATION])
+	_say(_pick("reaction/%s/refused" % who.archetype.id, who.archetype.reactions["refused"]), REACTION_HOLD, _send_off.bind(who))
+	_focus_play()
+
+
 ## Queued customer `who` ran out of patience: it storms off from the queue (the
 ## same reputation cost, its line said aside, no stamp) and the ones behind step up.
 func _storm_off_queue(who: Customer) -> void:
@@ -1088,7 +1135,7 @@ func _check_day_done() -> void:
 
 
 ## The day's results as the summary scene reads them (Game.flow_args): day, title,
-## customers, served, stormed_off, grades (a count per Brew.Grade), earned (pay
+## customers, served, stormed_off, refused, grades (a count per Brew.Grade), earned (pay
 ## without tips), tips, reputation (today's change) and coins (now).
 func day_result() -> Dictionary:
 	var counts: Array[int] = [0, 0, 0, 0]
@@ -1096,7 +1143,7 @@ func day_result() -> Dictionary:
 		counts[grade] += 1
 	return {
 		"day": shift.day, "title": shift.title, "customers": shift.customers.size(), "served": served,
-		"stormed_off": stormed_off, "grades": counts, "earned": coins - _starting_coins - tips, "tips": tips,
+		"stormed_off": stormed_off, "refused": refused, "grades": counts, "earned": coins - _starting_coins - tips, "tips": tips,
 		"reputation": reputation, "coins": coins,
 	}
 
