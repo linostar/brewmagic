@@ -54,6 +54,10 @@ func begin(params: Dictionary) -> void:
 	_station_begin(params)
 	if assist:
 		_show_assist_prompt()
+	elif _assist_button != null:
+		# Assist was switched off since the last begin(): back to the gesture.
+		_assist_button.queue_free()
+		_assist_button = null
 
 
 ## Hands one input event to the station. Ignored unless it is a touch or drag

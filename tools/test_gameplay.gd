@@ -23,7 +23,9 @@ const DESKTOP_16_9 := Vector2i(1920, 1080)
 const MIN_TARGET := 32.0
 const THUMB_ZONE_TOP := 0.4
 ## Real-time limit for the whole run; a test stuck on an await fails instead of hanging.
-const WATCHDOG_MSEC := 60000
+const WATCHDOG_MSEC := 120000
+## Frames a shop test waits for one step of the flow (a walk, a line, a station) before failing.
+const FLOW_FRAMES := 900
 
 var _failures: Array[String] = []
 var _passed := 0
@@ -75,6 +77,12 @@ func _tests() -> Array[Callable]:
 		_test_pour_tolerance_scale,
 		_test_stations_assist_tap,
 		_test_stations_assist_ui_accept,
+		_test_economy_rules,
+		_test_shop_day1_assist,
+		_test_shop_wrong_recipe_misbrews,
+		_test_shop_patience_timeout,
+		_test_shop_pot_add_remove,
+		_test_shop_pause_toggles,
 	]
 
 
@@ -435,6 +443,277 @@ func _test_stations_assist_ui_accept() -> void:
 			await process_frame
 		_check(results == [Station.ASSIST_QUALITY], "assist %s ui_accept gives exactly ASSIST_QUALITY" % station.name, str(results))
 		station.free()
+
+
+func _test_economy_rules() -> void:
+	_check(Economy.pay(12, Brew.Grade.PERFECT) == 12, "pay perfect is the full price", str(Economy.pay(12, Brew.Grade.PERFECT)))
+	_check(Economy.pay(12, Brew.Grade.GOOD) == 9, "pay good is 75%", str(Economy.pay(12, Brew.Grade.GOOD)))
+	_check(Economy.pay(12, Brew.Grade.MEH) == 5, "pay meh is 40% rounded", str(Economy.pay(12, Brew.Grade.MEH)))
+	_check(Economy.pay(12, Brew.Grade.MISBREW) == 0, "pay misbrew is nothing", str(Economy.pay(12, Brew.Grade.MISBREW)))
+	_check(Economy.reputation_delta(Brew.Grade.PERFECT) == 2 and Economy.reputation_delta(Brew.Grade.MISBREW) == -1, "reputation per grade", "%d %d" % [Economy.reputation_delta(Brew.Grade.PERFECT), Economy.reputation_delta(Brew.Grade.MISBREW)])
+	_check(Economy.STORMED_OFF_REPUTATION < Economy.reputation_delta(Brew.Grade.MISBREW), "storming off costs more than a misbrew", str(Economy.STORMED_OFF_REPUTATION))
+
+
+## Day 1 from the real content bank, Assist on: every customer gets the exact
+## recipe through real taps on the shelf, Brew and each station's Assist button;
+## all are Good (the Assist cap) and pay Economy.pay(price, GOOD).
+func _test_shop_day1_assist() -> void:
+	_game.assist_mode = true
+	var shop := await _open_shop()
+	var day := Content.day(1)
+	var expected_coins := day.starting_coins
+	_check(shop.coins == day.starting_coins and shop.stock == day.starting_stock, "shop starts with the day's coins and stock", "%d %s" % [shop.coins, shop.stock])
+	for n in day.customers.size():
+		var label := "day 1 customer %d" % (n + 1)
+		var wants := Content.potion(day.customers[n].potion)
+		if not await _serve(shop, _exact_recipe(wants, shop.stock), label):
+			break
+		expected_coins += Economy.pay(wants.price, Brew.Grade.GOOD)
+		await _skip_lines(shop)
+	var summary := shop.get_node("Modal/SummaryPanel") as Control
+	_check(await _until(func() -> bool: return summary.visible, FLOW_FRAMES), "day 1 ends with the summary", "summary hidden")
+	_check(shop.grades == ([Brew.Grade.GOOD, Brew.Grade.GOOD, Brew.Grade.GOOD] as Array[Brew.Grade]), "day 1 assist grades are all Good", str(shop.grades))
+	_check(shop.served == 3 and shop.perfect == 0 and shop.stormed_off == 0, "day 1 counts", "%d %d %d" % [shop.served, shop.perfect, shop.stormed_off])
+	_check(shop.coins == expected_coins and shop.coins == 47, "day 1 coins follow Economy.pay", "%d, expected %d" % [shop.coins, expected_coins])
+	var stats := (shop.get_node("Modal/SummaryPanel/List/Stats") as Label).text
+	_check("Served 3 of 3" in stats and "+27" in stats, "summary shows the day", stats)
+	await _tap(shop.get_node("Modal/SummaryPanel/List/BackButton") as Button)
+	if _game.is_transitioning():
+		await _game.transition_finished
+	_check(_game.state == GameState.Flow.TITLE, "summary back button goes to the title", str(_game.state))
+	_game.assist_mode = false
+
+
+## A brew far from the target is a Misbrew: no pay, the overshooting essence's
+## effect on the customer and a misbrew line for that essence in the bubble.
+func _test_shop_wrong_recipe_misbrews() -> void:
+	_game.assist_mode = true
+	var shop := await _open_shop()
+	if await _wait_for_order(shop, "misbrew"):
+		var wants := shop.customer.potion
+		var recipe := _recipe_between(wants, shop.stock, 3)
+		var essences: Array[Vector4i] = []
+		for id in recipe:
+			essences.append(Content.ingredient(id).essence)
+		var essence := Brew.misbrew_essence(Brew.combine(essences), wants.target)
+		var coins := shop.coins
+		await _serve(shop, recipe, "misbrew")
+		var bubble := shop.get_node("Column/Stage/Bubble") as SpeechBubble
+		var lines := PackedStringArray()
+		for line in Content.misbrews_for(essence):
+			lines.append(line.text)
+		_check(shop.grades == ([Brew.Grade.MISBREW] as Array[Brew.Grade]), "wrong recipe is a Misbrew", str(shop.grades))
+		_check(shop.coins == coins and shop.reputation == Economy.reputation_delta(Brew.Grade.MISBREW), "misbrew pays nothing", "%d %d" % [shop.coins, shop.reputation])
+		var effect := shop.customer.effect if shop.customer != null else "-"
+		_check(effect == Content.MISBREW_EFFECTS[essence], "misbrew effect follows the overshoot", "%s for %s" % [effect, Content.ESSENCES[essence]])
+		_check(bubble.text in lines, "misbrew line for the essence", bubble.text)
+	await _close_shop()
+
+
+## Patience running out while waiting, then mid-brew: the customer storms off with
+## a stormed_off line, costs reputation, pays nothing; mid-brew the station is
+## dropped and the ingredients are lost. The next customer still comes in.
+func _test_shop_patience_timeout() -> void:
+	var shop := await _open_shop()
+	if await _wait_for_order(shop, "timeout"):
+		var who := shop.customer.archetype
+		shop.customer.patience_left = 0.2
+		_check(await _until(func() -> bool: return shop.stormed_off == 1, FLOW_FRAMES), "patience timeout storms off", str(shop.stormed_off))
+		var bubble := shop.get_node("Column/Stage/Bubble") as SpeechBubble
+		_check(bubble.text in who.reactions["stormed_off"], "storming off says a stormed_off line", bubble.text)
+		_check(shop.reputation == Economy.STORMED_OFF_REPUTATION and shop.coins == Content.day(1).starting_coins and shop.served == 0, "storming off costs reputation only", "%d %d" % [shop.reputation, shop.coins])
+		await _skip_lines(shop)
+	if await _wait_for_order(shop, "timeout mid-brew"):
+		var recipe := _exact_recipe(shop.customer.potion, shop.stock)
+		var before := shop.stock.duplicate()
+		for id in recipe:
+			await _tap(shop.shelf_item(id))
+		await _tap(shop.brew_button())
+		_check(await _until(func() -> bool: return shop.station != null and shop.station.is_running(), FLOW_FRAMES), "brew starts a station", "no station")
+		shop.customer.patience_left = 0.2
+		_check(await _until(func() -> bool: return shop.stormed_off == 2, FLOW_FRAMES), "patience runs out mid-brew", str(shop.stormed_off))
+		await process_frame
+		_check(shop.station == null and not shop.is_brewing(), "storming off drops the station", str(shop.station))
+		var lost := 0
+		for id: String in before:
+			lost += before[id] - shop.stock[id]
+		_check(lost == recipe.size() and shop.pot.is_empty(), "mid-brew ingredients are lost", "lost %d" % lost)
+		var third := Content.day(1).customers[2].potion
+		_check(await _until(func() -> bool: return shop.customer != null and shop.customer.potion.id == third, FLOW_FRAMES), "the next customer comes in", "no third customer")
+	await _close_shop()
+
+
+## Tap adds one (stock -1), a pot slot tap takes it back (stock +1), the pot holds
+## at most 3, Brew needs 2, and a drag released over the cauldron adds one too.
+func _test_shop_pot_add_remove() -> void:
+	var shop := await _open_shop()
+	if await _wait_for_order(shop, "pot"):
+		var ids: Array[String] = []
+		ids.assign(shop.stock.keys())
+		var first := ids[0]
+		var count := shop.stock[first]
+		await _tap(shop.shelf_item(first))
+		_check(shop.pot.size() == 1 and shop.stock[first] == count - 1 and shop.shelf_item(first).stock == count - 1, "tap adds to the pot", "%d %d" % [shop.pot.size(), shop.stock[first]])
+		_check(shop.brew_button().disabled and not shop.slot_button(0).disabled, "one ingredient: slot filled, Brew disabled", "brew disabled %s" % shop.brew_button().disabled)
+		await _tap(shop.slot_button(0))
+		_check(shop.pot.is_empty() and shop.stock[first] == count, "slot tap restores the stock", "%d %d" % [shop.pot.size(), shop.stock[first]])
+		for i in 4:
+			await _tap(shop.shelf_item(ids[i]))
+		_check(shop.pot.size() == Shop.POT_CAPACITY and shop.stock[ids[3]] == shop.shelf_item(ids[3]).stock and shop.stock[ids[3]] == Content.day(1).starting_stock[ids[3]], "pot holds at most 3", "%d" % shop.pot.size())
+		_check(not shop.brew_button().disabled, "Brew enabled with 3", "disabled")
+		for i in Shop.POT_CAPACITY:
+			await _tap(shop.slot_button(0))
+		_check(shop.stock == Content.day(1).starting_stock, "emptying the pot restores every stock", str(shop.stock))
+		var from := shop.shelf_item(first).get_global_rect().get_center()
+		var cauldron := (shop.get_node("Column/Stage") as Control).get_global_transform() * Shop.POT_MOUTH
+		await _drag_touch(from, from + Vector2(0, -40))
+		_check(shop.pot.is_empty(), "drag released off the cauldron adds nothing", str(shop.pot.size()))
+		await _drag_touch(from, cauldron)
+		_check(shop.pot.size() == 1 and shop.stock[first] == count - 1, "drag into the cauldron adds one", "%d %d" % [shop.pot.size(), shop.stock[first]])
+	await _close_shop()
+
+
+## The pause panel's toggles set the session settings, the next station picks
+## them up, and switching Assist off restarts a running station as a gesture.
+func _test_shop_pause_toggles() -> void:
+	var shop := await _open_shop()
+	if await _wait_for_order(shop, "pause"):
+		var pause := shop.get_node("Column/Hud/PauseButton") as Button
+		await _tap(pause)
+		_check(paused and (shop.get_node("Modal/PausePanel") as Control).visible, "pause button pauses", "paused %s" % paused)
+		var patience := shop.customer.patience_left
+		for i in 30:
+			await process_frame
+		_check(is_equal_approx(shop.customer.patience_left, patience), "patience stops while paused", "%f -> %f" % [patience, shop.customer.patience_left])
+		await _tap(shop.get_node("Modal/PausePanel/List/AssistButton") as Button)
+		await _tap(shop.get_node("Modal/PausePanel/List/GentleButton") as Button)
+		_check(_game.assist_mode and _game.gentle_mode, "pause toggles set the settings", "%s %s" % [_game.assist_mode, _game.gentle_mode])
+		_check((shop.get_node("Column/Hud/AssistTag") as Control).visible, "HUD shows the Assist tag", "hidden")
+		await _tap(shop.get_node("Modal/PausePanel/List/ResumeButton") as Button)
+		_check(not paused, "resume unpauses", "still paused")
+		for id in _exact_recipe(shop.customer.potion, shop.stock):
+			await _tap(shop.shelf_item(id))
+		await _tap(shop.brew_button())
+		_check(await _until(func() -> bool: return shop.station != null and shop.station.is_running(), FLOW_FRAMES), "brew starts a station", "no station")
+		_check(shop.station.assist and is_equal_approx(shop.station.tolerance_scale, GameState.GENTLE_TOLERANCE_SCALE), "station gets the toggled settings", "%s %f" % [shop.station.assist, shop.station.tolerance_scale])
+		await _tap(pause)
+		await _tap(shop.get_node("Modal/PausePanel/List/AssistButton") as Button)
+		await process_frame
+		_check(not _game.assist_mode and not shop.station.assist and shop.station.get_node_or_null("AssistButton") == null and shop.station.is_running(), "assist off restarts the station as a gesture", "assist %s" % shop.station.assist)
+		await _tap(shop.get_node("Modal/PausePanel/List/ResumeButton") as Button)
+	await _close_shop()
+
+
+func _open_shop() -> Shop:
+	_game.goto(GameState.Flow.SHOP)
+	await _game.transition_finished
+	return current_scene as Shop
+
+
+func _close_shop() -> void:
+	paused = false
+	_game.assist_mode = false
+	_game.gentle_mode = false
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+
+
+func _wait_for_order(shop: Shop, label: String) -> bool:
+	var waiting := await _until(func() -> bool: return shop.customer != null and shop.customer.state == Customer.State.WAIT_ORDER, FLOW_FRAMES)
+	_check(waiting, label + ": a customer waits for an order", "no customer waiting")
+	return waiting
+
+
+## Serves the waiting customer `recipe` with Assist on: taps each ingredient,
+## Brew, then each station's Assist button, and waits until the customer is served.
+func _serve(shop: Shop, recipe: Array[String], label: String) -> bool:
+	if not await _wait_for_order(shop, label):
+		return false
+	for id in recipe:
+		await _tap(shop.shelf_item(id))
+	_check(shop.pot.size() == recipe.size() and not shop.brew_button().disabled, label + ": Brew enabled", "pot %d" % shop.pot.size())
+	var served := shop.served
+	var steps := shop.customer.potion.steps
+	await _tap(shop.brew_button())
+	for step in steps:
+		var ready := await _until(func() -> bool: return shop.station != null and shop.station.is_running() and shop.station.get_node_or_null("AssistButton") != null, FLOW_FRAMES)
+		_check(ready, "%s: %s station shows Assist" % [label, step], "no station")
+		if not ready:
+			return false
+		await _tap(shop.station.get_node("AssistButton") as Button)
+	var done := await _until(func() -> bool: return shop.served == served + 1, FLOW_FRAMES)
+	_check(done, label + ": served", "served %d" % shop.served)
+	return done
+
+
+## Taps the workspace until the current customer leaves (skipping the reaction lines).
+func _skip_lines(shop: Shop) -> void:
+	var skip := shop.get_node("Column/Stage/SkipButton") as Button
+	var leaving := shop.customer
+	for i in 12:
+		if leaving == null or leaving.state == Customer.State.LEAVE or leaving.state == Customer.State.GONE:
+			return
+		await _tap(skip)
+		for frame in 10:
+			await process_frame
+
+
+## Two ingredient ids from `stock` whose brew hits `potion` exactly.
+func _exact_recipe(potion: PotionType, stock: Dictionary[String, int]) -> Array[String]:
+	return _recipe_between(potion, stock, 0, 0)
+
+
+## Two ingredient ids from `stock` whose brew is `low`..`high` away from `potion`.
+func _recipe_between(potion: PotionType, stock: Dictionary[String, int], low: int, high := 99) -> Array[String]:
+	var ids: Array[String] = []
+	ids.assign(stock.keys())
+	for a in ids:
+		for b in ids:
+			if stock[a] < 1 or stock[b] < 1 or (a == b and stock[a] < 2):
+				continue
+			var distance := Brew.distance(Content.ingredient(a).essence + Content.ingredient(b).essence, potion.target)
+			if distance >= low and distance <= high:
+				return [a, b] as Array[String]
+	_check(false, "recipe for %s at distance %d..%d" % [potion.id, low, high], "none in %s" % stock)
+	return [] as Array[String]
+
+
+func _until(condition: Callable, frames: int) -> bool:
+	for i in frames:
+		if condition.call():
+			return true
+		await process_frame
+	return condition.call()
+
+
+## A real touch (press and release) at the centre of `control`.
+func _tap(control: Control) -> void:
+	var at := root.get_final_transform() * control.get_global_rect().get_center()
+	for pressed: bool in [true, false]:
+		var touch := InputEventScreenTouch.new()
+		touch.position = at
+		touch.pressed = pressed
+		Input.parse_input_event(touch)
+		await process_frame
+
+
+## A real touch dragged from `from` to `to` (canvas coordinates) in 8 steps.
+func _drag_touch(from: Vector2, to: Vector2) -> void:
+	var screen := root.get_final_transform()
+	var touch := InputEventScreenTouch.new()
+	touch.position = screen * from
+	touch.pressed = true
+	Input.parse_input_event(touch)
+	await process_frame
+	for i in range(1, 9):
+		var drag := InputEventScreenDrag.new()
+		drag.position = screen * from.lerp(to, i / 8.0)
+		Input.parse_input_event(drag)
+		await process_frame
+	var release := InputEventScreenTouch.new()
+	release.position = screen * to
+	Input.parse_input_event(release)
+	await process_frame
 
 
 func _add_station(scene: PackedScene) -> Station:

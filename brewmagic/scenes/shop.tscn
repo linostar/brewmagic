@@ -1,0 +1,352 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/shop.gd" id="1_shop"]
+[ext_resource type="PackedScene" path="res://scenes/speech_bubble.tscn" id="2_bubble"]
+
+[node name="Shop" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_shop")
+
+[node name="Fill" type="Control" parent="."]
+anchors_preset = 0
+mouse_filter = 2
+
+[node name="Column" type="Control" parent="."]
+anchors_preset = 0
+offset_right = 270.0
+offset_bottom = 480.0
+mouse_filter = 2
+
+[node name="Stage" type="Control" parent="Column"]
+anchors_preset = 0
+offset_right = 270.0
+offset_bottom = 480.0
+mouse_filter = 2
+
+[node name="Backdrop" type="TextureRect" parent="Column/Stage"]
+layout_mode = 0
+offset_right = 270.0
+offset_bottom = 192.0
+mouse_filter = 2
+
+[node name="Customers" type="Node2D" parent="Column/Stage"]
+
+[node name="Counter" type="TextureRect" parent="Column/Stage"]
+layout_mode = 0
+offset_top = 136.0
+offset_right = 270.0
+offset_bottom = 192.0
+mouse_filter = 2
+
+[node name="Bubble" parent="Column/Stage" instance=ExtResource("2_bubble")]
+
+[node name="Workspace" type="TextureRect" parent="Column/Stage"]
+layout_mode = 0
+offset_top = 192.0
+offset_right = 270.0
+offset_bottom = 360.0
+mouse_filter = 2
+
+[node name="SkipButton" type="Button" parent="Column/Stage"]
+layout_mode = 0
+offset_top = 192.0
+offset_right = 270.0
+offset_bottom = 360.0
+focus_mode = 0
+accessibility_name = "Skip dialogue"
+flat = true
+
+[node name="Cauldron" type="Node2D" parent="Column/Stage"]
+position = Vector2(135, 304)
+
+[node name="Fire" type="Sprite2D" parent="Column/Stage/Cauldron"]
+position = Vector2(0, 20)
+
+[node name="Pot" type="Sprite2D" parent="Column/Stage/Cauldron"]
+
+[node name="Liquid" type="Sprite2D" parent="Column/Stage/Cauldron"]
+
+[node name="Bubbles" type="CPUParticles2D" parent="Column/Stage/Cauldron"]
+position = Vector2(0, -17)
+emitting = false
+amount = 6
+lifetime = 0.9
+emission_shape = 3
+emission_rect_extents = Vector2(18, 2)
+direction = Vector2(0, -1)
+spread = 10.0
+gravity = Vector2(0, -10)
+initial_velocity_min = 4.0
+initial_velocity_max = 10.0
+scale_amount_min = 1.0
+scale_amount_max = 2.0
+
+[node name="Slots" type="Control" parent="Column/Stage"]
+anchors_preset = 0
+offset_left = 81.0
+offset_top = 234.0
+offset_right = 189.0
+offset_bottom = 266.0
+mouse_filter = 2
+
+[node name="Slot0" type="Button" parent="Column/Stage/Slots"]
+layout_mode = 0
+offset_right = 32.0
+offset_bottom = 32.0
+pivot_offset = Vector2(16, 16)
+theme_type_variation = &"SlotButton"
+disabled = true
+icon_alignment = 1
+
+[node name="Slot1" type="Button" parent="Column/Stage/Slots"]
+layout_mode = 0
+offset_left = 38.0
+offset_right = 70.0
+offset_bottom = 32.0
+pivot_offset = Vector2(16, 16)
+theme_type_variation = &"SlotButton"
+disabled = true
+icon_alignment = 1
+
+[node name="Slot2" type="Button" parent="Column/Stage/Slots"]
+layout_mode = 0
+offset_left = 76.0
+offset_right = 108.0
+offset_bottom = 32.0
+pivot_offset = Vector2(16, 16)
+theme_type_variation = &"SlotButton"
+disabled = true
+icon_alignment = 1
+
+[node name="Essences" type="HBoxContainer" parent="Column/Stage"]
+layout_mode = 0
+offset_left = 75.0
+offset_top = 339.0
+offset_right = 195.0
+offset_bottom = 353.0
+mouse_filter = 2
+theme_override_constants/separation = 6
+alignment = 1
+
+[node name="Shelf" type="TextureRect" parent="Column/Stage"]
+layout_mode = 0
+offset_top = 360.0
+offset_right = 270.0
+offset_bottom = 480.0
+mouse_filter = 2
+
+[node name="ShelfItems" type="Control" parent="Column/Stage"]
+anchors_preset = 0
+offset_top = 366.0
+offset_right = 270.0
+offset_bottom = 418.0
+mouse_filter = 2
+
+[node name="BrewButton" type="Button" parent="Column/Stage"]
+layout_mode = 0
+offset_left = 87.0
+offset_top = 424.0
+offset_right = 183.0
+offset_bottom = 470.0
+pivot_offset = Vector2(48, 23)
+accessibility_name = "Brew"
+disabled = true
+text = "Brew!"
+
+[node name="StationHost" type="Control" parent="Column/Stage"]
+anchors_preset = 0
+offset_top = 192.0
+offset_right = 270.0
+offset_bottom = 480.0
+mouse_filter = 2
+
+[node name="Dim" type="ColorRect" parent="Column/Stage/StationHost"]
+visible = false
+layout_mode = 0
+offset_right = 270.0
+offset_bottom = 288.0
+mouse_filter = 0
+color = Color(0.11, 0.078, 0.125, 0.88)
+
+[node name="Hud" type="Control" parent="Column"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="CoinIcon" type="TextureRect" parent="Column/Hud"]
+layout_mode = 0
+offset_left = 6.0
+offset_top = 6.0
+offset_right = 15.0
+offset_bottom = 15.0
+pivot_offset = Vector2(4.5, 4.5)
+mouse_filter = 2
+
+[node name="Coins" type="Label" parent="Column/Hud"]
+layout_mode = 0
+offset_left = 18.0
+offset_top = 3.0
+offset_right = 66.0
+offset_bottom = 17.0
+theme_override_colors/font_color = Color(1, 0.788, 0.361, 1)
+theme_override_colors/font_outline_color = Color(0.11, 0.078, 0.125, 1)
+theme_override_constants/outline_size = 4
+text = "0"
+
+[node name="Served" type="Label" parent="Column/Hud"]
+layout_mode = 0
+offset_left = 6.0
+offset_top = 17.0
+offset_right = 96.0
+offset_bottom = 31.0
+theme_override_colors/font_outline_color = Color(0.11, 0.078, 0.125, 1)
+theme_override_constants/outline_size = 4
+text = "Served 0/0"
+
+[node name="AssistTag" type="Label" parent="Column/Hud"]
+visible = false
+layout_mode = 0
+offset_left = 172.0
+offset_top = 3.0
+offset_right = 228.0
+offset_bottom = 17.0
+theme_override_colors/font_color = Color(0.408, 0.745, 0.871, 1)
+theme_override_colors/font_outline_color = Color(0.11, 0.078, 0.125, 1)
+theme_override_constants/outline_size = 4
+text = "ASSIST"
+horizontal_alignment = 2
+
+[node name="PauseButton" type="Button" parent="Column/Hud"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -38.0
+offset_top = 4.0
+offset_right = -4.0
+offset_bottom = 38.0
+grow_horizontal = 0
+pivot_offset = Vector2(17, 17)
+theme_override_font_sizes/font_size = 11
+accessibility_name = "Pause"
+text = "II"
+
+[node name="Fx" type="Node2D" parent="."]
+z_index = 5
+
+[node name="Modal" type="Control" parent="."]
+process_mode = 3
+anchors_preset = 0
+offset_right = 270.0
+offset_bottom = 480.0
+mouse_filter = 2
+
+[node name="Dim" type="ColorRect" parent="Modal"]
+visible = false
+layout_mode = 0
+offset_right = 270.0
+offset_bottom = 480.0
+color = Color(0.11, 0.078, 0.125, 0.6)
+
+[node name="PausePanel" type="PanelContainer" parent="Modal"]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -112.0
+offset_top = -262.0
+offset_right = 112.0
+offset_bottom = -32.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="List" type="VBoxContainer" parent="Modal/PausePanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Title" type="Label" parent="Modal/PausePanel/List"]
+layout_mode = 2
+theme_type_variation = &"DarkLabel"
+theme_override_font_sizes/font_size = 22
+text = "Paused"
+horizontal_alignment = 1
+
+[node name="ResumeButton" type="Button" parent="Modal/PausePanel/List"]
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+accessibility_name = "Resume"
+text = "Resume"
+
+[node name="AssistButton" type="Button" parent="Modal/PausePanel/List"]
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+toggle_mode = true
+text = "Assist mode: Off"
+
+[node name="GentleButton" type="Button" parent="Modal/PausePanel/List"]
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+toggle_mode = true
+text = "Gentle mode: Off"
+
+[node name="QuitButton" type="Button" parent="Modal/PausePanel/List"]
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+accessibility_name = "Quit to title"
+text = "Quit to title"
+
+[node name="SummaryPanel" type="PanelContainer" parent="Modal"]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -112.0
+offset_top = -262.0
+offset_right = 112.0
+offset_bottom = -32.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="List" type="VBoxContainer" parent="Modal/SummaryPanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Title" type="Label" parent="Modal/SummaryPanel/List"]
+layout_mode = 2
+theme_type_variation = &"DarkLabel"
+theme_override_font_sizes/font_size = 22
+text = "Day done!"
+horizontal_alignment = 1
+
+[node name="Stats" type="Label" parent="Modal/SummaryPanel/List"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_type_variation = &"DarkLabel"
+text = "Served"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="BackButton" type="Button" parent="Modal/SummaryPanel/List"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+accessibility_name = "Back to title"
+text = "Back to title"

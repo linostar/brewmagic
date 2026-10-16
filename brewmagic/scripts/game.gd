@@ -24,6 +24,13 @@ const SCENE_PATHS: Dictionary[Flow, String] = {
 const FADE_TIME := 0.18
 ## Width of the gameplay column in base units (the base viewport width).
 const COLUMN_WIDTH := 270.0
+## Station tolerance multiplier while Gentle mode is on.
+const GENTLE_TOLERANCE_SCALE := 1.5
+
+## Settings for this session (persisted with the save in plan step 6). Stations
+## read them through the shop when they begin.
+var assist_mode := false
+var gentle_mode := false
 
 ## Tests replace entries to point a state at their own (or a missing) scene.
 var scene_paths: Dictionary[Flow, String] = SCENE_PATHS.duplicate()
@@ -81,6 +88,11 @@ func goto(new_state: Flow, args: Dictionary = {}) -> void:
 
 func is_transitioning() -> bool:
 	return _transitioning
+
+
+## The Station tolerance_scale the settings ask for (upgrades multiply in later).
+func tolerance_scale() -> float:
+	return GENTLE_TOLERANCE_SCALE if gentle_mode else 1.0
 
 
 ## The visible area in base units: 270x480 or larger on one axis (aspect expand).
