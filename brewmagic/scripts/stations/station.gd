@@ -34,6 +34,16 @@ const FALLOFF := 2.0
 ## Assist button rect, anchored to the bottom centre of the station.
 const ASSIST_BUTTON_SIZE := Vector2(160, 56)
 const ASSIST_BUTTON_BOTTOM_MARGIN := 48.0
+## Result pips (one per stir rotation or grind turn). The shape carries the result
+## too (never colour alone): a four-point star for perfect, a round dot for good,
+## a cross for sloppy, an empty ring while pending.
+const PIP_RADIUS := 5.0
+const PIP_STAR_INNER := 1.5
+const PIP_CROSS_WIDTH := 2.0
+const PIP_PERFECT := Color("#ffc95c")
+const PIP_GOOD := Color("#fbedcd")
+const PIP_SLOPPY := Color("#c43c2c")
+const PIP_EMPTY := Color("#5c5668")
 
 ## Assist mode (setting): set by the caller before begin().
 var assist := false
@@ -96,6 +106,40 @@ func window_score(error: float, window: float) -> float:
 	if error <= scaled:
 		return 1.0
 	return clampf(1.0 - (error - scaled) / (scaled * FALLOFF), 0.0, 1.0)
+
+
+## The colour of a result pip for `score`.
+static func pip_color(score: float) -> Color:
+	if score >= PERFECT_QUALITY:
+		return PIP_PERFECT
+	if score >= ASSIST_QUALITY:
+		return PIP_GOOD
+	return PIP_SLOPPY
+
+
+## Draws a row of `count` result pips centred on `centre` into `canvas` (during its
+## draw signal): one per entry of `scores`, then empty rings.
+static func draw_pips(canvas: CanvasItem, centre: Vector2, spacing: float, count: int, scores: Array[float]) -> void:
+	var first_x := centre.x - spacing * (count - 1) / 2.0
+	for i in count:
+		var at := Vector2(first_x + spacing * i, centre.y)
+		if i >= scores.size():
+			canvas.draw_circle(at, PIP_RADIUS, PIP_EMPTY, false, 1.0)
+			continue
+		var score := scores[i]
+		var color := pip_color(score)
+		if score >= PERFECT_QUALITY:
+			var star := PackedVector2Array()
+			for corner: int in 8:
+				var radius := PIP_RADIUS + 1.0 if corner % 2 == 0 else PIP_STAR_INNER
+				star.append(at + Vector2.from_angle(-PI / 2.0 + corner * PI / 4.0) * radius)
+			canvas.draw_colored_polygon(star, color)
+		elif score >= ASSIST_QUALITY:
+			canvas.draw_circle(at, PIP_RADIUS, color)
+		else:
+			var arm := PIP_RADIUS * 0.8
+			canvas.draw_line(at + Vector2(-arm, -arm), at + Vector2(arm, arm), color, PIP_CROSS_WIDTH)
+			canvas.draw_line(at + Vector2(-arm, arm), at + Vector2(arm, -arm), color, PIP_CROSS_WIDTH)
 
 
 ## params["color"], the potion's liquid colour. Reports an error and shows white

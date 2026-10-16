@@ -13,7 +13,8 @@ Sprite source (.px), one file = one atlas brewmagic/art/<file>.png + <file>.json
     <H rows of exactly W characters>
 Characters: '.' is transparent, 0-9 a-v are palette indices 0..31. Blank lines are allowed
 between sprites only. Sprites are shelf-packed in file order with a 1px transparent gap; the
-sidecar JSON maps each sprite name to its region {"x", "y", "w", "h"} in the atlas.
+sidecar JSON maps each sprite name to its region {"x", "y", "w", "h"} in the atlas and the
+palette colours it uses ("colors": sorted '#rrggbb' list; the palette swap reads it, CLAUDE.md "Customers").
 
 Usage (from repo root):
     python3 tools/pixelart.py           build every atlas into brewmagic/art/
@@ -174,6 +175,12 @@ def read_png(data):
     return w, h, bytes(out)
 
 
+def sprite_colors(rows, palette):
+    """The sorted '#rrggbb' palette colours a sprite's rows use."""
+    used = {ch for row in rows for ch in row} - {"."}
+    return sorted("#%02x%02x%02x" % tuple(palette[CHARS.index(ch)]) for ch in used)
+
+
 def compile_atlas(path, palette):
     """Returns (png bytes, json text, sprite count) for one .px source."""
     sprites = parse_px(path.read_text(encoding="utf-8"), path)
@@ -190,7 +197,8 @@ def compile_atlas(path, palette):
         "source": f"art_src/{path.name}",
         "texture": f"{path.stem}.png",
         "size": [atlas_w, atlas_h],
-        "sprites": {name: dict(zip("xywh", r)) for name, r in regions.items()},
+        "sprites": {name: dict(zip("xywh", regions[name]), colors=sprite_colors(rows, palette))
+                    for name, _, _, rows in sprites},
     }
     return write_png(atlas_w, atlas_h, bytes(rgba)), json.dumps(meta, indent=1) + "\n", len(sprites)
 

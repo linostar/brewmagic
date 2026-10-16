@@ -10,6 +10,11 @@ const TITLE_SCENE := preload("res://scenes/title.tscn")
 const TITLE_PATH := "res://scenes/title.tscn"
 const STIR_SCENE := preload("res://scenes/stations/stir.tscn")
 const POUR_SCENE := preload("res://scenes/stations/pour.tscn")
+const MORTAR_SCENE := preload("res://scenes/stations/mortar.tscn")
+const BELLOWS_SCENE := preload("res://scenes/stations/bellows.tscn")
+const STATION_SCENES: Array[PackedScene] = [STIR_SCENE, POUR_SCENE, MORTAR_SCENE, BELLOWS_SCENE]
+## Bellows test policy: pump whenever the heat is below this (keeps it in the band).
+const BELLOWS_KEEP := 0.58
 const SPEECH_BUBBLE_SCENE := preload("res://scenes/speech_bubble.tscn")
 const POTION_COLOR := Color("#f07c2c")
 ## One synthetic input frame for the station streams.
@@ -79,10 +84,32 @@ func _tests() -> Array[Callable]:
 		_test_pour_idle,
 		_test_pour_liquid_rows_match_mask,
 		_test_pour_tolerance_scale,
+		_test_mortar_perfect,
+		_test_mortar_sloppy,
+		_test_mortar_idle_and_wiggle,
+		_test_mortar_gentle,
+		_test_mortar_ghost_demo,
+		_test_bellows_perfect,
+		_test_bellows_sloppy,
+		_test_bellows_idle,
+		_test_bellows_gentle,
 		_test_stations_assist_tap,
 		_test_stations_assist_ui_accept,
 		_test_economy_rules,
+		_test_economy_day_loop_rules,
+		_test_shift_configs,
+		_test_save_round_trip,
+		_test_save_missing_and_corrupt,
+		_test_save_migrations,
+		_test_save_failed_write_keeps_save,
+		_test_upgrade_tolerance,
+		_test_shop_passes_station_tolerance,
+		_test_market_purchases,
+		_test_title_continue_and_new_game,
+		_test_morning_missing_day_returns_to_title,
+		_test_loop_screens_size_and_zone,
 		_test_shop_day1_assist,
+		_test_shop_last_day_storm_off,
 		_test_shop_wrong_recipe_misbrews,
 		_test_shop_patience_timeout,
 		_test_shop_storm_off_locks_brew,
@@ -106,14 +133,26 @@ func _tests() -> Array[Callable]:
 		_test_shop_stir_real_touch,
 		_test_shop_grade_stamps,
 		_test_shop_patience_row,
+		_test_look_palette_and_count,
+		_test_look_distinct_per_shift,
+		_test_shop_customer_look,
+		_test_shop_queue,
+		_test_shop_queue_double_storm,
+		_test_bubble_blips,
+		_test_audio_unlock_and_voices,
+		_test_shop_mortar_and_bellows,
 	]
 
 
 func _run() -> void:
 	root.size = BASE_WINDOW
+	_check(_game.save_path == GameState.TOOL_SAVE_PATH, "tool runs use the tool save, never the player's", _game.save_path)
+	_delete_saves()
+	_game.load_game()
 	await process_frame
 	for test in _tests():
 		await test.call()
+	_delete_saves()
 	for failure in _failures:
 		printerr("test_gameplay: FAIL " + failure)
 	if _failures.is_empty():
@@ -228,11 +267,12 @@ func _test_title_button_size_and_zone() -> void:
 	await process_frame
 
 
-## A real touch (as the web build delivers it) on the title button runs goto(SHOP).
-## SHOP points at the title scene here so the test does not depend on the shop scene.
+## A real touch (as the web build delivers it) on the title button (no saved story:
+## "Open the shop") starts a new game and runs goto(MORNING). MORNING points at the
+## title scene here so the test does not depend on the morning scene.
 func _test_title_button_tap_goes_to_shop() -> void:
-	var real_path: String = _game.scene_paths[GameState.Flow.SHOP]
-	_game.scene_paths[GameState.Flow.SHOP] = TITLE_PATH
+	var real_path: String = _game.scene_paths[GameState.Flow.MORNING]
+	_game.scene_paths[GameState.Flow.MORNING] = TITLE_PATH
 	var title := current_scene as Title
 	var button := title.get_node("Column/OpenShopButton") as Button
 	var screen_point := root.get_final_transform() * button.get_global_rect().get_center()
@@ -245,9 +285,9 @@ func _test_title_button_tap_goes_to_shop() -> void:
 		await process_frame
 	if _game.is_transitioning():
 		await _game.transition_finished
-	_game.scene_paths[GameState.Flow.SHOP] = real_path
-	_check(_game.transition_log.size() == logged + 1 and _game.transition_log.back().begins_with("TITLE -> SHOP"), "title tap goes to shop", str(_game.transition_log.slice(logged)))
-	_check(_game.state == GameState.Flow.SHOP, "title tap sets SHOP state", str(_game.state))
+	_game.scene_paths[GameState.Flow.MORNING] = real_path
+	_check(_game.transition_log.size() == logged + 1 and _game.transition_log.back().begins_with("TITLE -> MORNING"), "title tap goes to the morning", str(_game.transition_log.slice(logged)))
+	_check(_game.state == GameState.Flow.MORNING and _game.day == 1 and _game.coins == Content.day(1).starting_coins, "title tap starts a new game on day 1", "%s day %d coins %d" % [_game.state, _game.day, _game.coins])
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
 
@@ -450,10 +490,155 @@ func _test_pour_tolerance_scale() -> void:
 	_check(qualities[1] > qualities[0] and qualities[1] >= Station.PERFECT_QUALITY, "pour tolerance scale widens", str(qualities))
 
 
+## Steady circles at exactly the target speed grind to full fineness and score
+## Perfect; feedback every turn; the brew's grind ingredients sit in the bowl.
+func _test_mortar_perfect() -> void:
+	var mortar := _add_station(MORTAR_SCENE) as Mortar
+	var results := _collect_finished(mortar)
+	var cues: Array[StringName] = []
+	mortar.feedback.connect(func(kind: StringName) -> void: cues.append(kind))
+	mortar.begin({"color": POTION_COLOR, "ingredients": ["moonmoss"]})
+	_check(mortar.get_node("Bowl/Pieces").get_child_count() == 1, "mortar shows its ingredient in the bowl", str(mortar.get_node("Bowl/Pieces").get_child_count()))
+	_circles(mortar, Mortar.CENTRE, Mortar.RING_RADIUS, Mortar.DEFAULT_SPEED, Mortar.TURNS, 0.0)
+	_check(results.size() == 1, "mortar perfect finishes once", str(results))
+	_check(not results.is_empty() and results[0] >= Station.PERFECT_QUALITY, "mortar perfect quality", str(results))
+	_check(cues.count(&"mortar_turn") == Mortar.TURNS and cues.back() == &"station_success", "mortar feedback every turn", str(cues))
+	_check(is_equal_approx(mortar.fineness, 1.0) and mortar.turn_scores().size() == Mortar.TURNS, "mortar ground to full fineness", "%.2f %s" % [mortar.fineness, mortar.turn_scores()])
+	_check(not mortar.is_running(), "mortar stops after finishing", "still running")
+	mortar.free()
+
+
+## Grinding at 2.5x the speed scores below Good.
+func _test_mortar_sloppy() -> void:
+	var mortar := _add_station(MORTAR_SCENE) as Mortar
+	var results := _collect_finished(mortar)
+	mortar.begin({"color": POTION_COLOR})
+	_circles(mortar, Mortar.CENTRE, Mortar.RING_RADIUS, Mortar.DEFAULT_SPEED * 2.5, Mortar.TURNS, 0.0)
+	_check(results.size() == 1 and results[0] < Station.ASSIST_QUALITY, "mortar too fast scores below Good", str(results))
+	mortar.free()
+
+
+## No touches never finish; wiggling back and forth grinds nothing.
+func _test_mortar_idle_and_wiggle() -> void:
+	var mortar := _add_station(MORTAR_SCENE) as Mortar
+	var results := _collect_finished(mortar)
+	mortar.begin({"color": POTION_COLOR})
+	for i in 1800:
+		mortar.advance(FRAME)
+	_check(results.is_empty() and mortar.is_running(), "mortar idle does not finish", str(results))
+	mortar.feed(_touch(Mortar.CENTRE + Vector2(Mortar.RING_RADIUS, 0), true))
+	for i in 600:
+		mortar.advance(FRAME)
+		mortar.feed(_drag(Mortar.CENTRE + Vector2.from_angle(sin(i * 0.1) * 2.5) * Mortar.RING_RADIUS))
+	_check(results.is_empty() and mortar.turn_scores().is_empty() and mortar.fineness < 0.25, "mortar wiggle completes no turn", "%s %.2f" % [mortar.turn_scores(), mortar.fineness])
+	mortar.free()
+
+
+## Grinding 35% too fast: not Perfect normally, Perfect with Gentle mode's wider window.
+func _test_mortar_gentle() -> void:
+	var qualities: Array[float] = []
+	for scale: float in [1.0, GameState.GENTLE_TOLERANCE_SCALE]:
+		var mortar := _add_station(MORTAR_SCENE) as Mortar
+		var results := _collect_finished(mortar)
+		mortar.tolerance_scale = scale
+		mortar.begin({"color": POTION_COLOR})
+		_circles(mortar, Mortar.CENTRE, Mortar.RING_RADIUS, Mortar.DEFAULT_SPEED * 1.35, Mortar.TURNS, 0.0)
+		qualities.append(results[0] if results.size() == 1 else -1.0)
+		mortar.free()
+	_check(qualities[0] >= 0.0 and qualities[0] < Station.PERFECT_QUALITY, "mortar 35% fast is not Perfect", str(qualities))
+	_check(qualities[1] > qualities[0] and qualities[1] >= Station.PERFECT_QUALITY, "mortar Gentle widens the band", str(qualities))
+
+
+## The ghost pestle circles the opening at the target speed, fades after the first
+## touch; Assist shows no ghost.
+func _test_mortar_ghost_demo() -> void:
+	var mortar := _add_station(MORTAR_SCENE) as Mortar
+	mortar.begin({"color": POTION_COLOR})
+	var ghost := mortar.ghost()
+	var start := ghost.position
+	for i in roundi(0.5 / Mortar.DEFAULT_SPEED / FRAME):
+		mortar.advance(FRAME)
+	_check(ghost.visible and is_equal_approx(ghost.modulate.a, Mortar.GHOST_ALPHA), "mortar ghost demonstrates", str(ghost.modulate.a))
+	_check(ghost.position.distance_to(start) > Mortar.SURFACE_RADII.y, "mortar ghost moves half a turn", "%s -> %s" % [start, ghost.position])
+	mortar.feed(_touch(Mortar.CENTRE + Vector2(Mortar.RING_RADIUS, 0), true))
+	for i in 30:
+		mortar.advance(FRAME)
+	_check(is_zero_approx(ghost.modulate.a), "mortar ghost fades after the first touch", str(ghost.modulate.a))
+	mortar.assist = true
+	mortar.begin({"color": POTION_COLOR})
+	_check(not ghost.visible, "mortar Assist shows no ghost", "ghost visible")
+	mortar.free()
+
+
+## Pumping whenever the heat drops below BELLOWS_KEEP keeps the needle in the band:
+## Perfect after DURATION, with a pump cue per tap.
+func _test_bellows_perfect() -> void:
+	var bellows := _add_station(BELLOWS_SCENE) as Bellows
+	var results := _collect_finished(bellows)
+	var cues: Array[StringName] = []
+	bellows.feedback.connect(func(kind: StringName) -> void: cues.append(kind))
+	bellows.begin({"color": POTION_COLOR})
+	var frames := _pump_bellows(bellows, func(_frame: int) -> bool: return bellows.heat < BELLOWS_KEEP)
+	_check(results.size() == 1 and results[0] >= Station.PERFECT_QUALITY, "bellows in the band is Perfect", str(results))
+	_check(is_zero_approx(bellows.out_time()), "bellows never left the band", str(bellows.out_time()))
+	_check(frames * FRAME < Bellows.DURATION + 1.0, "bellows finishes about DURATION after reaching the band", "%.2fs" % (frames * FRAME))
+	_check(cues.count(&"bellows_pump") > 0 and not (&"bellows_out" in cues) and cues.back() == &"station_success", "bellows feedback", str(cues))
+	bellows.free()
+
+
+## Pumping every few frames overheats: the needle sits above the band, below Good.
+func _test_bellows_sloppy() -> void:
+	var bellows := _add_station(BELLOWS_SCENE) as Bellows
+	var results := _collect_finished(bellows)
+	var cues: Array[StringName] = []
+	bellows.feedback.connect(func(kind: StringName) -> void: cues.append(kind))
+	bellows.begin({"color": POTION_COLOR})
+	_pump_bellows(bellows, func(frame: int) -> bool: return frame % 4 == 0)
+	_check(results.size() == 1 and results[0] < Station.ASSIST_QUALITY, "bellows overheating scores below Good", str(results))
+	_check(&"bellows_out" in cues, "bellows cue when the needle leaves the band", str(cues))
+	bellows.free()
+
+
+## Without a tap the heat only cools: the timer never starts and nothing finishes.
+func _test_bellows_idle() -> void:
+	var bellows := _add_station(BELLOWS_SCENE) as Bellows
+	var results := _collect_finished(bellows)
+	bellows.begin({"color": POTION_COLOR})
+	for i in 1800:
+		bellows.advance(FRAME)
+	_check(results.is_empty() and bellows.is_running() and not bellows.is_timing() and is_zero_approx(bellows.heat), "bellows idle does not finish", "%s heat %.2f" % [results, bellows.heat])
+	bellows.free()
+
+
+## About 15% of the time below the band: not Perfect normally, Perfect with Gentle mode.
+func _test_bellows_gentle() -> void:
+	var qualities: Array[float] = []
+	for scale: float in [1.0, GameState.GENTLE_TOLERANCE_SCALE]:
+		var bellows := _add_station(BELLOWS_SCENE) as Bellows
+		var results := _collect_finished(bellows)
+		bellows.tolerance_scale = scale
+		bellows.begin({"color": POTION_COLOR})
+		var dropped := [-1]
+		_pump_bellows(bellows, func(frame: int) -> bool:
+			# From 1 s into the timer, stop pumping until the needle has been below the band for 0.75 s.
+			if bellows.is_timing() and frame >= 60 and dropped[0] < 0:
+				if bellows.heat < Bellows.BAND_LOW:
+					dropped[0] = frame
+				return false
+			if dropped[0] >= 0 and frame - dropped[0] < 44:
+				return false
+			return bellows.heat < BELLOWS_KEEP)
+		qualities.append(results[0] if results.size() == 1 else -1.0)
+		print("test_gameplay: bellows gentle x%.1f out %.2fs" % [scale, bellows.out_time()])
+		bellows.free()
+	_check(qualities[0] >= 0.0 and qualities[0] < Station.PERFECT_QUALITY, "bellows 15% out is not Perfect", str(qualities))
+	_check(qualities[1] > qualities[0] and qualities[1] >= Station.PERFECT_QUALITY, "bellows Gentle widens the window", str(qualities))
+
+
 ## Assist: one focused "Brew!" button in the thumb zone; gestures do nothing;
 ## a real tap on it finishes with exactly ASSIST_QUALITY.
 func _test_stations_assist_tap() -> void:
-	for scene: PackedScene in [STIR_SCENE, POUR_SCENE]:
+	for scene in STATION_SCENES:
 		var station := _add_station(scene)
 		var results := _collect_finished(station)
 		station.assist = true
@@ -487,7 +672,7 @@ func _test_stations_assist_tap() -> void:
 
 ## Assist: ui_accept (Enter/Space on desktop) on the focused button gives exactly ASSIST_QUALITY.
 func _test_stations_assist_ui_accept() -> void:
-	for scene: PackedScene in [STIR_SCENE, POUR_SCENE]:
+	for scene in STATION_SCENES:
 		var station := _add_station(scene)
 		var results := _collect_finished(station)
 		station.assist = true
@@ -512,36 +697,138 @@ func _test_economy_rules() -> void:
 	_check(Economy.STORMED_OFF_REPUTATION < Economy.reputation_delta(Brew.Grade.MISBREW), "storming off costs more than a misbrew", str(Economy.STORMED_OFF_REPUTATION))
 
 
-## Day 1 from the real content bank, Assist on: every customer gets the exact
-## recipe through real taps on the shelf, Brew and each station's Assist button;
-## all are Good (the Assist cap) and pay Economy.pay(price, GOOD).
+## The whole day loop by real taps, Assist on: the title's "Open the shop" (new
+## game) -> the morning of day 1 -> its "Open the shop" -> every day-1 customer gets
+## the exact recipe (all Good, the Assist cap, paying Economy.pay plus Economy.tip)
+## -> the summary scene with the day's numbers -> "To the market" -> a purchase
+## -> "Next day" -> the morning of day 2 -> the day-2 shift starts with the stock
+## carried over plus the purchase. The save holds each step.
 func _test_shop_day1_assist() -> void:
 	_game.assist_mode = true
-	var shop := await _open_shop()
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+	await _tap(current_scene.get_node("Column/OpenShopButton") as Button)
+	await _until(func() -> bool: return _game.state == GameState.Flow.MORNING and not _game.is_transitioning(), FLOW_FRAMES)
+	_check(current_scene is Morning and _game.day == 1, "loop: the title opens the morning of day 1", "%s day %d" % [current_scene, _game.day])
+	var morning_text := (current_scene.get_node("Column/DayLabel") as Label).text + " " + (current_scene.get_node("Column/Card/Note") as Label).text
+	_check(morning_text.begins_with("Day 1") and Content.day(1).morning_note.get_slice(" ", 0) in morning_text, "loop: the morning shows day 1 and its note", morning_text)
+	await _tap(current_scene.get_node("Column/OpenShopButton") as Button)
+	await _until(func() -> bool: return _game.state == GameState.Flow.SHOP and not _game.is_transitioning(), FLOW_FRAMES)
+	var shop := current_scene as Shop
+	if shop == null:
+		_check(false, "loop: the morning opens the shop", str(current_scene))
+		return
 	var day := Content.day(1)
 	var expected_coins := day.starting_coins
-	_check(shop.coins == day.starting_coins and shop.stock == day.starting_stock, "shop starts with the day's coins and stock", "%d %s" % [shop.coins, shop.stock])
+	var expected_tips := 0
+	_check(shop.coins == day.starting_coins and shop.stock == day.starting_stock and shop.shift.day == 1, "shop starts with the saved coins and stock", "%d %s" % [shop.coins, shop.stock])
 	for n in day.customers.size():
 		var label := "day 1 customer %d" % (n + 1)
 		var wants := Content.potion(day.customers[n].potion)
+		var tip := Economy.tip(wants.price, Brew.Grade.GOOD, Content.archetype(day.customers[n].archetype).tip_tendency)
 		if not await _serve(shop, _exact_recipe(wants, shop.stock), label):
 			break
-		expected_coins += Economy.pay(wants.price, Brew.Grade.GOOD)
+		expected_coins += Economy.pay(wants.price, Brew.Grade.GOOD) + tip
+		expected_tips += tip
 		var bubble_text := (shop.get_node("Column/Stage/Bubble") as SpeechBubble).text
 		_check(bubble_text in shop.customer.archetype.reactions["good"], label + ": says a good reaction line", bubble_text)
 		await _skip_lines(shop)
-	var summary := shop.get_node("Modal/SummaryPanel") as Control
-	_check(await _until(func() -> bool: return summary.visible, FLOW_FRAMES), "day 1 ends with the summary", "summary hidden")
 	_check(shop.grades == ([Brew.Grade.GOOD, Brew.Grade.GOOD, Brew.Grade.GOOD] as Array[Brew.Grade]), "day 1 assist grades are all Good", str(shop.grades))
 	_check(shop.served == 3 and shop.perfect == 0 and shop.stormed_off == 0, "day 1 counts", "%d %d %d" % [shop.served, shop.perfect, shop.stormed_off])
-	_check(shop.coins == expected_coins and shop.coins == 47, "day 1 coins follow Economy.pay", "%d, expected %d" % [shop.coins, expected_coins])
-	var stats := (shop.get_node("Modal/SummaryPanel/List/Stats") as Label).text
-	_check("Served 3 of 3" in stats and "+27" in stats, "summary shows the day", stats)
-	await _tap(shop.get_node("Modal/SummaryPanel/List/BackButton") as Button)
-	if _game.is_transitioning():
-		await _game.transition_finished
-	_check(_game.state == GameState.Flow.TITLE, "summary back button goes to the title", str(_game.state))
+	_check(shop.coins == expected_coins and shop.tips == expected_tips and expected_tips > 0, "day 1 coins follow Economy.pay plus Economy.tip", "%d, expected %d (tips %d of %d)" % [shop.coins, expected_coins, shop.tips, expected_tips])
+	var left := shop.stock.duplicate()
+	_check(await _until(func() -> bool: return _game.state == GameState.Flow.SUMMARY and not _game.is_transitioning(), FLOW_FRAMES), "day 1 ends with the summary scene", str(_game.state))
+	var result := _game.flow_args
+	_check(result.get("served") == 3 and result.get("customers") == 3 and str(result.get("grades")) == "[0, 3, 0, 0]" and result.get("earned") == 27 and result.get("tips") == expected_tips and result.get("reputation") == 3 and result.get("stormed_off") == 0, "summary numbers", str(result))
+	_check(_game.day == 2 and _game.at_market and _game.coins == expected_coins and _game.stock == left and _game.reputation == 3, "finish_day commits the day and opens the day-2 market", "day %d market %s coins %d rep %d stock %s" % [_game.day, _game.at_market, _game.coins, _game.reputation, _game.stock])
+	var summary := current_scene
+	var served_text := (summary.get_node("Column/Card/List/Served") as Label).text
+	var money := (summary.get_node("Column/Card/List/Money") as Label).text
+	_check(served_text == "Served 3 of 3" and "Coins earned: +27" in money and ("Tips: +%d" % expected_tips) in money and "Reputation: +3" in money and "Stormed off: 0" in money, "summary shows the day", "%s / %s" % [served_text, money])
+	var grade_texts := PackedStringArray()
+	for cell in summary.get_node("Column/Card/List/Grades").get_children():
+		grade_texts.append((cell.get_child(1) as Label).text)
+	_check(grade_texts == PackedStringArray(["Perfect: 0", "Good: 3", "Meh: 0", "Misbrew: 0"]), "summary counts each grade with its icon", str(grade_texts))
+	var saved := _read_save()
+	_check(saved.get("day") == 2.0 and saved.get("at_market") == true and saved.get("coins") == float(expected_coins), "the finished day is saved", str(saved))
+	await _tap(summary.get_node("Column/ContinueButton") as Button)
+	await _until(func() -> bool: return _game.state == GameState.Flow.MARKET and not _game.is_transitioning(), FLOW_FRAMES)
+	var market := current_scene as Market
+	if market == null:
+		_check(false, "loop: the summary opens the market", str(current_scene))
+		return
+	var moonmoss := Content.ingredient("moonmoss")
+	var price := Economy.market_price(Content.day(2), moonmoss)
+	await _tap(market.stock_card("moonmoss"))
+	_check(_game.stock["moonmoss"] == 1 and _game.coins == expected_coins - price, "loop: a market tap buys one moonmoss", "%s %d" % [_game.stock, _game.coins])
+	await _tap(market.get_node("Column/Shop/NextDayButton") as Button)
+	await _until(func() -> bool: return _game.state == GameState.Flow.MORNING and not _game.is_transitioning(), FLOW_FRAMES)
+	_check(current_scene is Morning and (current_scene.get_node("Column/DayLabel") as Label).text == "Day 2" and not _game.at_market, "loop: next day opens the morning of day 2", str(current_scene))
+	await _tap(current_scene.get_node("Column/OpenShopButton") as Button)
+	await _until(func() -> bool: return _game.state == GameState.Flow.SHOP and not _game.is_transitioning(), FLOW_FRAMES)
+	shop = current_scene as Shop
+	var expected_stock := left.duplicate()
+	expected_stock["honeycomb"] = 0
+	expected_stock["moonmoss"] = 1
+	_check(shop != null and shop.shift.day == 2 and shop.coins == expected_coins - price and shop.stock == expected_stock, "day 2 starts with the carried-over stock and the purchase", "%s %s" % [shop.stock if shop != null else {}, expected_stock])
+	await _close_shop()
+
+
+## The last story day, played with Assist: every customer but the last is served;
+## the last one storms off with an exact recipe already in the pot. The day ends
+## with those ingredients back in stock, the summary counts the storm-off and the
+## day's reputation (below zero when it outweighs the serves), the story is over
+## (no market, nothing to continue) and the summary goes back to the title.
+func _test_shop_last_day_storm_off() -> void:
+	var last := Content.days().size()
+	_game.new_game()
+	_game.assist_mode = true
+	_game.day = last
+	for item in Content.ingredients_unlocked_by(last):
+		_game.stock[item.id] = 9
+	_game.goto(GameState.Flow.SHOP, {"day": last})
+	await _game.transition_finished
+	var shop := current_scene as Shop
+	if shop == null:
+		_check(false, "last day: the shop opens", str(current_scene))
+		return
+	var count := shop.shift.customers.size()
+	var expected_stock := shop.stock.duplicate()
+	for n in count - 1:
+		var label := "last day customer %d" % (n + 1)
+		if not await _wait_for_order(shop, label):
+			await _close_shop()
+			return
+		_refill_patience(shop)
+		var recipe := _exact_recipe(shop.customer.potion, shop.stock)
+		if not await _serve(shop, recipe, label):
+			await _close_shop()
+			return
+		for id in recipe:
+			expected_stock[id] -= 1
+		await _skip_lines(shop)
+	if not await _wait_for_order(shop, "last day last customer"):
+		await _close_shop()
+		return
+	for id in _exact_recipe(shop.customer.potion, shop.stock):
+		await _tap(shop.shelf_item(id))
+	_check(shop.pot.size() == 2, "last day: the last order's ingredients are in the pot", str(shop.pot.size()))
+	shop.customer.patience_left = 0.1
+	_check(await _until(func() -> bool: return _game.state == GameState.Flow.SUMMARY and not _game.is_transitioning(), FLOW_FRAMES * 2), "last day: the day ends with the summary", str(_game.state))
+	var result := _game.flow_args
+	var reputation := (count - 1) * Economy.reputation_delta(Brew.Grade.GOOD) + Economy.STORMED_OFF_REPUTATION
+	_check(result.get("served") == count - 1 and result.get("stormed_off") == 1 and result.get("reputation") == reputation, "last day: summary numbers count the storm-off", str(result))
+	_check(_game.stock == expected_stock, "last day: the ingredients left in the pot are back in stock", "%s, expected %s" % [_game.stock, expected_stock])
+	_check(_game.day == last + 1 and not _game.at_market and not _game.can_continue(), "last day: the story is over (no market, nothing to continue)", "day %d market %s" % [_game.day, _game.at_market])
+	var summary := current_scene
+	var money := (summary.get_node("Column/Card/List/Money") as Label).text
+	_check(("Reputation: %+d" % reputation) in money and "Stormed off: 1" in money, "last day: the summary shows the storm-off and the reputation change", money)
+	var button := summary.get_node("Column/ContinueButton") as Button
+	_check(button.text == "Back to title", "last day: the summary offers the title", button.text)
+	await _tap(button)
+	_check(await _until(func() -> bool: return _game.state == GameState.Flow.TITLE and not _game.is_transitioning(), FLOW_FRAMES), "last day: Back to title opens the title", str(_game.state))
 	_game.assist_mode = false
+	_game.new_game()
 
 
 ## A brew far from the target is a Misbrew: no pay, the overshooting essence's
@@ -779,7 +1066,7 @@ func _test_shop_pause_focus() -> void:
 
 
 ## Every interactive control of the shop (shelf items, Brew, pot slots, the
-## workspace skip area, Pause, the pause and summary panel buttons, a station's
+## workspace skip area, Pause, the pause panel buttons, a station's
 ## Assist button) is at least 32x32, inside the safe area and, except Pause, in
 ## the thumb zone (lower 60%) at 9:16, 9:19.5 and 16:9.
 func _test_shop_controls_size_and_zone() -> void:
@@ -796,8 +1083,6 @@ func _test_shop_controls_size_and_zone() -> void:
 		for button in shop.get_node("Modal/PausePanel/List").find_children("*", "Button", true, false):
 			pause_buttons.append(button as Control)
 		_check(pause_buttons.size() == 6, "layout: pause panel has Resume, two toggles with their \"?\" and Quit", str(pause_buttons))
-		var summary := shop.get_node("Modal/SummaryPanel") as Control
-		var back: Array[Control] = [shop.get_node("Modal/SummaryPanel/List/BackButton") as Control]
 		for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
 			root.size = window
 			await _frames(30)
@@ -806,10 +1091,6 @@ func _test_shop_controls_size_and_zone() -> void:
 			await _frames(30)
 			_check_targets(pause_buttons, pause, "pause panel at %s" % window)
 			shop.close_pause()
-			summary.show()
-			await _frames(30)
-			_check_targets(back, pause, "summary panel at %s" % window)
-			summary.hide()
 		root.size = BASE_WINDOW
 		await _tap(shop.brew_button())
 		if await _until(func() -> bool: return shop.station != null and shop.station.assist_button() != null, FLOW_FRAMES):
@@ -941,7 +1222,8 @@ func _test_shop_perfect_serve_reaction() -> void:
 		var bubble_text := (shop.get_node("Column/Stage/Bubble") as SpeechBubble).text
 		_check(shop.grades == ([Brew.Grade.PERFECT] as Array[Brew.Grade]), "perfect gestures on the exact recipe are Perfect", str(shop.grades))
 		_check(bubble_text in who.reactions["perfect"], "perfect: says a perfect reaction line", bubble_text)
-		await _check_stamp(shop, Brew.Grade.PERFECT, Economy.pay(shop.customer.potion.price, Brew.Grade.PERFECT), "perfect")
+		var price := shop.customer.potion.price
+		await _check_stamp(shop, Brew.Grade.PERFECT, Economy.pay(price, Brew.Grade.PERFECT), Economy.tip(price, Brew.Grade.PERFECT, who.tip_tendency), "perfect")
 	await _close_shop()
 
 
@@ -973,14 +1255,23 @@ func _test_shop_keyboard_day1_assist() -> void:
 				break
 			await _action(&"ui_accept")
 		_check(await _until(func() -> bool: return shop.served == served + 1, FLOW_FRAMES), label + ": served", "served %d" % shop.served)
-	var back := shop.get_node("Modal/SummaryPanel/List/BackButton") as Button
-	_check(await _until(func() -> bool: return back.is_visible_in_tree() and back.has_focus(), FLOW_FRAMES), "keyboard day 1 ends on the focused Back button", str(root.gui_get_focus_owner()))
 	_check(shop.served == day.customers.size() and shop.stormed_off == 0, "keyboard day 1 serves everyone", "%d %d" % [shop.served, shop.stormed_off])
+	var on_summary := await _until(func() -> bool: return current_scene is Summary and not _game.is_transitioning() and root.gui_get_focus_owner() == current_scene.get_node("Column/ContinueButton"), FLOW_FRAMES)
+	_check(on_summary, "keyboard day 1 ends on the summary's focused To the market button", str(root.gui_get_focus_owner()))
 	await _action(&"ui_accept")
-	if _game.is_transitioning():
-		await _game.transition_finished
-	_check(_game.state == GameState.Flow.TITLE, "keyboard Back goes to the title", str(_game.state))
+	await _until(func() -> bool: return current_scene is Market and not _game.is_transitioning(), FLOW_FRAMES)
+	var market := current_scene as Market
+	_check(market != null and root.gui_get_focus_owner() is Button and market.is_ancestor_of(root.gui_get_focus_owner()), "keyboard: the market opens with a card focused", str(root.gui_get_focus_owner()))
+	if market != null:
+		var coins := _game.coins
+		await _action(&"ui_accept")
+		_check(_game.coins < coins, "keyboard: ui_accept on a market card buys it", "%d -> %d" % [coins, _game.coins])
+		var on_next := await _focus_by_keys(market.get_node("Column/Shop/NextDayButton") as Button)
+		await _action(&"ui_accept")
+		_check(on_next and await _until(func() -> bool: return current_scene is Morning and not _game.is_transitioning(), FLOW_FRAMES), "keyboard: Next day opens the morning", str(current_scene))
 	_game.assist_mode = false
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
 
 
 ## Criterion 3: the pause button reads "Menu", is at least 32x32 in the top-right
@@ -1051,10 +1342,11 @@ func _test_shop_menu_and_mode_info() -> void:
 	await _close_shop()
 
 
-## Criterion 4: with Assist on, the station's single button reads "Auto Stir" or
-## "Auto Pour" (accessibility name the same); with Assist off there is none.
+## Criterion 4: with Assist on, the station's single button reads "Auto Stir",
+## "Auto Pour", "Auto Grind" or "Auto Pump" (accessibility name the same); with
+## Assist off there is none.
 func _test_stations_assist_caption() -> void:
-	for entry: Array in [[STIR_SCENE, "Auto Stir"], [POUR_SCENE, "Auto Pour"]]:
+	for entry: Array in [[STIR_SCENE, "Auto Stir"], [POUR_SCENE, "Auto Pour"], [MORTAR_SCENE, "Auto Grind"], [BELLOWS_SCENE, "Auto Pump"]]:
 		var station := _add_station(entry[0] as PackedScene)
 		station.begin({"color": POTION_COLOR, "bottle": "round"})
 		_check(station.assist_button() == null and station.get_node_or_null("AssistButton") == null, "%s without Assist has no button" % station.name, str(station.assist_button()))
@@ -1286,10 +1578,11 @@ func _test_shop_grade_stamps() -> void:
 		if not await _wait_for_order(shop, label):
 			break
 		var wants := shop.customer.potion
+		var who := shop.customer.archetype
 		if not await _serve(shop, _recipe_between(wants, shop.stock, case[1], case[2]), label):
 			break
 		_check(shop.grades.back() == grade, label + ": served at that grade", str(shop.grades))
-		await _check_stamp(shop, grade, Economy.pay(wants.price, grade), label)
+		await _check_stamp(shop, grade, Economy.pay(wants.price, grade), Economy.tip(wants.price, grade, who.tip_tendency), label)
 		await _skip_lines(shop)
 	await _close_shop()
 
@@ -1307,8 +1600,9 @@ func _test_shop_patience_row() -> void:
 		var hourglass := parts[0] as Sprite2D
 		var hearts_after := parts.slice(1).all(func(heart: Node) -> bool: return heart.name.begins_with("Heart") and (heart as Sprite2D).position.x > hourglass.position.x + 8.0)
 		_check(row.is_visible_in_tree() and hourglass.name == "Hourglass" and (hourglass.texture as AtlasTexture).region == Art.texture("ui", "hourglass").region and parts.size() == 5 and hearts_after, "patience row: hourglass, then 4 hearts, while waiting", str(parts))
-		var stray := visitor.find_children("*", "Sprite2D", true, false).filter(func(sprite: Node) -> bool: return sprite.get_parent() != row and sprite.get_parent().name != "Body")
-		_check(visitor.get_node_or_null("Emote") == null and stray.is_empty(), "no mood emote on the customer (only body parts and the patience row)", str(stray))
+		var meter := visitor.get_node("QueueMeter") as Node2D
+		var stray := visitor.find_children("*", "Sprite2D", true, false).filter(func(sprite: Node) -> bool: return sprite.get_parent() != row and sprite.get_parent() != meter and sprite.get_parent().name != "Body")
+		_check(visitor.get_node_or_null("Emote") == null and stray.is_empty() and not meter.visible, "no mood emote on the customer (only body parts, the patience row and the hidden queue meter)", str(stray))
 		await _serve(shop, _exact_recipe(visitor.potion, shop.stock), "patience row")
 		_check(not row.is_visible_in_tree(), "patience row hides once the potion arrives", "visible")
 		await _skip_lines(shop)
@@ -1321,10 +1615,316 @@ func _test_shop_patience_row() -> void:
 	await _close_shop()
 
 
+## Palette swap: every look colour is a palette.hex colour, the atlas sidecar's
+## colour lists match the customer sprites' pixels, no part needs more swaps than
+## the shader holds, looks are deterministic by seed, and the archetypes' parts
+## times the looks give at least 200 distinct visitors (counted by what they show).
+func _test_look_palette_and_count() -> void:
+	var palette := {}
+	var palette_path := ProjectSettings.globalize_path("res://").path_join("../art_src/palette.hex")
+	for raw in FileAccess.get_file_as_string(palette_path).split("\n"):
+		var line := raw.get_slice(";", 0).strip_edges()
+		if line != "":
+			palette[line.to_lower()] = true
+	_check(palette.size() == 32, "palette.hex read (%d colours)" % palette.size(), palette_path)
+	var outside := PackedStringArray()
+	for ramps: Dictionary in [Look.CLOTHS, Look.HAIRS, Look.SKINS]:
+		for ramp_name: String in ramps:
+			for color: String in ramps[ramp_name]:
+				if not palette.has(color):
+					outside.append("%s %s" % [ramp_name, color])
+	_check(outside.is_empty(), "every look colour is in palette.hex", str(outside))
+	var atlas := Art.texture("customer", "body_robe_0").atlas.get_image()
+	var mismatched := PackedStringArray()
+	var too_many := PackedStringArray()
+	var all_looks := Look.all()
+	for archetype in Content.archetypes():
+		for part in Customer.parts_of(archetype):
+			for frame in 2:
+				var sprite := "%s_%d" % [part, frame]
+				var used := {}
+				var image := atlas.get_region(Rect2i(Art.texture("customer", sprite).region))
+				for y in image.get_height():
+					for x in image.get_width():
+						var pixel := image.get_pixel(x, y)
+						if pixel.a > 0.0:
+							used["#" + pixel.to_html(false)] = true
+				var listed := Array(Art.colors("customer", sprite))
+				var found := used.keys()
+				found.sort()
+				if found != listed:
+					mismatched.append("%s: pixels %s, sidecar %s" % [sprite, found, listed])
+			for look in all_looks:
+				if look.swaps(part).size() > Customer.MAX_SWAPS:
+					too_many.append(part)
+					break
+	_check(mismatched.is_empty(), "sidecar colour lists match the customer sprites", "\n".join(mismatched))
+	_check(too_many.is_empty(), "no part needs more swaps than the shader holds", str(too_many))
+	_check(Look.from_seed(42).describe() == Look.from_seed(42).describe() and Look.from_seed(42).cloth_a != Look.from_seed(42).cloth_b, "a look is deterministic by seed, two different cloths", Look.from_seed(42).describe())
+	var distinct := {}
+	for archetype in Content.archetypes():
+		var parts := Customer.parts_of(archetype)
+		for look in all_looks:
+			distinct[" ".join(parts) + "|" + look.signature(parts)] = true
+	_check(Content.archetypes().size() >= 8, "at least 8 archetypes", str(Content.archetypes().size()))
+	_check(distinct.size() >= 200, "at least 200 distinct customer looks (%d)" % distinct.size(), str(distinct.size()))
+
+
+## No two customers of a shift look alike: every story day in days.json, and a
+## generated 60-customer run cycling the archetypes in random order.
+func _test_look_distinct_per_shift() -> void:
+	var problems := PackedStringArray()
+	var shifts: Dictionary[String, Array] = {}
+	for day in Content.days():
+		var archetypes: Array[Archetype] = []
+		for spec in day.customers:
+			archetypes.append(Content.archetype(spec.archetype))
+		shifts["day %d" % day.day] = archetypes
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 60
+	var run: Array[Archetype] = []
+	for i in 60:
+		run.append(Content.archetypes()[rng.randi_range(0, Content.archetypes().size() - 1)])
+	shifts["60-customer run"] = run
+	for shift_name in shifts:
+		for shift_seed: int in [1, 2, 3]:
+			var parts: Array[Array] = []
+			for archetype: Archetype in shifts[shift_name]:
+				parts.append(Customer.parts_of(archetype))
+			var looks := Look.distinct_for(parts, shift_seed)
+			var seen := {}
+			for i in looks.size():
+				var part_names: Array[String] = []
+				part_names.assign(parts[i])
+				seen[" ".join(part_names) + "|" + looks[i].signature(part_names)] = true
+			if seen.size() != looks.size():
+				problems.append("%s seed %d: %d distinct of %d" % [shift_name, shift_seed, seen.size(), looks.size()])
+			var again := Look.distinct_for(parts, shift_seed)
+			if looks.map(func(look: Look) -> String: return look.describe()) != again.map(func(look: Look) -> String: return look.describe()):
+				problems.append("%s seed %d: not deterministic" % [shift_name, shift_seed])
+	_check(problems.is_empty(), "no two customers of a shift look alike (every day, a 60-customer run)", "\n".join(problems))
+
+
+## Shop customers draw through the palette swap: every part with swappable colours
+## has the shader with exactly its look's swaps; the face has none.
+func _test_shop_customer_look() -> void:
+	var shop := await _open_shop()
+	if await _wait_for_order(shop, "customer look"):
+		var visitor := shop.customer
+		var problems := PackedStringArray()
+		var layers := {"body": "BodyPart", "head": "Head", "hair": "Hair", "acc": "Accessory"}
+		var parts := Customer.parts_of(visitor.archetype)
+		for part in parts:
+			var sprite := visitor.get_node("Body/" + str(layers[part.get_slice("_", 0)])) as Sprite2D
+			var swaps := visitor.look.swaps(part)
+			var swap := sprite.material as ShaderMaterial
+			if swaps.is_empty():
+				if swap != null:
+					problems.append("%s has a swap without colours to swap" % part)
+			elif swap == null or swap.shader.resource_path != "res://shaders/palette_swap.gdshader" or int(swap.get_shader_parameter(&"count")) != swaps.size():
+				problems.append("%s: material %s, expected %d swaps" % [part, swap, swaps.size()])
+			else:
+				# The shader gets exactly the look's pairs, in order: art colour -> visitor colour.
+				var from: PackedColorArray = swap.get_shader_parameter(&"from_colors")
+				var to: PackedColorArray = swap.get_shader_parameter(&"to_colors")
+				var art_colors := swaps.keys()
+				for i in swaps.size():
+					if not from[i].is_equal_approx(Color(art_colors[i])) or not to[i].is_equal_approx(Color(swaps[art_colors[i]])):
+						problems.append("%s swap %d: %s -> %s, expected %s -> %s" % [part, i, from[i], to[i], art_colors[i], swaps[art_colors[i]]])
+				if swaps.keys().all(func(art: String) -> bool: return art == swaps[art]):
+					problems.append("%s: every swap keeps its colour" % part)
+		_check(problems.is_empty() and visitor.look != null and not visitor.look.swaps(parts[0]).is_empty(), "customer parts draw with their look's palette swap (each art colour to the look's colour)", "\n".join(problems))
+		_check((visitor.get_node("Body/Face") as Sprite2D).material == null, "the face keeps its colours", "face has a material")
+	await _close_shop()
+
+
+## The line: up to 2 customers queue in front of the window (reading zone, not
+## interactive, no patience row) while the counter one is served; queued patience
+## drains at Customer.QUEUE_PATIENCE_RATE; a queued customer whose patience runs out
+## storms off from the queue (reputation -2, its stormed_off line, no stamp, no pay)
+## and the counter's request comes back; the queue steps forward when the served
+## customer leaves.
+func _test_shop_queue() -> void:
+	_game.assist_mode = true
+	var shop := await _open_shop()
+	var full := await _until(func() -> bool: return shop.queue.size() == 2 and shop.queue.all(func(c: Customer) -> bool: return c.state == Customer.State.QUEUED), FLOW_FRAMES * 3)
+	_check(full and shop.customer != null and shop.customer.state == Customer.State.WAIT_ORDER, "queue: the counter customer plus 2 queued", "queue %d" % shop.queue.size())
+	if full:
+		var reading_zone := Shop.STAGE_SIZE.y * THUMB_ZONE_TOP
+		var stage := shop.get_node("Column/Stage") as Control
+		var placed := PackedStringArray()
+		for i in shop.queue.size():
+			var visitor := shop.queue[i]
+			# Where the visitor's sprites (parts and queue meter) are drawn, in stage coordinates.
+			var drawn := Rect2()
+			for sprite: Sprite2D in visitor.find_children("*", "Sprite2D", true, false):
+				if sprite.is_visible_in_tree() and sprite.texture != null:
+					var rect := stage.get_global_transform().affine_inverse() * sprite.get_global_transform() * sprite.get_rect()
+					drawn = rect if drawn.size == Vector2.ZERO else drawn.merge(rect)
+			var meter := visitor.get_node("QueueMeter") as Node2D
+			var meter_top := (stage.get_global_transform().affine_inverse() * meter.get_global_transform()).origin.y
+			if not is_equal_approx(visitor.position.x, Customer.SLOT_X[i + 1]) or drawn.end.y > reading_zone or drawn.position.y < SpeechBubble.BOTTOM_Y:
+				placed.append("queued %d drawn at %s (x %.0f)" % [i, drawn, visitor.position.x])
+			if (visitor.get_node("Patience") as Node2D).visible or not meter.visible or meter_top <= SpeechBubble.BOTTOM_Y:
+				placed.append("queued %d: patience row %s, queue meter %s at y %.0f" % [i, (visitor.get_node("Patience") as Node2D).visible, meter.visible, meter_top])
+		_check(placed.is_empty(), "queue: queued customers are drawn in their places in the reading zone under the bubble, with the queue meter, no patience row", "\n".join(placed))
+		var pips_full := shop.queue[0].get_node("QueueMeter").get_children().map(func(pip: Sprite2D) -> Texture2D: return pip.texture)
+		_check(pips_full.all(func(texture: Texture2D) -> bool: return texture == Art.texture("ui", "pip_full")), "queue: a fresh queued customer's meter is full", str(pips_full))
+		_check(shop.get_node("Column/Stage/Customers").find_children("*", "Control", true, false).is_empty(), "queue: customers are not interactive", "a Control in Customers")
+		var counter := shop.customer
+		var queued := shop.queue[0]
+		var counter_before := counter.patience_left
+		var queued_before := queued.patience_left
+		await _frames(60)
+		var counter_drain := counter_before - counter.patience_left
+		var queued_drain := queued_before - queued.patience_left
+		_check(counter_drain > 0.5 and is_equal_approx(snappedf(queued_drain / counter_drain, 0.01), Customer.QUEUE_PATIENCE_RATE), "queue: queued patience drains at %.2fx" % Customer.QUEUE_PATIENCE_RATE, "counter %.3f queued %.3f" % [counter_drain, queued_drain])
+		# Half the patience left: 3 halves of 6 show as full, half, empty.
+		queued.patience_left = queued.patience_total * 0.5
+		await process_frame
+		var pips_half := queued.get_node("QueueMeter").get_children().map(func(pip: Sprite2D) -> Texture2D: return pip.texture)
+		_check(pips_half == [Art.texture("ui", "pip_full"), Art.texture("ui", "pip_half"), Art.texture("ui", "pip_empty")], "queue: the meter shows half the patience as full, half, empty pips", str(pips_half))
+		var storming := shop.queue[1]
+		var request := counter.request.text
+		var coins := shop.coins
+		storming.patience_left = 0.1
+		_check(await _until(func() -> bool: return shop.stormed_off == 1, FLOW_FRAMES), "queue: a queued customer storms off", str(shop.stormed_off))
+		var bubble := shop.get_node("Column/Stage/Bubble") as SpeechBubble
+		_check(bubble.text in storming.archetype.reactions["stormed_off"] and storming.state == Customer.State.LEAVE, "queue: it says a stormed_off line and leaves", "'%s' %s" % [bubble.text, Customer.State.keys()[storming.state]])
+		_check(shop.reputation == Economy.STORMED_OFF_REPUTATION and shop.coins == coins and shop.served == 0 and not (shop.get_node("Column/Stage/Stamp") as Control).visible, "queue: storming off costs reputation only, no stamp", "rep %d coins %d" % [shop.reputation, shop.coins])
+		_check(shop.queue == ([queued] as Array[Customer]) and shop.customer == counter, "queue: the line closes up", str(shop.queue))
+		_check(await _until(func() -> bool: return bubble.text == request, FLOW_FRAMES), "queue: the counter's request comes back after the aside", bubble.text)
+		await _serve(shop, _exact_recipe(counter.potion, shop.stock), "queue serve")
+		await _skip_lines(shop)
+		_check(await _until(func() -> bool: return shop.customer == queued and queued.state == Customer.State.WAIT_ORDER, FLOW_FRAMES), "queue: the next one steps up to the counter", "customer %s" % shop.customer)
+		_check(is_equal_approx(queued.position.x, Customer.COUNTER_X) and (queued.get_node("Patience") as Node2D).visible and not (queued.get_node("QueueMeter") as Node2D).visible, "queue: at the counter with its patience row, no queue meter", str(queued.position))
+	await _close_shop()
+
+
+## Both queued customers storming off within one aside hold: the second aside
+## still puts the counter customer's request back afterwards.
+func _test_shop_queue_double_storm() -> void:
+	var shop := await _open_shop()
+	var full := await _until(func() -> bool: return shop.queue.size() == 2 and shop.queue.all(func(c: Customer) -> bool: return c.state == Customer.State.QUEUED), FLOW_FRAMES * 3)
+	_check(full and shop.customer != null and shop.customer.state == Customer.State.WAIT_ORDER, "double storm: the line is full", "queue %d" % shop.queue.size())
+	if full:
+		var request := shop.customer.request.text
+		shop.queue[1].patience_left = 0.1
+		shop.queue[0].patience_left = 0.6
+		_check(await _until(func() -> bool: return shop.stormed_off == 2, FLOW_FRAMES), "double storm: both queued customers storm off", str(shop.stormed_off))
+		var bubble := shop.get_node("Column/Stage/Bubble") as SpeechBubble
+		_check(await _until(func() -> bool: return bubble.visible and bubble.text == request, FLOW_FRAMES), "double storm: the counter's request comes back", "'%s' visible %s" % [bubble.text, bubble.visible])
+		_check(shop.queue.is_empty() and shop.reputation == 2 * Economy.STORMED_OFF_REPUTATION, "double storm: queue empty, reputation for both", "rep %d" % shop.reputation)
+	await _close_shop()
+
+
+## The bubble blips on the 1st typed character and every BLIP_EVERY after (one per
+## frame at most), not after skip() completes the line.
+func _test_bubble_blips() -> void:
+	var bubble := SPEECH_BUBBLE_SCENE.instantiate() as SpeechBubble
+	root.add_child(bubble)
+	var blips := [0]
+	bubble.blip.connect(func() -> void: blips[0] += 1)
+	var line: String = Content.archetypes()[0].reactions["perfect"][0]
+	bubble.say(line, 135.0)
+	var total := (bubble.get_node("Box/Text") as RichTextLabel).get_total_character_count()
+	await _until(func() -> bool: return not bubble.is_typing(), FLOW_FRAMES)
+	_check(blips[0] == ceili(total / float(SpeechBubble.BLIP_EVERY)), "bubble blips every %d characters" % SpeechBubble.BLIP_EVERY, "%d blips for %d characters" % [blips[0], total])
+	blips[0] = 0
+	bubble.say(line, 135.0)
+	await _frames(6)
+	var before_skip: int = blips[0]
+	bubble.skip()
+	await _frames(30)
+	_check(before_skip > 0 and blips[0] == before_skip, "no blips once the line is skipped", "%d then %d" % [before_skip, blips[0]])
+	bubble.free()
+
+
+## No sound before the first input; the first touch unlocks audio; a customer's
+## request then plays voice blips through Game.play_sfx, and every archetype has
+## its voice file.
+func _test_audio_unlock_and_voices() -> void:
+	var unlock := _game.get_node("AudioUnlock")
+	_game.audio_unlocked = false
+	unlock.set_process_input(true)
+	var played := _game.sfx_played
+	_game.play_sfx(load(Shop.VOICE_PATH % Content.archetypes()[0].id) as AudioStream)
+	_check(_game.sfx_played == played, "no sound before the first input", str(_game.sfx_played - played))
+	await _tap_at(Vector2(4, 4))
+	_check(_game.audio_unlocked and not unlock.is_processing_input(), "the first touch unlocks audio", str(_game.audio_unlocked))
+	var missing := PackedStringArray()
+	for archetype in Content.archetypes():
+		if not ResourceLoader.exists(Shop.VOICE_PATH % archetype.id):
+			missing.append(archetype.id)
+	_check(missing.is_empty(), "every archetype has a voice blip", str(missing))
+	var shop := await _open_shop()
+	played = _game.sfx_played
+	if await _wait_for_order(shop, "voices"):
+		var bubble := shop.get_node("Column/Stage/Bubble") as SpeechBubble
+		await _until(func() -> bool: return not bubble.is_typing(), FLOW_FRAMES)
+		var total := (bubble.get_node("Box/Text") as RichTextLabel).get_total_character_count()
+		_check(_game.sfx_played - played >= ceili(total / float(SpeechBubble.BLIP_EVERY)), "the request plays voice blips while typing", "%d for %d characters" % [_game.sfx_played - played, total])
+	await _close_shop()
+
+
+## Day 2's first customer wants a Mortar potion (shipped content); the test adds a
+## Bellows step to it (Bellows ships in step 7). The shop runs Mortar (with the
+## brew's grind ingredient in the bowl), Bellows, Stir and Pour in order, each
+## driven by touches at the right speed, and the customer gets a Perfect potion.
+func _test_shop_mortar_and_bellows() -> void:
+	_game.goto(GameState.Flow.SHOP, {"day": 2})
+	await _game.transition_finished
+	var shop := current_scene as Shop
+	if await _wait_for_order(shop, "day 2 mortar"):
+		var wants := shop.customer.potion
+		_check("mortar" in wants.steps, "day 2 customer 1 needs the mortar", str(wants.steps))
+		var shipped := wants.steps
+		wants.steps = PackedStringArray(["mortar", "bellows", "stir", "pour"])
+		shop.customer.patience_left = 999.0
+		for item in Content.ingredients_unlocked_by(2):
+			shop.stock[item.id] = 2
+			shop.shelf_item(item.id).set_stock(2)
+		var recipe := _exact_recipe(wants, shop.stock)
+		for id in recipe:
+			await _tap(shop.shelf_item(id))
+		await _tap(shop.brew_button())
+		var order: Array[String] = []
+		for step in wants.steps:
+			if not await _until(func() -> bool: return shop.station != null and shop.station.is_running() and not (str(shop.station.name) in order), FLOW_FRAMES):
+				_check(false, "day 2 %s station runs" % step, "no station")
+				break
+			var station := shop.station
+			order.append(str(station.name))
+			if station is Mortar:
+				var pieces := station.get_node("Bowl/Pieces").get_children()
+				_check(pieces.size() == recipe.filter(func(id: String) -> bool: return Content.ingredient(id).grind).size() and pieces.size() > 0, "mortar shows the brew's grind ingredients", str(pieces.size()))
+				await _drive_circles(station, Mortar.CENTRE, Mortar.RING_RADIUS, Mortar.DEFAULT_SPEED)
+			elif station is Bellows:
+				var bellows := station as Bellows
+				while bellows.is_running():
+					if bellows.heat < BELLOWS_KEEP:
+						bellows.feed(_touch(POUR_HOLD_POINT, true))
+						bellows.feed(_touch(POUR_HOLD_POINT, false))
+					await process_frame
+			elif station is Stir:
+				await _drive_circles(station, Stir.CENTRE, Stir.RING_RADIUS, Stir.DEFAULT_TEMPO)
+			elif station is Pour:
+				var pour := station as Pour
+				pour.feed(_touch(POUR_HOLD_POINT, true))
+				while pour.is_running() and pour.fill + FRAME / Pour.FILL_TIME / 2.0 < pour.target_line():
+					await process_frame
+				pour.feed(_touch(POUR_HOLD_POINT, false))
+		_check(order == ["Mortar", "Bellows", "Stir", "Pour"], "day 2 runs the potion's steps in order", str(order))
+		_check(await _until(func() -> bool: return shop.served == 1, FLOW_FRAMES), "day 2 customer served", str(shop.served))
+		_check(shop.grades == ([Brew.Grade.PERFECT] as Array[Brew.Grade]), "mortar and bellows by touch give a Perfect potion", str(shop.grades))
+		wants.steps = shipped
+	await _close_shop()
+
+
 ## The grade stamp right after a serve: `grade`'s words, colour and icon; "+pay"
-## flying in Fx (none when `pay` is 0); once landed, in the stage's reading zone
+## and "tip +tip" flying in Fx (none when 0); once landed, in the stage's reading zone
 ## (above the workspace) and clear of the speech bubble.
-func _check_stamp(shop: Shop, grade: Brew.Grade, pay: int, label: String) -> void:
+func _check_stamp(shop: Shop, grade: Brew.Grade, pay: int, tip: int, label: String) -> void:
 	var stamp := shop.get_node("Column/Stage/Stamp") as Control
 	var text := shop.get_node("Column/Stage/Stamp/Row/Text") as Label
 	var icon := (shop.get_node("Column/Stage/Stamp/Row/Icon") as TextureRect).texture as AtlasTexture
@@ -1332,11 +1932,407 @@ func _check_stamp(shop: Shop, grade: Brew.Grade, pay: int, label: String) -> voi
 	_check(stamp.visible and text.text == Shop.STAMP_TEXTS[grade] and icon != null and icon.region == expected_icon.region and text.get_theme_color(&"font_color") == Shop.STAMP_COLORS[grade], label + ": stamp reads %s with its icon and colour" % Shop.STAMP_TEXTS[grade], "visible %s '%s' %s" % [stamp.visible, text.text, icon.region if icon != null else Rect2()])
 	var expected_pay := PackedStringArray(["+%d" % pay]) if pay > 0 else PackedStringArray()
 	_check(_pay_texts(shop) == expected_pay, label + ": coins fly as %s" % expected_pay, str(_pay_texts(shop)))
+	var expected_tip := PackedStringArray(["tip +%d" % tip]) if tip > 0 else PackedStringArray()
+	var tip_texts := PackedStringArray()
+	for node in shop.get_node("Fx").get_children():
+		if node is Label and (node as Label).text.begins_with("tip"):
+			tip_texts.append((node as Label).text)
+	_check(tip_texts == expected_tip, label + ": tip flies as %s" % expected_tip, str(tip_texts))
 	await _frames(25)
 	var rect := stamp.get_global_rect()
 	var bubble := (shop.get_node("Column/Stage/Bubble/Box") as Control).get_global_rect()
 	var workspace_top := (shop.get_node("Column/Stage") as Control).get_global_rect().position.y + 192.0
 	_check(stamp.visible and rect.end.y <= workspace_top and not rect.intersects(bubble), label + ": stamp held in the reading zone, clear of the bubble", "%s, bubble %s, workspace at %.0f" % [rect, bubble, workspace_top])
+
+
+func _test_economy_day_loop_rules() -> void:
+	_check(Economy.tip(12, Brew.Grade.PERFECT, 1.0) == 6 and Economy.tip(12, Brew.Grade.GOOD, 0.5) == 2 and Economy.tip(12, Brew.Grade.GOOD, 0.0) == 0, "tip = price x grade rate x tip tendency, rounded", "%d %d" % [Economy.tip(12, Brew.Grade.PERFECT, 1.0), Economy.tip(12, Brew.Grade.GOOD, 0.5)])
+	_check(Economy.tip(12, Brew.Grade.MEH, 1.0) == 0 and Economy.tip(12, Brew.Grade.MISBREW, 1.0) == 0, "no tip for Meh or Misbrew", "%d %d" % [Economy.tip(12, Brew.Grade.MEH, 1.0), Economy.tip(12, Brew.Grade.MISBREW, 1.0)])
+	var moonmoss := Content.ingredient("moonmoss")
+	var pepper := Content.ingredient("ember_pepper")
+	_check(Economy.market_price(Content.day(2), moonmoss) == Content.day(2).market["moonmoss"], "market price is the day's market price", str(Economy.market_price(Content.day(2), moonmoss)))
+	_check(Economy.market_price(Content.day(1), pepper) == pepper.base_price, "a day without a market price uses the base price", str(Economy.market_price(Content.day(1), pepper)))
+	var upgrade := Upgrade.new()
+	upgrade.tolerances = [1.2, 1.4]
+	upgrade.costs = [10, 30]
+	_check(Economy.upgrade_cost(upgrade, 0) == 10 and Economy.upgrade_cost(upgrade, 1) == 30 and Economy.upgrade_cost(upgrade, 2) == Economy.MAXED, "upgrade cost is the next level's, MAXED at the top", "%d %d %d" % [Economy.upgrade_cost(upgrade, 0), Economy.upgrade_cost(upgrade, 1), Economy.upgrade_cost(upgrade, 2)])
+	_check(is_equal_approx(Economy.upgrade_tolerance(upgrade, 0), 1.0) and is_equal_approx(Economy.upgrade_tolerance(upgrade, 2), 1.4), "upgrade tolerance is x1 without a level, else the level's", "%f %f" % [Economy.upgrade_tolerance(upgrade, 0), Economy.upgrade_tolerance(upgrade, 2)])
+
+
+func _test_shift_configs() -> void:
+	for number in range(1, Content.days().size() + 1):
+		var spec := Content.day(number)
+		var config := Shift.story(number)
+		var label := "Shift.story(%d)" % number
+		_check(config != null and config.mode == ShiftConfig.Mode.STORY and config.day == number and config.title == spec.title and is_equal_approx(config.patience_scale, spec.patience_scale), label + " day, title, patience", str(config))
+		var same_customers := config.customers.size() == spec.customers.size()
+		for i in mini(config.customers.size(), spec.customers.size()):
+			same_customers = same_customers and config.customers[i].potion == spec.customers[i].potion and config.customers[i].archetype == spec.customers[i].archetype
+		_check(same_customers, label + " customers in order", str(config.customers.size()))
+		_check(config.allowed_potions == Content.potions_unlocked_by(number) and config.ingredients == Content.ingredients_unlocked_by(number), label + " allowed potions and ingredients", "%d %d" % [config.allowed_potions.size(), config.ingredients.size()])
+	Content.quiet_errors = true
+	_check(Shift.story(99) == null, "Shift.story of a missing day is null", "a config")
+	Content.quiet_errors = false
+
+
+func _test_save_round_trip() -> void:
+	_game.new_game()
+	_game.day = 2
+	_game.at_market = true
+	_game.coins = 33
+	_game.reputation = -4
+	_game.stock = {"ember_pepper": 2, "moonmoss": 0}
+	_game.upgrades = {"stir": 1, "pour": 2}
+	_game.codex = {"words": ["hint_warmth"]}
+	_game.flags = {"goat_trusts_you": true}
+	_game.rush_best = 7
+	_game.assist_mode = true
+	_game.gentle_mode = true
+	_game.save_game()
+	_game.day = 1
+	_game.coins = 0
+	_game.assist_mode = false
+	var errors := _game.reported_errors.size()
+	_game.load_game()
+	_check(_game.day == 2 and _game.at_market and _game.coins == 33 and _game.reputation == -4 and _game.rush_best == 7, "save round trip: day, market, coins, reputation, Rush best", "%d %s %d %d %d" % [_game.day, _game.at_market, _game.coins, _game.reputation, _game.rush_best])
+	_check(_game.stock == ({"ember_pepper": 2, "moonmoss": 0} as Dictionary[String, int]) and _game.upgrades == ({"stir": 1, "pour": 2} as Dictionary[String, int]), "save round trip: stock and upgrades", "%s %s" % [_game.stock, _game.upgrades])
+	_check(str(_game.codex) == str({"words": ["hint_warmth"]}) and str(_game.flags) == str({"goat_trusts_you": true}), "save round trip: codex and flags", "%s %s" % [_game.codex, _game.flags])
+	_check(_game.assist_mode and _game.gentle_mode and _game.reported_errors.size() == errors, "save round trip: settings, no errors", "%s %s" % [_game.assist_mode, _game.gentle_mode])
+	_game.rush_best = 7
+	_game.new_game()
+	_check(_game.rush_best == 7 and _game.assist_mode and _game.day == 1 and _game.upgrades.is_empty(), "a new game keeps the settings and the Rush best only", "%d %s %d %s" % [_game.rush_best, _game.assist_mode, _game.day, _game.upgrades])
+	_game.assist_mode = false
+	_game.gentle_mode = false
+	_game.rush_best = 0
+	_game.new_game()
+
+
+## A missing save starts fresh with no error; each corrupt save is reported once
+## (push_error, the error label), moved to save.corrupt.json unchanged and replaced
+## by defaults that load cleanly.
+func _test_save_missing_and_corrupt() -> void:
+	_delete_saves()
+	var errors := _game.reported_errors.size()
+	_game.load_game()
+	_check(_game.reported_errors.size() == errors and _game.day == 1 and _game.coins == 0 and not FileAccess.file_exists(_game.save_path), "missing save starts fresh silently", str(_game.reported_errors.slice(errors)))
+	_game.new_game()
+	var good: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	var cases: Dictionary[String, String] = {
+		"not JSON": "{{{ not json",
+		"not an object": "[1, 2]",
+		"missing key": JSON.stringify(_without(good, "coins")),
+		"wrong type": JSON.stringify(_with(good, "coins", "lots")),
+		"fractional coins": JSON.stringify(_with(good, "coins", 1.5)),
+		"negative coins": JSON.stringify(_with(good, "coins", -1)),
+		"unknown key": JSON.stringify(_with(good, "cheat", true)),
+		"unknown ingredient": JSON.stringify(_with(good, "stock", {"dragon_tooth": 1})),
+		"upgrade level too high": JSON.stringify(_with(good, "upgrades", {"stir": 9})),
+		"day out of range": JSON.stringify(_with(good, "day", 0)),
+		"bad settings": JSON.stringify(_with(good, "settings", {"assist": true})),
+		"newer version": JSON.stringify(_with(good, "version", 99)),
+		"version 0": JSON.stringify(_with(good, "version", 0)),
+		"huge reputation": JSON.stringify(_with(good, "reputation", 1e300)),
+		"huge rush_best": JSON.stringify(_with(good, "rush_best", GameState.SAVE_SCORE_MAX + 1)),
+	}
+	var error_label := _game.get_node("Fade/ErrorLabel") as Label
+	for case in cases:
+		var label := "corrupt save (%s)" % case
+		_write_save(cases[case])
+		_game.coins = 555
+		_game.quiet_errors = true
+		errors = _game.reported_errors.size()
+		_game.load_game()
+		_game.quiet_errors = false
+		var reported := _game.reported_errors.slice(errors)
+		_check(reported.size() == 1 and "corrupt" in reported[0] and "save.corrupt.json" in reported[0] and error_label.visible, label + ": reported once and shown", str(reported))
+		_check(FileAccess.get_file_as_string(_game.backup_path()) == cases[case], label + ": backed up unchanged", _game.backup_path())
+		_check(_game.coins == 0 and _game.day == 1 and _game.stock.is_empty() and not _game.assist_mode, label + ": replaced by defaults", "%d %d" % [_game.coins, _game.day])
+		errors = _game.reported_errors.size()
+		_game.load_game()
+		_check(_game.reported_errors.size() == errors, label + ": the replacement loads cleanly", str(_game.reported_errors.slice(errors)))
+	error_label.hide()
+	_delete_saves()
+	_game.load_game()
+
+
+## Save versions: the game has one upgrade step per version after the first;
+## migrate_save runs the steps from the save's version up, in order, and stamps
+## the new version; a save from a newer game is refused.
+func _test_save_migrations() -> void:
+	_check(GameState.save_migrations().size() == GameState.SAVE_VERSION - 1, "one save upgrade step per version after 1", "%d steps, version %d" % [GameState.save_migrations().size(), GameState.SAVE_VERSION])
+	var to_v2 := func(saved: Dictionary) -> void:
+		saved["coins"] = saved.get("gold", 0)
+		saved.erase("gold")
+	var to_v3 := func(saved: Dictionary) -> void:
+		saved["coins"] = saved.get("coins", 0) * 2
+	var steps: Array[Callable] = [to_v2, to_v3]
+	var old := {"version": 1, "gold": 5}
+	var problem := GameState.migrate_save(old, steps, 3)
+	_check(problem == "" and old == {"version": 3, "coins": 10}, "a version 1 save runs both upgrade steps in order", "%s %s" % [problem, old])
+	var middle := {"version": 2, "coins": 5}
+	_check(GameState.migrate_save(middle, steps, 3) == "" and middle == {"version": 3, "coins": 10}, "a version 2 save runs only the last step", str(middle))
+	var newer := {"version": 4}
+	_check("newer" in GameState.migrate_save(newer, steps, 3) and newer == {"version": 4}, "a save from a newer game is refused unchanged", str(newer))
+
+
+## Save files that cannot be written: a temporary file that cannot be created (the
+## last good save stays), one that cannot replace the save (cleaned up), and a corrupt
+## save that cannot be backed up (left in place); each reported once.
+func _test_save_failed_write_keeps_save() -> void:
+	_game.new_game()
+	_game.coins = 41
+	_game.save_game()
+	var good := FileAccess.get_file_as_string(_game.save_path)
+	var temp := _game.save_path + ".tmp"
+	DirAccess.make_dir_absolute(temp)
+	_game.coins = 99
+	_game.quiet_errors = true
+	var errors := _game.reported_errors.size()
+	_game.save_game()
+	_game.quiet_errors = false
+	var reported := _game.reported_errors.slice(errors)
+	DirAccess.remove_absolute(temp)
+	(_game.get_node("Fade/ErrorLabel") as Label).hide()
+	_check(reported.size() == 1 and "unchanged" in reported[0], "a failed save write is reported once", str(reported))
+	_check(FileAccess.get_file_as_string(_game.save_path) == good, "a failed save write keeps the last good save", FileAccess.get_file_as_string(_game.save_path))
+	# The temporary file cannot replace the save (a non-empty directory is in its place):
+	# reported, and the temporary file is cleaned up.
+	_delete_saves()
+	DirAccess.make_dir_recursive_absolute(_game.save_path.path_join("keep"))
+	_game.quiet_errors = true
+	errors = _game.reported_errors.size()
+	_game.save_game()
+	_game.quiet_errors = false
+	reported = _game.reported_errors.slice(errors)
+	_check(reported.size() == 1 and "Could not replace" in reported[0] and not FileAccess.file_exists(temp), "a save that cannot replace the old one is reported and its temporary file removed", str(reported))
+	# A corrupt save whose backup cannot be made (a non-empty directory is at the
+	# backup path): one accurate report, the bad save stays, nothing is overwritten.
+	DirAccess.remove_absolute(_game.save_path.path_join("keep"))
+	DirAccess.remove_absolute(_game.save_path)
+	_write_save("{{{ not json")
+	DirAccess.make_dir_recursive_absolute(_game.backup_path().path_join("keep"))
+	_game.quiet_errors = true
+	errors = _game.reported_errors.size()
+	_game.load_game()
+	_game.quiet_errors = false
+	reported = _game.reported_errors.slice(errors)
+	_check(reported.size() == 1 and "could not be moved" in reported[0] and FileAccess.get_file_as_string(_game.save_path) == "{{{ not json", "a corrupt save that cannot be backed up is reported once and left in place", str(reported))
+	DirAccess.remove_absolute(_game.backup_path().path_join("keep"))
+	DirAccess.remove_absolute(_game.backup_path())
+	(_game.get_node("Fade/ErrorLabel") as Label).hide()
+	_delete_saves()
+	_game.new_game()
+
+
+## Game.tolerance_scale(step): the owned upgrade level's multiplier, times 1.5 in Gentle mode.
+func _test_upgrade_tolerance() -> void:
+	_game.new_game()
+	var stir := Content.upgrade_for("stir")
+	_check(is_equal_approx(_game.tolerance_scale("stir"), 1.0) and is_equal_approx(_game.tolerance_scale("mortar"), 1.0), "no upgrade: tolerance x1", str(_game.tolerance_scale("stir")))
+	_game.upgrades["stir"] = 1
+	_check(is_equal_approx(_game.tolerance_scale("stir"), stir.tolerances[0]) and is_equal_approx(_game.tolerance_scale("pour"), 1.0), "stir level 1 widens stir only", "%f %f" % [_game.tolerance_scale("stir"), _game.tolerance_scale("pour")])
+	_game.gentle_mode = true
+	_check(is_equal_approx(_game.tolerance_scale("stir"), stir.tolerances[0] * GameState.GENTLE_TOLERANCE_SCALE) and is_equal_approx(_game.tolerance_scale("bellows"), GameState.GENTLE_TOLERANCE_SCALE), "Gentle multiplies the upgrade", "%f %f" % [_game.tolerance_scale("stir"), _game.tolerance_scale("bellows")])
+	_game.gentle_mode = false
+	_game.upgrades["stir"] = stir.max_level()
+	_check(is_equal_approx(_game.tolerance_scale("stir"), stir.tolerances[-1]), "top stir level", str(_game.tolerance_scale("stir")))
+	_game.new_game()
+
+
+## The shop hands each station its own tolerance: a stir level-1 upgrade and a pour
+## level-2 upgrade reach the Stir and Pour stations (Assist on to finish them).
+func _test_shop_passes_station_tolerance() -> void:
+	_game.assist_mode = true
+	_game.new_game()
+	_game.upgrades = {"stir": 1, "pour": 2}
+	_game.goto(GameState.Flow.SHOP)
+	await _game.transition_finished
+	var shop := current_scene as Shop
+	if await _wait_for_order(shop, "station tolerance"):
+		for id in _exact_recipe(shop.customer.potion, shop.stock):
+			await _tap(shop.shelf_item(id))
+		await _tap(shop.brew_button())
+		for step in shop.customer.potion.steps:
+			var ready := await _until(func() -> bool: return shop.station != null and shop.station.is_running() and shop.station.assist_button() != null, FLOW_FRAMES)
+			if not ready:
+				_check(false, "station tolerance: %s runs" % step, "no station")
+				break
+			var expected := Economy.upgrade_tolerance(Content.upgrade_for(step), _game.upgrades[step])
+			_check(is_equal_approx(shop.station.tolerance_scale, expected) and expected > 1.0, "station tolerance: %s gets x%.2f" % [step, expected], str(shop.station.tolerance_scale))
+			await _tap(shop.station.assist_button())
+	await _close_shop()
+	_game.new_game()
+
+
+## The market before day 2: day-2 prices, unaffordable cards faded but tappable (a
+## tap buys nothing and the info card says why), a tap buys one and saves, the
+## Upgrades tab sells the next level until the top level, which is disabled.
+func _test_market_purchases() -> void:
+	var market := await _open_market(10)
+	if market == null:
+		return
+	var spec := Content.day(2)
+	var moonmoss := Content.ingredient("moonmoss")
+	var price := Economy.market_price(spec, moonmoss)
+	var on_sale := Content.ingredients_unlocked_by(2).all(func(item: Ingredient) -> bool: return market.stock_card(item.id) != null)
+	var upgrades_match := Content.upgrades().all(func(u: Upgrade) -> bool: return (market.upgrade_card(u.id) != null) == (u.unlock_day <= 2))
+	_check(on_sale and upgrades_match, "market sells day-2 ingredients and the upgrades unlocked by day 2", "upgrades %s" % str(Content.upgrades().map(func(u: Upgrade) -> bool: return market.upgrade_card(u.id) != null)))
+	var ladle := Content.upgrade_for("stir")
+	var ladle_card := market.upgrade_card(ladle.id)
+	_check(ladle_card.modulate == Market.UNAFFORDABLE_TINT and not ladle_card.disabled and market.stock_card("moonmoss").modulate == Color.WHITE, "10 coins: the ladle (%d) is faded but tappable, moonmoss (%d) is not faded" % [ladle.costs[0], price], "%s %s %s" % [ladle_card.modulate, ladle_card.disabled, market.stock_card("moonmoss").modulate])
+	await _tap(market.get_node("Column/Shop/Tabs/UpgradesTab") as Button)
+	await _tap(ladle_card)
+	var refusal := (market.get_node("Column/Info/Text") as Label).text
+	_check(_game.coins == 10 and _game.upgrades.is_empty() and "Not enough coins" in refusal and ladle.name in refusal, "a tap on a faded card buys nothing and says why", "%d %s '%s'" % [_game.coins, _game.upgrades, refusal])
+	await _tap(market.get_node("Column/Shop/Tabs/StockTab") as Button)
+	await _tap(market.stock_card("moonmoss"))
+	_check(_game.coins == 10 - price and _game.stock.get("moonmoss") == 1 and _read_save().get("coins") == float(10 - price), "a tap buys one moonmoss and saves", "%d %s" % [_game.coins, _game.stock])
+	_check((market.get_node("Column/Coins/Amount") as Label).text == str(10 - price) and "Moonmoss" in (market.get_node("Column/Info/Text") as Label).text, "the coins and the info card update", (market.get_node("Column/Info/Text") as Label).text)
+	await _tap(market.stock_card("moonmoss"))
+	var left := 10 - 2 * price
+	_check(_game.coins == left and (market.stock_card("moonmoss").modulate == Market.UNAFFORDABLE_TINT) == (left < price), "stock the coins no longer cover is faded", "%d %s" % [_game.coins, market.stock_card("moonmoss").modulate])
+	market = await _open_market(ladle.costs[0] + ladle.costs[1])
+	await _tap(market.get_node("Column/Shop/Tabs/UpgradesTab") as Button)
+	_check((market.get_node("Column/Shop/UpgradeList") as Control).visible and not (market.get_node("Column/Shop/StockGrid") as Control).visible, "the Upgrades tab shows the upgrades", "hidden")
+	var card := market.upgrade_card(ladle.id)
+	for level in ladle.max_level():
+		await _tap(card)
+		_check(_game.upgrades.get("stir") == level + 1, "a tap buys stir level %d" % (level + 1), str(_game.upgrades))
+	_check(_game.coins == 0 and card.disabled and "max level" in (card.get_node("Text") as Label).text and _read_save().get("upgrades") == {"stir": 2.0}, "the top level is disabled and saved", "%d %s %s" % [_game.coins, card.disabled, _read_save().get("upgrades")])
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+	_game.new_game()
+
+
+## A saved story past day 1: the title offers Continue (to the saved screen) and
+## New game, which needs a second press; with the story over only "Open the shop".
+func _test_title_continue_and_new_game() -> void:
+	_game.new_game()
+	_game.day = 2
+	_game.at_market = true
+	_game.save_game()
+	_game.load_game()
+	var title: Title = await _goto_scene(GameState.Flow.TITLE)
+	var open := title.get_node("Column/OpenShopButton") as Button
+	var new_game := title.get_node("Column/NewGameButton") as Button
+	_check(open.text == "Continue" and new_game.visible and "day 2" in open.accessibility_name, "a saved day-2 story offers Continue and New game", "%s %s" % [open.text, new_game.visible])
+	await _tap(open)
+	_check(await _until(func() -> bool: return current_scene is Market and not _game.is_transitioning(), FLOW_FRAMES), "Continue resumes at the open market", str(current_scene))
+	title = await _goto_scene(GameState.Flow.TITLE)
+	new_game = title.get_node("Column/NewGameButton") as Button
+	await _tap(new_game)
+	await _frames(5)
+	_check(_game.state == GameState.Flow.TITLE and _game.day == 2 and new_game.text == Title.NEW_GAME_CONFIRM_TEXT, "the first New game press only asks to confirm", "%s day %d '%s'" % [_game.state, _game.day, new_game.text])
+	await _tap(new_game)
+	_check(await _until(func() -> bool: return current_scene is Morning and not _game.is_transitioning(), FLOW_FRAMES) and _game.day == 1 and _game.coins == Content.day(1).starting_coins, "the second press starts a new game at the morning of day 1", "%s day %d" % [current_scene, _game.day])
+	_game.day = Content.days().size() + 1
+	_game.at_market = false
+	title = await _goto_scene(GameState.Flow.TITLE)
+	_check((title.get_node("Column/OpenShopButton") as Button).text == "Open the shop" and not (title.get_node("Column/NewGameButton") as Button).visible, "after the last story day the title starts a new game", (title.get_node("Column/OpenShopButton") as Button).text)
+	_game.new_game()
+	await _goto_scene(GameState.Flow.TITLE)
+
+
+func _test_morning_missing_day_returns_to_title() -> void:
+	_game.new_game()
+	_game.day = Content.days().size() + 1
+	_game.quiet_errors = true
+	Content.quiet_errors = true
+	var errors := _game.reported_errors.size()
+	_game.goto(GameState.Flow.MORNING)
+	var back := await _until(func() -> bool: return _game.state == GameState.Flow.TITLE and not _game.is_transitioning() and _game.reported_errors.size() > errors, FLOW_FRAMES)
+	_game.quiet_errors = false
+	Content.quiet_errors = false
+	_check(back and _game.reported_errors.size() == errors + 1 and ("Day %d" % _game.day) in _game.reported_errors.back(), "a morning for a missing day returns to the title with the reason", str(_game.reported_errors.slice(errors)))
+	(_game.get_node("Fade/ErrorLabel") as Label).hide()
+	_game.new_game()
+
+
+## The morning, summary and market buttons (both tabs) and the title's Continue
+## and New game: each at least 32x32, inside the safe area, in the thumb zone and
+## focusable with an accessibility name, at 9:16, 9:19.5 and 16:9.
+func _test_loop_screens_size_and_zone() -> void:
+	var screens: Array[Array] = [
+		[GameState.Flow.MORNING, {}, ["Column/OpenShopButton"]],
+		[GameState.Flow.SUMMARY, {"day": 1, "title": "Test", "customers": 3, "served": 2, "stormed_off": 1, "grades": [1, 1, 0, 0], "earned": 20, "tips": 2, "reputation": 1, "coins": 42}, ["Column/ContinueButton"]],
+		[GameState.Flow.MARKET, {}, ["Column/Shop/Tabs/StockTab", "Column/Shop/Tabs/UpgradesTab", "Column/Shop/NextDayButton"]],
+		[GameState.Flow.TITLE, {}, ["Column/OpenShopButton", "Column/NewGameButton"]],
+	]
+	for screen in screens:
+		_game.new_game()
+		_game.day = 2
+		_game.at_market = true
+		_game.coins = 500
+		var scene := await _goto_scene(screen[0], screen[1])
+		var controls: Array[Control] = []
+		for path: String in screen[2]:
+			controls.append(scene.get_node(path) as Control)
+		if scene is Market:
+			for item in Content.ingredients_unlocked_by(2):
+				controls.append((scene as Market).stock_card(item.id))
+		var name: String = GameState.Flow.keys()[screen[0]]
+		for control in controls:
+			_check(control.focus_mode == Control.FOCUS_ALL and control.accessibility_name != "", "%s %s focusable and named" % [name, control.name], control.accessibility_name)
+		for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
+			root.size = window
+			await _frames(10)
+			_check_targets(controls, null, "%s at %s" % [name, window])
+			if scene is Market:
+				await _tap(scene.get_node("Column/Shop/Tabs/UpgradesTab") as Button)
+				var upgrades: Array[Control] = []
+				for upgrade in Content.upgrades():
+					if (scene as Market).upgrade_card(upgrade.id) != null:
+						upgrades.append((scene as Market).upgrade_card(upgrade.id))
+				_check_targets(upgrades, null, "%s upgrades at %s" % [name, window])
+				await _tap(scene.get_node("Column/Shop/Tabs/StockTab") as Button)
+		root.size = BASE_WINDOW
+		await process_frame
+	_game.new_game()
+	await _goto_scene(GameState.Flow.TITLE)
+
+
+## Opens the market before day 2 with `coins` coins and no stock.
+func _open_market(coins: int) -> Market:
+	_game.new_game()
+	_game.day = 2
+	_game.at_market = true
+	_game.coins = coins
+	_game.stock = {}
+	var market: Market = await _goto_scene(GameState.Flow.MARKET)
+	_check(market != null, "the market opens", str(current_scene))
+	return market
+
+
+func _goto_scene(state: GameState.Flow, args: Dictionary = {}) -> Node:
+	_game.goto(state, args)
+	await _game.transition_finished
+	return current_scene
+
+
+func _read_save() -> Dictionary:
+	var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	return data if data is Dictionary else {}
+
+
+func _write_save(text: String) -> void:
+	var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
+	if file == null:
+		_check(false, "write the test save", error_string(FileAccess.get_open_error()))
+		return
+	file.store_string(text)
+	file.close()
+
+
+func _with(data: Dictionary, key: String, value: Variant) -> Dictionary:
+	var copy := data.duplicate(true)
+	copy[key] = value
+	return copy
+
+
+func _without(data: Dictionary, key: String) -> Dictionary:
+	var copy := data.duplicate(true)
+	copy.erase(key)
+	return copy
 
 
 ## Texts of the "+pay" labels flying in the shop's Fx layer.
@@ -1348,10 +2344,19 @@ func _pay_texts(shop: Shop) -> PackedStringArray:
 	return texts
 
 
+## Opens the shop on a fresh day 1 (a new game in the tool save).
 func _open_shop() -> Shop:
+	_game.new_game()
 	_game.goto(GameState.Flow.SHOP)
 	await _game.transition_finished
 	return current_scene as Shop
+
+
+## Removes the tool save and its corrupt-save backup.
+func _delete_saves() -> void:
+	for path: String in [_game.save_path, _game.backup_path()]:
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(path)
 
 
 func _close_shop() -> void:
@@ -1388,6 +2393,13 @@ func _serve(shop: Shop, recipe: Array[String], label: String) -> bool:
 	var done := await _until(func() -> bool: return shop.served == served + 1, FLOW_FRAMES)
 	_check(done, label + ": served", "served %d" % shop.served)
 	return done
+
+
+## Fills the patience of everyone in line, so slow test steps make no one storm off.
+func _refill_patience(shop: Shop) -> void:
+	for visitor: Customer in [shop.customer] + shop.queue:
+		if visitor != null:
+			visitor.patience_left = visitor.patience_total
 
 
 ## Taps the workspace until the current customer leaves (skipping the reaction lines).
@@ -1595,6 +2607,44 @@ func _stir_circles(stir: Stir, rps: float, rotations: int, wobble: float) -> voi
 		var radius := Stir.RING_RADIUS + wobble * sin(i * 0.9)
 		stir.feed(_drag(Stir.CENTRE + Vector2.from_angle(i * FRAME * rps * TAU) * radius))
 	stir.feed(_touch(start, false))
+
+
+## Drags `turns` clockwise circles around `centre` at `tps` turns per second, one
+## event per FRAME, the radius wobbling by up to `wobble` around `radius`.
+func _circles(station: Station, centre: Vector2, radius: float, tps: float, turns: int, wobble: float) -> void:
+	var start := centre + Vector2(radius, 0)
+	station.feed(_touch(start, true))
+	var frames := ceili(turns / tps / FRAME) + 2
+	for i in range(1, frames + 1):
+		station.advance(FRAME)
+		station.feed(_drag(centre + Vector2.from_angle(i * FRAME * tps * TAU) * (radius + wobble * sin(i * 0.9))))
+	station.feed(_touch(start, false))
+
+
+## Drags circles around `centre` at `tps` through the running game loop (one drag
+## per rendered frame; the station's _process moves its clock) until it finishes.
+func _drive_circles(station: Station, centre: Vector2, radius: float, tps: float) -> void:
+	var start := centre + Vector2(radius, 0)
+	station.feed(_touch(start, true))
+	var i := 0
+	while station.is_running() and i < FLOW_FRAMES:
+		await process_frame
+		i += 1
+		station.feed(_drag(centre + Vector2.from_angle(i * FRAME * tps * TAU) * radius))
+	station.feed(_touch(start, false))
+
+
+## Runs `bellows` frame by frame, tapping whenever `pump(frame)` says so, until it
+## finishes (or 20 s pass). Returns the frames run.
+func _pump_bellows(bellows: Bellows, pump: Callable) -> int:
+	var frame := 0
+	while bellows.is_running() and frame < 1200:
+		if pump.call(frame):
+			bellows.feed(_touch(POUR_HOLD_POINT, true))
+			bellows.feed(_touch(POUR_HOLD_POINT, false))
+		bellows.advance(FRAME)
+		frame += 1
+	return frame
 
 
 ## Holds until the fill is within half a frame of `level`, then releases.

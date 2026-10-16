@@ -16,10 +16,16 @@ extends Control
 ## darkened to read on the parchment: never colour alone. Each icon adds MARK_WIDTH
 ## to its line and the box grows to fit (test_gameplay checks that every request
 ## still fits the stage).
+##
+## While typing, `blip` fires on the 1st character and then every BLIP_EVERY
+## characters (at most once a frame): the shop plays the speaker's voice on it.
 
 signal advanced
+signal blip
 
 const CHARS_PER_SECOND := 40.0
+## Characters per voice blip while typing.
+const BLIP_EVERY := 3
 const PADDING := Vector2(7, 5)
 const LINE_SPACING := 2.0
 ## The box's bottom edge (the tail hangs below it, its tip just above the tallest hat at y 96).
@@ -136,13 +142,22 @@ func _process(delta: float) -> void:
 	if not visible:
 		return
 	if is_typing():
+		var before := _label.visible_characters
 		_shown += delta * CHARS_PER_SECOND
 		_label.visible_characters = mini(int(_shown), _label.get_total_character_count())
+		if blip_index(_label.visible_characters) > blip_index(before):
+			blip.emit()
 		return
 	if _hold >= 0.0:
 		_hold_left -= delta
 		if _hold_left <= 0.0:
 			_advance()
+
+
+## Which blip `typed` characters have reached: -1 before the first character,
+## then 0, 1, 2 ... every BLIP_EVERY characters.
+static func blip_index(typed: int) -> int:
+	return -1 if typed <= 0 else floori((typed - 1) / float(BLIP_EVERY))
 
 
 ## One regex per form of each hint word, matching the whole word that starts with

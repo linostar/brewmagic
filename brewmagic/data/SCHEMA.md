@@ -50,7 +50,7 @@ Other strings: `name`/`title`/`word` <= 26 chars; `description` <= 120 chars; `s
 | `essence` | essence vector | each 0..3, not all 0 | |
 | `unlock_day` | int | 1..7 | First day it is on the shelf or in the market. |
 | `base_price` | int | 1..999 | Default market price in coins. A day's `market` overrides it. |
-| `grind` | bool | | `true` means the brew needs the Mortar station. All day 1-2 ingredients are `false`. |
+| `grind` | bool | | `true` means the ingredient is ground in the Mortar: potions whose recipes need it list `"mortar"` (I11), and the Mortar shows the brew's `grind` ingredients in its bowl. All day-1 ingredients are `false` (I10). |
 | `description` | string | 1..120 chars | Codex line. |
 
 ## potions.json
@@ -62,7 +62,7 @@ Other strings: `name`/`title`/`word` <= 26 chars; `description` <= 120 chars; `s
 | `color` | string | `^#[0-9a-f]{6}$` | Liquid colour, picked from `art_src/palette.hex`. It tints the neutral liquid sprite in code. |
 | `bottle` | string | `"round" \| "tall" \| "flask" \| "teardrop"` | Bottle sprite shape. |
 | `unlock_day` | int | 1..7 | |
-| `steps` | array of string | non-empty, unique, each `"stir" \| "pour" \| "mortar" \| "bellows"` | Station order for brewing. Potions with `unlock_day <= 2` use exactly `["stir", "pour"]`. |
+| `steps` | array of string | non-empty, unique, each `"stir" \| "pour" \| "mortar" \| "bellows"` | Station order for brewing; the shop runs them in this order. Potions with `unlock_day == 1` use exactly `["stir", "pour"]` (I10); `"mortar"` follows I11. |
 | `price` | int | 1..999 | Base sale price in coins before grade and tip. |
 | `description` | string | 1..120 chars | Codex line. |
 
@@ -88,11 +88,11 @@ freshness (`fresh`). gloom: sleep (`sleep`, `slept`), curses (`curse`), spooky (
 | `name` | string | 1..26 chars | Display name of this recurring visitor. |
 | `patience_seconds` | int | 10..300 | Before `patience_scale`. |
 | `tip_tendency` | float | 0.0..1.0 | 0 never tips, 1 tips generously. |
-| `voice` | object | keys exactly `pitch`, `timbre` | |
-| `voice.pitch` | float | 0.5..2.0 | Voice-blip pitch multiplier. |
-| `voice.timbre` | string | `"reed" \| "bell" \| "growl" \| "chirp"` | Voice-blip sample set. |
+| `voice` | object | keys exactly `pitch`, `timbre` | `tools/sfx.py` synthesises `audio/sfx/voice_<id>.wav` from it (rerun it after adding or changing an archetype; `sfx.py --check` in `validate.sh` fails on a stale or missing file). |
+| `voice.pitch` | float | 0.5..2.0 | Voice-blip pitch multiplier (1.0 = 240 Hz). |
+| `voice.timbre` | string | `"reed" \| "bell" \| "growl" \| "chirp"` | Voice-blip synth: nasal pulse, bell with an inharmonic partial, buzzy saw, upward sine sweep. |
 | `speech_style` | string | 1..200 chars | Writer's note, not shown in game. |
-| `parts` | object | keys exactly `body`, `head`, `hair`, `accessory` | A part value `<v>` is drawn from the customer atlas (`art/customer.json`) frames `<prefix>_<v>_0` and `<prefix>_<v>_1` (idle bob), with prefix `body`, `head`, `hair`, `acc` for `body`, `head`, `hair`, `accessory`. Accessory `"none"` draws nothing. Both frames must exist (checked by `tools/test_content.gd`). |
+| `parts` | object | keys exactly `body`, `head`, `hair`, `accessory` | A part value `<v>` is drawn from the customer atlas (`art/customer.json`) frames `<prefix>_<v>_0` and `<prefix>_<v>_1` (idle bob), with prefix `body`, `head`, `hair`, `acc` for `body`, `head`, `hair`, `accessory`. Accessory `"none"` draws nothing. Both frames must exist (checked by `tools/test_content.gd`). The parts are the archetype's silhouette; each visitor's colours come from a palette swap (`Look`, CLAUDE.md "Customers"). |
 | `parts.body` | string | `"robe" \| "apron" \| "armour"` | |
 | `parts.head` | string | `"round" \| "long" \| "square"` | |
 | `parts.hair` | string | `"witch_hat" \| "straw_hat" \| "curly" \| "bald_beard"` | |
@@ -138,6 +138,19 @@ Selection: a random customer with archetype A who wants potion P says a random r
 
 Stock carries over between days. The stock on day N >= 2 is what is left from day N-1 plus what the player bought.
 
+## upgrades.json
+One upgrade per station: exactly one entry for each of `"stir"`, `"pour"`, `"mortar"`, `"bellows"`.
+| field | type | range / enum | notes |
+|---|---|---|---|
+| `id` | string | snake_case | |
+| `station` | string | `"stir" \| "pour" \| "mortar" \| "bellows"` | The station step it improves; unique across the file. |
+| `name` | string | 1..26 chars | Market card title. |
+| `description` | string | 1..120 chars | Market info line. |
+| `unlock_day` | int | 1..7 | On sale in every market held the evening before a day `>= unlock_day`. |
+| `levels` | array of object | non-empty | Level 1, 2, ... in order. Owning none is level 0 (tolerance x1). |
+| `levels[].tolerance` | float | (1.0, 3.0], strictly increasing | The station's tolerance multiplier at this level (`Station.tolerance_scale`, times 1.5 in Gentle mode). |
+| `levels[].cost` | int | 1..9999 | Coins for this level, bought after the level before it. |
+
 ---
 
 ## Invariants (`tools/test_content.gd` must check all of these)
@@ -153,12 +166,20 @@ Stock carries over between days. The stock on day N >= 2 is what is left from da
 - **I7** Every potion has at least one exact (distance 0) brew of 2-3 ingredients with `unlock_day <= potion.unlock_day`.
   Every customer on day N is exactly solvable with ingredients unlocked by day N.
 - **I8** Day 1: `starting_stock` alone can brew every day-1 customer Perfect, all on the same day.
-  Day N >= 2: the Perfect pay of day N-1's customers alone (`Economy.pay(price, PERFECT)` summed; no tips, no coins or
-  stock carried over) buys, at day N's `market` prices, an exact recipe for every day-N customer, all on the same day.
+  Day N >= 2 (economy-aware, simulated from day 1's `starting_stock`): a day starts with the stock that any Perfect
+  run of the day before can leave (every exact recipe per customer is a possible run; the worst leftover counts), and
+  the Perfect pay of day N-1's customers alone (`Economy.pay(price, PERFECT)` summed; no tips, no other coins, since
+  the player may spend those on upgrades) buys, at day N's market prices (`Economy.market_price`), whatever that
+  stock lacks for an exact recipe for every day-N customer, all on the same day.
 - **I9** For every potion and every 2-3 ingredient brew (all ingredients), distance >= 3 implies some essence overshoots.
   (With the current data, all brews total >= 4 and all targets total <= 5. A brew without an overshoot would be at most 1 away.)
 - **I10** Coverage. Every (potion, archetype) pair has >= 3 requests. Every essence has >= 5 misbrews, each with its fixed effect.
-  Every archetype has >= 3 lines for every grade. Potions with `unlock_day <= 2` have `steps == ["stir", "pour"]`.
+  Every archetype has >= 3 lines for every grade. Potions with `unlock_day == 1` have `steps == ["stir", "pour"]`
+  and day-1 ingredients have `grind == false` (day 1 teaches only Stir and Pour). At least one potion with
+  `unlock_day == 2` lists `"mortar"` (the Mortar is introduced on day 2).
+- **I11** Mortar consistency. A potion lists `"mortar"` in `steps` exactly when every exact recipe of it (2-3
+  ingredients with `unlock_day <= potion.unlock_day`, as in I7) contains an ingredient with `grind == true`. So a
+  potion that needs a hard ingredient always grinds it, and no potion asks for the Mortar when there is nothing to grind.
 
 ## Current content (days 1-2)
 | ingredient | essence | day | | potion | target | day | exact recipe |
@@ -168,7 +189,11 @@ Stock carries over between days. The stock on day N >= 2 is what is left from da
 | sunpetal | 0,0,2,0 | 1 | | valour_cordial | 2,1,0,2 | 2 | ember_pepper + moonmoss |
 | nightshade_cap | 0,0,0,2 | 1 | | moonbloom_draught | 0,1,2,2 | 2 | sunpetal + moonmoss |
 | honeycomb | 1,0,2,0 | 2 | | | | | |
-| moonmoss | 0,1,0,2 | 2 | | | | | |
+| moonmoss (grind) | 0,1,0,2 | 2 | | | | | |
+
+Moonmoss is the only `grind` ingredient and the only one with frost 1, so every exact recipe of Valour Cordial and
+Moonbloom Draught uses it and both potions brew `["mortar", "stir", "pour"]` (I11). Bellows first appears in content in
+step 7.
 
 The day-1 ingredients each sum to 2, so on day 1 every distance is even: a wrong pick gives Meh or Misbrew,
 never Good. The day-2 ingredients sum to 3, so near misses become possible. For example, for Valour Cordial,

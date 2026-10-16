@@ -1,12 +1,14 @@
 class_name Art
 ## Sprites from the compiled atlases in res://art/ (tools/pixelart.py writes
-## <atlas>.png plus its <atlas>.json sidecar with every sprite's rect).
+## <atlas>.png plus its <atlas>.json sidecar with every sprite's rect and the
+## palette colours it uses).
 ## texture() returns a shared, cached AtlasTexture: duplicate it before changing
 ## its region. Unknown atlases or sprites are reported with push_error and give null.
 
 const ART_DIR := "res://art/"
 
-## atlas name -> {"texture": Texture2D, "sprites": Dictionary of name -> Rect2}
+## atlas name -> {"texture": Texture2D, "sprites": Dictionary of name -> Rect2,
+## "colors": Dictionary of name -> PackedStringArray of "#rrggbb"}
 static var _atlases: Dictionary[String, Dictionary] = {}
 static var _textures: Dictionary[String, AtlasTexture] = {}
 
@@ -30,6 +32,19 @@ static func texture(atlas: String, sprite: String) -> AtlasTexture:
 	return result
 
 
+## The palette colours ("#rrggbb", sorted) sprite `sprite` of atlas `atlas` uses;
+## empty (and reported) for an unknown atlas or sprite.
+static func colors(atlas: String, sprite: String) -> PackedStringArray:
+	var sheet := _atlas(atlas)
+	if sheet.is_empty():
+		return PackedStringArray()
+	var by_sprite: Dictionary = sheet["colors"]
+	if not by_sprite.has(sprite):
+		push_error("[Art] Unknown sprite '%s' in atlas '%s'" % [sprite, atlas])
+		return PackedStringArray()
+	return by_sprite[sprite]
+
+
 static func _atlas(atlas: String) -> Dictionary:
 	if _atlases.has(atlas):
 		return _atlases[atlas]
@@ -48,9 +63,14 @@ static func _atlas(atlas: String) -> Dictionary:
 		push_error("[Art] Cannot load atlas texture %s" % texture_path)
 		return {}
 	var rects := {}
+	var used := {}
 	for sprite_name: String in data["sprites"]:
 		var rect: Dictionary = data["sprites"][sprite_name]
+		if not rect.get("colors") is Array:
+			push_error("[Art] Sprite '%s' in %s has no colors list; rebuild with tools/pixelart.py" % [sprite_name, json_path])
+			return {}
 		rects[sprite_name] = Rect2(rect["x"], rect["y"], rect["w"], rect["h"])
-	var sheet := {"texture": atlas_texture, "sprites": rects}
+		used[sprite_name] = PackedStringArray(rect["colors"])
+	var sheet := {"texture": atlas_texture, "sprites": rects, "colors": used}
 	_atlases[atlas] = sheet
 	return sheet

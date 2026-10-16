@@ -142,5 +142,149 @@
         "My tea's gone cold. So has my patience. Bye!"
       ]
     }
+  },
+  {
+    "id": "retired_wizard",
+    "name": "Old Mortimer",
+    "patience_seconds": 90,
+    "tip_tendency": 0.5,
+    "voice": { "pitch": 0.6, "timbre": "reed" },
+    "speech_style": "Rambling and forgetful, starts anecdotes he never finishes, muddles his spells and dates, calls the player 'young apprentice'.",
+    "parts": { "body": "robe", "head": "long", "hair": "bald_beard", "accessory": "none" },
+    "reactions": {
+      "perfect": [
+        "Splendid! Just how I used to brew it. Or was that you?",
+        "Marvellous, young apprentice! I taught you that. Probably.",
+        "Perfect! Reminds me of 1342. Lovely year. Damp."
+      ],
+      "good": [
+        "Very nice. Not quite my old recipe, but I forgot it.",
+        "Good! I'd award you a star, but I've misplaced the sky.",
+        "Rather good. My beard approves. It's very picky."
+      ],
+      "meh": [
+        "Hmm. Did I order this? Did I order at all?",
+        "Middling. Like my memory. What were we saying?",
+        "It's fine. I once turned a duke into soup. Also fine."
+      ],
+      "misbrew": [
+        "Ah! The old explode-a-roo. A classic beginner's charm.",
+        "Goodness. That's in no book. I'd know. I wrote six.",
+        "Oh dear. I did this in 1288. Lost my eyebrows for a year."
+      ],
+      "stormed_off": [
+        "I've forgotten why I came. Off I pop!",
+        "My tea will be cold by now. Was there tea? Goodbye!",
+        "I'll come back when I remember where I live."
+      ]
+    }
+  },
+  {
+    "id": "busy_baker",
+    "name": "Pip Crumbsworth",
+    "patience_seconds": 30,
+    "tip_tendency": 0.3,
+    "voice": { "pitch": 1.7, "timbre": "chirp" },
+    "speech_style": "Always in a rush, breathless exclamations, bakery puns, something in the oven is always about to burn.",
+    "parts": { "body": "apron", "head": "square", "hair": "curly", "accessory": "none" },
+    "reactions": {
+      "perfect": [
+        "Perfect! Like a souffle that didn't sink! Must dash!",
+        "Oh, the cream of the crop! Bye! Oven! Bye!",
+        "Beautiful! I knead to go! Ha! Bread joke! Bye!"
+      ],
+      "good": [
+        "Good! Rises nicely! Must run, buns in the oven!",
+        "Lovely, lovely! Bit underbaked, but who's counting!",
+        "That'll do! Like day-old bread! Still good! Bye!"
+      ],
+      "meh": [
+        "Bit flat. Like my sourdough. Like my jokes. Bye!",
+        "A bit stale, but I've no time to argue!",
+        "Hmm, half-baked! Can't stop! Truly can't!"
+      ],
+      "misbrew": [
+        "Oh no! Worse than the Great Crumpet Disaster!",
+        "My apron's doing... something! Must go! Sorry!",
+        "That's a recipe for disaster! Literally! Bye!"
+      ],
+      "stormed_off": [
+        "Can't wait! My scones are scorching! Bye!",
+        "My oven's smoking! I'll come back! Maybe!",
+        "Out of time! Like my yeast! Toodles!"
+      ]
+    }
+  },
+  {
+    "id": "haughty_noble",
+    "name": "Lady Prunella Vex",
+    "patience_seconds": 35,
+    "tip_tendency": 0.9,
+    "voice": { "pitch": 0.9, "timbre": "bell" },
+    "speech_style": "Haughty and condescending, says 'one' instead of 'I', finds the shop charmingly rustic, secretly delighted by everything.",
+    "parts": { "body": "robe", "head": "round", "hair": "curly", "accessory": "none" },
+    "reactions": {
+      "perfect": [
+        "Adequate. Which, from one, is a standing ovation.",
+        "One is... impressed. Tell no one. Least of all my aunt.",
+        "Exquisite. One may even mention you at the ball."
+      ],
+      "good": [
+        "Passable. One has had worse at the palace.",
+        "Quite decent, for a shop with a doorbell.",
+        "Acceptable. One shall tip, out of pity and delight."
+      ],
+      "meh": [
+        "How quaint. One will pour it on the roses.",
+        "One's butler brews better, and he fears kettles.",
+        "Rustic. One supposes that is the charm."
+      ],
+      "misbrew": [
+        "Good heavens. One's ancestors are spinning.",
+        "This will be in the society pages. Ugh!",
+        "One has never been so insulted. Thrilling, really."
+      ],
+      "stormed_off": [
+        "One does not wait. One is waited upon. Good day!",
+        "One's carriage is impatient. As is one.",
+        "Dreadful service. One shall return tomorrow."
+      ]
+    }
+  },
+  {
+    "id": "night_watchman",
+    "name": "Constable Dunmore",
+    "patience_seconds": 80,
+    "tip_tendency": 0.1,
+    "voice": { "pitch": 0.55, "timbre": "growl" },
+    "speech_style": "Deadpan and procedural, treats everything as an official incident, writes it all in a tiny notebook, secretly afraid of the dark.",
+    "parts": { "body": "armour", "head": "round", "hair": "bald_beard", "accessory": "lantern" },
+    "reactions": {
+      "perfect": [
+        "Incident report: potion excellent. Case closed.",
+        "Noted: flawless brew. Filed under 'nice'.",
+        "Perfect. I'm legally required to say 'cheers'."
+      ],
+      "good": [
+        "Satisfactory. I'll note it in my little book.",
+        "Good. Two stars of three. Very official.",
+        "Acceptable conduct, brewer. Carry on."
+      ],
+      "meh": [
+        "Hm. I'm writing this down. In small letters.",
+        "Mediocre. Not a crime. Yet.",
+        "I'll let it go with a warning. A mild one."
+      ],
+      "misbrew": [
+        "Right. That's evidence now. Don't touch it.",
+        "Remain composed. I am remaining composed. Mostly.",
+        "I'll need a statement. And a mop."
+      ],
+      "stormed_off": [
+        "I've a patrol to walk. Report filed. Goodbye.",
+        "Time's up. Incident logged: excessive waiting.",
+        "Off on my rounds. Your delay has been noted."
+      ]
+    }
   }
 ]

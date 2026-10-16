@@ -1,6 +1,6 @@
 extends SceneTree
 ## Headless content tests: loads brewmagic/data/*.json through Content and checks every
-## invariant I1..I10 of brewmagic/data/SCHEMA.md, the bubble wrap, the lookup API, that
+## invariant I1..I11 of brewmagic/data/SCHEMA.md, the bubble wrap, the lookup API, that
 ## malformed data produces exactly the expected errors, and the title's content-error banner.
 ##   "$GODOT" --headless --path brewmagic --script "$PWD/tools/test_content.gd"
 ## Prints "test_content: OK" when every test passes; exits 1 otherwise.
@@ -56,6 +56,7 @@ func _tests() -> Array[Callable]:
 		_test_i8_market_serves_later_days,
 		_test_i9_misbrews_overshoot,
 		_test_i10_coverage,
+		_test_i11_mortar_consistency,
 		_test_part_values_have_sprites,
 		_test_malformed_data_errors,
 		_test_title_shows_content_errors,
@@ -110,6 +111,9 @@ func _test_lookup_api() -> void:
 		"requests_for() filters by potion and archetype", str(lines.size()))
 	var frost := Content.ESSENCES.find("frost")
 	_check(Content.misbrews_for(frost).all(func(m: MisbrewLine) -> bool: return m.essence == frost and m.effect == "frosted"), "misbrews_for() filters by essence", str(Content.misbrews_for(frost).size()))
+	for station in Content.STEPS:
+		var upgrade := Content.upgrade_for(station)
+		_check(upgrade != null and upgrade.station == station and upgrade.max_level() > 0 and upgrade.costs.size() == upgrade.max_level(), "upgrade_for(%s)" % station, str(upgrade))
 	var day1 := Content.day(1)
 	_check(day1 != null and day1.starting_coins > 0 and not day1.starting_stock.is_empty() and day1.market.is_empty(), "day(1) has start values, no market", str(day1))
 	_check(Content.day(2) != null and not Content.day(2).market.is_empty() and Content.day(2).starting_stock.is_empty(), "day(2) has a market", str(Content.day(2)))
@@ -251,18 +255,28 @@ func _test_i8_day1_stock_serves_day1() -> void:
 	_check(_can_serve_all(options, 0, stock), "I8 day-1 starting stock brews every day-1 customer Perfect", str(day1.starting_stock))
 
 
-## I8 for days >= 2 on the real data, and a day-2 market too dear for the day-1 pay must fail it.
+## I8 for days >= 2 on the real data; a day-2 market too dear for the day-1 pay must
+## fail it, and stock carried over from day 1 must count (dear frost mint and
+## nightshade caps are covered by the ones day 1 leaves).
 func _test_i8_market_serves_later_days() -> void:
 	var problems := _market_shortfalls()
-	_check(problems.is_empty(), "I8 day N-1 Perfect pay buys every day-N customer at day N's market", "\n".join(problems))
+	_check(problems.is_empty(), "I8 day N-1 Perfect pay plus the carried-over stock buys every day-N customer at day N's market", "\n".join(problems))
 	var texts := _real_texts()
 	var data: Array = JSON.parse_string(texts["days.json"])
 	data[1]["market"]["moonmoss"] = 30
 	texts["days.json"] = JSON.stringify(data)
 	var errors := _load_quietly(texts)
 	var expensive := _market_shortfalls()
-	Content.reload()
 	_check(errors.is_empty() and expensive.size() == 1 and expensive[0].begins_with("day_2:"), "I8 rejects a day-2 market the day-1 pay cannot cover", "%s / %s" % [errors, expensive])
+	texts = _real_texts()
+	data = JSON.parse_string(texts["days.json"])
+	data[1]["market"]["frost_mint"] = 12
+	data[1]["market"]["nightshade_cap"] = 12
+	texts["days.json"] = JSON.stringify(data)
+	errors = _load_quietly(texts)
+	var carried := _market_shortfalls()
+	Content.reload()
+	_check(errors.is_empty() and carried.is_empty(), "I8 counts the stock carried over from day 1", "%s / %s" % [errors, carried])
 
 
 func _test_i9_misbrews_overshoot() -> void:
@@ -282,8 +296,10 @@ func _test_i10_coverage() -> void:
 			var count := Content.requests_for(item.id, archetype.id).size()
 			if count < MIN_REQUESTS_PER_PAIR:
 				problems.append("%s/%s has %d requests" % [item.id, archetype.id, count])
-		if item.unlock_day <= 2 and item.steps != PackedStringArray(["stir", "pour"]):
-			problems.append("%s steps %s (days 1-2 use stir, pour)" % [item.id, item.steps])
+		if item.unlock_day == 1 and item.steps != PackedStringArray(["stir", "pour"]):
+			problems.append("%s steps %s (day 1 uses stir, pour)" % [item.id, item.steps])
+	if not Content.potions().any(func(item: PotionType) -> bool: return item.unlock_day == 2 and "mortar" in item.steps):
+		problems.append("no day-2 potion uses the mortar")
 	for k in Content.ESSENCES.size():
 		var lines := Content.misbrews_for(k)
 		if lines.size() < MIN_MISBREWS_PER_ESSENCE:
@@ -297,9 +313,21 @@ func _test_i10_coverage() -> void:
 			if count < Content.MIN_REACTION_LINES:
 				problems.append("%s has %d %s lines" % [archetype.id, count, grade])
 	for item in Content.ingredients():
-		if item.unlock_day <= 2 and item.grind:
-			problems.append("%s needs grinding before day 3" % item.id)
+		if item.unlock_day == 1 and item.grind:
+			problems.append("%s needs grinding on day 1" % item.id)
 	_check(problems.is_empty(), "I10 coverage", "\n".join(problems))
+
+
+## I11: a potion lists "mortar" exactly when every exact recipe of it needs a grind ingredient.
+func _test_i11_mortar_consistency() -> void:
+	var problems: Array[String] = []
+	for item in Content.potions():
+		var recipes := _exact_recipes(item.target, Content.ingredients_unlocked_by(item.unlock_day))
+		var all_grind := not recipes.is_empty() and recipes.all(func(brew: PackedStringArray) -> bool:
+			return Array(brew).any(func(id: String) -> bool: return Content.ingredient(id).grind))
+		if ("mortar" in item.steps) != all_grind:
+			problems.append("%s steps %s but recipes %s" % [item.id, item.steps, recipes])
+	_check(problems.is_empty(), "I11 mortar steps match the grind ingredients", "\n".join(problems))
 
 
 ## Every part value the schema allows has both idle frames in the customer atlas, so the
@@ -341,6 +369,18 @@ func _test_malformed_data_errors() -> void:
 			"data/days.json [day_2] customers[1].archetype: unknown archetype id 'nobody'"],
 		["duplicate id", "misbrews.json", func(data: Array) -> void: data.append((data[0] as Dictionary).duplicate()),
 			"data/misbrews.json [misbrew_ember_1] id: duplicate id 'misbrew_ember_1'"],
+		["upgrade level not stronger", "upgrades.json", func(data: Array) -> void: data[0]["levels"][1]["tolerance"] = 1.1,
+			"data/upgrades.json [balanced_ladle] levels[1].tolerance: 1.1 must be greater than 1.25 (the level below)"],
+		["upgrade tolerance too high", "upgrades.json", func(data: Array) -> void: data[0]["levels"][1]["tolerance"] = 9.0,
+			["data/upgrades.json [balanced_ladle] levels[1].tolerance: 9.0 is outside 1.0..3.0",
+			"data/upgrades.json [balanced_ladle] levels[1].tolerance: 1.0 must be greater than 1.25 (the level below)"]],
+		["upgrade levels empty", "upgrades.json", func(data: Array) -> void: data[0]["levels"] = [],
+			"data/upgrades.json [balanced_ladle] levels: is empty"],
+		["upgrade levels not a list", "upgrades.json", func(data: Array) -> void: data[0]["levels"] = "lots",
+			"data/upgrades.json [balanced_ladle] levels: expected Array, got String"],
+		["two upgrades for one station", "upgrades.json", func(data: Array) -> void: data[1]["station"] = "stir",
+			["data/upgrades.json [wide_neck_funnel] station: 'stir' already has upgrade 'balanced_ladle'",
+			"data/upgrades.json [-] station: station 'pour' has no upgrade"]],
 		["overlong line", "archetypes.json", func(data: Array) -> void: data[0]["reactions"]["perfect"][0] = "word ".repeat(16).strip_edges(),
 			"data/archetypes.json [goat_farmer] reactions.perfect[0]: bubble text is 79 characters (max 78)"],
 	]
@@ -352,7 +392,9 @@ func _test_malformed_data_errors() -> void:
 		mutate.call(data)
 		texts[file] = JSON.stringify(data)
 		var errors := _load_quietly(texts)
-		_check(errors == [case[3]], "malformed data: " + case[0], "\n".join(errors))
+		# The expected error, or the expected errors in order when one mistake causes several.
+		var expected: Array = case[3] if case[3] is Array else [case[3]]
+		_check(errors == expected, "malformed data: " + case[0], "\n".join(errors))
 	var broken := _real_texts()
 	broken["misbrews.json"] = "[{"
 	var parse_errors := _load_quietly(broken)
@@ -447,31 +489,81 @@ func _overshoots(brew: Vector4i, target: Vector4i) -> bool:
 	return false
 
 
-## SCHEMA.md I8 for days >= 2 on the loaded content: one problem per day N whose customers'
-## cheapest exact recipes, at day N's market prices, cost more than day N-1's Perfect pay.
+## SCHEMA.md I8 for days >= 2 on the loaded content, simulated from day 1's starting
+## stock. A day starts with the stock any Perfect run of the day before can leave
+## (every leftover is tried: the worst one counts). One problem per day N where, for
+## some carried-over stock, the cheapest Perfect plan (an exact recipe per customer)
+## buys more at day N's market (Economy.market_price) than day N-1's Perfect pay
+## (Economy.pay, no tips, no other coins) covers.
 func _market_shortfalls() -> Array[String]:
 	var problems: Array[String] = []
 	var days := Content.days()
+	var carried: Array[Dictionary] = []
+	for plan in _plans(days[0]):
+		if plan.keys().all(func(id: String) -> bool: return plan[id] <= days[0].starting_stock.get(id, 0)):
+			_add_unique(carried, _leftover(days[0].starting_stock, plan))
 	for n in range(1, days.size()):
 		var spec := days[n]
 		var budget := 0
 		for customer in days[n - 1].customers:
 			budget += Economy.pay(Content.potion(customer.potion).price, Brew.Grade.PERFECT)
-		var cost := 0
-		for customer in spec.customers:
+		var plans := _plans(spec)
+		if plans.is_empty() or carried.is_empty():
+			problems.append("%s: %s" % [spec.id, "a customer has no exact recipe" if plans.is_empty() else "no Perfect day %d to carry stock over from" % days[n - 1].day])
+			carried = []
+			continue
+		var next: Array[Dictionary] = []
+		var worst := 0
+		var worst_stock: Dictionary = {}
+		for stock: Dictionary in carried:
 			var cheapest := -1
-			for recipe in _exact_recipes(Content.potion(customer.potion).target, Content.ingredients_unlocked_by(spec.day)):
-				var price := 0
-				for id in recipe:
-					price += spec.market[id]
-				if cheapest < 0 or price < cheapest:
-					cheapest = price
-			if cheapest < 0:
-				problems.append("%s: %s has no exact recipe" % [spec.id, customer.potion])
-			cost += maxi(cheapest, 0)
-		if cost > budget:
-			problems.append("%s: cheapest exact recipes cost %d at its market, day %d Perfect pay is %d" % [spec.id, cost, days[n - 1].day, budget])
+			for plan in plans:
+				var cost := 0
+				for id: String in plan:
+					cost += maxi(plan[id] - int(stock.get(id, 0)), 0) * Economy.market_price(spec, Content.ingredient(id))
+				if cheapest < 0 or cost < cheapest:
+					cheapest = cost
+				if cost <= budget:
+					_add_unique(next, _leftover(stock, plan))
+			if cheapest > worst:
+				worst = cheapest
+				worst_stock = stock
+		if worst > budget:
+			problems.append("%s: with stock %s left from day %d, the cheapest exact recipes cost %d at its market, day %d Perfect pay is %d" % [spec.id, worst_stock, days[n - 1].day, worst, days[n - 1].day, budget])
+		carried = next
 	return problems
+
+
+## Every distinct Perfect plan of `spec`: one exact recipe (ingredients unlocked by its
+## day) per customer, as ingredient id -> count used.
+func _plans(spec: DaySpec) -> Array[Dictionary]:
+	var plans: Array[Dictionary] = [{}]
+	var pool := Content.ingredients_unlocked_by(spec.day)
+	for customer in spec.customers:
+		var grown: Array[Dictionary] = []
+		for plan in plans:
+			for recipe in _exact_recipes(Content.potion(customer.potion).target, pool):
+				var used := plan.duplicate()
+				for id in recipe:
+					used[id] = int(used.get(id, 0)) + 1
+				_add_unique(grown, used)
+		plans = grown
+	return plans
+
+
+## What is left of `stock` after a plan using `used`, buying exactly what is missing.
+func _leftover(stock: Dictionary, used: Dictionary) -> Dictionary:
+	var left := stock.duplicate()
+	for id: String in used:
+		left[id] = maxi(int(stock.get(id, 0)), used[id]) - used[id]
+	return left
+
+
+func _add_unique(list: Array[Dictionary], item: Dictionary) -> void:
+	for existing in list:
+		if existing.recursive_equal(item, 1):
+			return
+	list.append(item)
 
 
 ## Backtracking: can customers `index..` each get one of their recipes from `stock`?

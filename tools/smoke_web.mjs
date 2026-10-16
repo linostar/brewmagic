@@ -6,7 +6,7 @@
 // CSS is not applied, or a screenshot with nothing drawn. Then each run plays and
 // serves the first day-1 customer, requiring the game's "[Shop] Served customer 1/N"
 // log line. Pointer runs (CDP touch events on the phone, the mouse on desktop) tap
-// "Open the shop", the recipe's ingredients and Brew, stir real circles at the target
+// "Open the shop" on the title and on the morning screen, the recipe's ingredients and Brew, stir real circles at the target
 // tempo and hold the pour to the line; the game's logs must show that each gesture reached
 // the game and was recognised (see checkStir/checkPour), so a broken input path fails
 // however slow the renderer is. The keyboard run uses only
@@ -16,7 +16,7 @@
 // Env:   SMOKE_BOOT_TIMEOUT_MS (default 30000), SMOKE_SETTLE_MS (default 3000),
 //        SMOKE_STEP_TIMEOUT_MS (each step of the shop run, default 20000)
 // Screenshots (next to buildDir): build/smoke-<run>.png (title) and
-// build/smoke-<run>-{shop,stir,pour,served}.png, <run> = desktop | mobile | keyboard.
+// build/smoke-<run>-{morning,shop,stir,pour,served}.png, <run> = desktop | mobile | keyboard.
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launchChrome, serveBuild } from './web_util.mjs';
@@ -43,6 +43,8 @@ const TOUCH_CSS = { touchAction: 'none', overscrollBehavior: 'none', userSelect:
 const BASE = { width: 270, height: 480 };
 // scenes/title.tscn OpenShopButton: centred, anchor_top 0.72 of the column.
 const TITLE_BUTTON_ANCHOR_Y = 0.72;
+// scenes/morning.tscn OpenShopButton: centred, anchor_top 0.72 of the column.
+const MORNING_BUTTON_ANCHOR_Y = 0.72;
 // Stations are 270x288 at stage y 192 (scenes/stations/*.tscn); the stir centre and
 // ring are Stir.CENTRE (135, 121) and Stir.RING_RADIUS 52, so the stage point is (135, 313).
 const STIR_CENTRE = { x: 135, y: 313 };
@@ -134,7 +136,8 @@ function checkQualities(run, logs, qualities, served, accept, expected) {
     .map(([station, quality]) => `${station} quality ${quality.toFixed(3)}, expected ${expected}`);
 }
 
-// Keyboard only, as a player without a pointer: Enter on the focused "Open the shop",
+// Keyboard only, as a player without a pointer: Enter on the focused "Open the shop" of the
+// title, then Enter on the focused "Open the shop" of the morning,
 // Shift+Tab from the first shelf item (focused when the customer asks) wraps to the pause
 // button, Enter pauses, Down + Enter switches Assist on, Up + Enter resumes (focus returns
 // to the pause button), Tab wraps to the first shelf item and Enter adds ember_pepper, Right Right + Enter adds sunpetal,
@@ -142,7 +145,10 @@ function checkQualities(run, logs, qualities, served, accept, expected) {
 async function serveFirstCustomerByKeyboard(page, run, logs, shot) {
   const key = (name) => page.keyboard.press(name);
   await key('Enter');
-  await waitForLog(page, logs, /^\[Game\] goto TITLE -> SHOP/, 'the shop to open (Enter on "Open the shop")');
+  await waitForLog(page, logs, /^\[Game\] Arrived at MORNING/, 'the morning of day 1 (Enter on "Open the shop")');
+  await shot('morning');
+  await key('Enter');
+  await waitForLog(page, logs, /^\[Game\] goto MORNING -> SHOP/, 'the shop to open (Enter on the morning\'s "Open the shop")');
   await waitForLog(page, logs, /^\[Shop\] Customer 1 is waiting/, 'the first customer to ask');
   await shot('shop');
   await key('Shift+Tab');
@@ -194,7 +200,10 @@ async function serveFirstCustomer(page, context, run, logs) {
     return failures;
   }
   await pointer.tap(map.page(map.visible.width / 2, map.visible.height * TITLE_BUTTON_ANCHOR_Y));
-  await waitForLog(page, logs, /^\[Game\] goto TITLE -> SHOP/, 'the shop to open');
+  await waitForLog(page, logs, /^\[Game\] Arrived at MORNING/, 'the morning of day 1 (tap on "Open the shop")');
+  await shot('morning');
+  await pointer.tap(map.page(map.visible.width / 2, map.visible.height * MORNING_BUTTON_ANCHOR_Y));
+  await waitForLog(page, logs, /^\[Game\] goto MORNING -> SHOP/, 'the shop to open (tap on the morning\'s "Open the shop")');
   const stageMatch = await waitForLog(page, logs, /^\[Shop\] Stage at \(([\d.-]+), ([\d.-]+)\)/, 'the stage layout');
   const stage = { x: Number(stageMatch[1]), y: Number(stageMatch[2]) };
   const shelfLine = (await waitForLog(page, logs, /^\[Shop\] Shelf \(stage coordinates\): (.*)$/, 'the shelf layout'))[1];

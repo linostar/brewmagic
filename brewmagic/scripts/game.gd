@@ -1,25 +1,36 @@
 class_name GameState
 extends Node
 ## Autoload "Game" (scenes/game.tscn): the app flow state machine and its
-## scene transitions, plus ScreenFit (the visible and safe-area rects in base
-## units and the centred 270-wide gameplay column).
+## scene transitions, the player's progress and settings with their save in
+## user://, plus ScreenFit (the visible and safe-area rects in base units and the
+## centred 270-wide gameplay column).
+## Story flow: title -> morning -> shop -> summary -> market -> morning (next day) ...
+## The shop commits a finished day with finish_day(); quitting mid-shift keeps the
+## progress from before that day.
 ## Every flow change goes through goto(), which fades out, swaps the scene,
 ## fades in and logs the transition. A flow state whose scene is missing is
 ## reported with push_error and a visible error label instead of crashing; a
 ## scene that cannot start redirects with abort_to().
+##
+## Sound: play_sfx() plays on the SFX bus (default_bus_layout.tres). Browsers
+## refuse audio before the player's first input, so nothing plays until the
+## AudioUnlock child (scripts/ui/audio_unlock.gd) reports that input (unlock_audio).
 
 signal transition_finished(state: Flow)
 ## Emitted when the visible rect or the safe area changes (resize, rotation).
 signal screen_fit_changed
 
-enum Flow { TITLE, SHOP }
+enum Flow { TITLE, MORNING, SHOP, SUMMARY, MARKET }
 
 ## Where the autoload lives. Scripts fetch it through this path instead of the
 ## global "Game" name, which does not exist yet when test scripts compile.
 const AUTOLOAD_PATH := ^"/root/Game"
 const SCENE_PATHS: Dictionary[Flow, String] = {
 	Flow.TITLE: "res://scenes/title.tscn",
+	Flow.MORNING: "res://scenes/morning.tscn",
 	Flow.SHOP: "res://scenes/shop.tscn",
+	Flow.SUMMARY: "res://scenes/summary.tscn",
+	Flow.MARKET: "res://scenes/market.tscn",
 }
 ## Seconds for each half of a transition (fade out, then fade in).
 const FADE_TIME := 0.18
@@ -27,11 +38,54 @@ const FADE_TIME := 0.18
 const COLUMN_WIDTH := 270.0
 ## Station tolerance multiplier while Gentle mode is on.
 const GENTLE_TOLERANCE_SCALE := 1.5
+const SFX_BUS := &"SFX"
+## Sound effects that may overlap (voice blips, later the rest of the SFX).
+const SFX_VOICES := 4
+## The audio driver of headless runs (no device, never mixes).
+const SILENT_AUDIO_DRIVER := "Dummy"
+const SAVE_PATH := "user://save.json"
+## The save of tool runs (see _ready); tests delete it when they finish.
+const TOOL_SAVE_PATH := "user://tool_save.json"
+## The save format's version. Every change to the format bumps it and appends one
+## step to save_migrations(), so saves of older versions are upgraded, not discarded.
+const SAVE_VERSION := 1
+## Upper bounds a save's numbers must respect (anything else marks it corrupt);
+## SAVE_SCORE_MAX bounds reputation (either sign) and rush_best.
+const SAVE_COINS_MAX := 999999
+const SAVE_STOCK_MAX := 9999
+const SAVE_SCORE_MAX := 999999
+## The largest whole number a JSON (double) number holds exactly: 2^53.
+const SAVE_EXACT_MAX := 9007199254740992.0
+## The keys of a save, each with the type its value must have.
+const SAVE_KEYS: Dictionary[String, Variant.Type] = {
+	"version": TYPE_INT, "day": TYPE_INT, "at_market": TYPE_BOOL, "coins": TYPE_INT, "reputation": TYPE_INT,
+	"stock": TYPE_DICTIONARY, "upgrades": TYPE_DICTIONARY, "codex": TYPE_DICTIONARY, "flags": TYPE_DICTIONARY,
+	"rush_best": TYPE_INT, "settings": TYPE_DICTIONARY,
+}
+const SETTINGS_KEYS: Array[String] = ["assist", "gentle"]
 
-## Settings for this session (persisted with the save in plan step 6). Stations
-## read them through the shop when they begin.
+## Settings, persisted in the save. Stations read them through the shop when they begin.
 var assist_mode := false
 var gentle_mode := false
+
+## Progress, persisted in the save. `day` is the story day the next morning shows
+## (past the last day once the story is done); `at_market` means the evening market
+## before `day` is still open (Continue resumes there).
+var day := Content.FIRST_DAY
+var at_market := false
+var coins := 0
+var reputation := 0
+## Ingredient id -> count in the shop's stock (carried over between days).
+var stock: Dictionary[String, int] = {}
+## Station step id -> owned upgrade level (absent means 0).
+var upgrades: Dictionary[String, int] = {}
+## Filled in plan step 7.
+var codex: Dictionary = {}
+var flags: Dictionary = {}
+## Filled in plan step 8.
+var rush_best := 0
+## Where the save lives: SAVE_PATH, or TOOL_SAVE_PATH in tool runs.
+var save_path := SAVE_PATH
 
 ## Tests replace entries to point a state at their own (or a missing) scene.
 var scene_paths: Dictionary[Flow, String] = SCENE_PATHS.duplicate()
@@ -44,16 +98,34 @@ var transition_log: Array[String] = []
 var state := Flow.TITLE
 ## The args of the latest goto(); the new scene reads them in its _ready().
 var flow_args: Dictionary = {}
+## True once the player has touched, clicked or pressed a key (sound may play).
+var audio_unlocked := false
+## How many play_sfx() calls played (tests count voice blips with it).
+var sfx_played := 0
 
 var _transitioning := false
 var _visible_rect := Rect2()
 var _safe_rect := Rect2()
+var _sfx: AudioStreamPlayer
+var _told_audio_locked := false
 
 @onready var _curtain: ColorRect = $Fade/Curtain
 @onready var _error_label: Label = $Fade/ErrorLabel
 
 
 func _ready() -> void:
+	if AudioServer.get_bus_index(SFX_BUS) < 0:
+		push_error("[Game] Audio bus '%s' is missing from default_bus_layout.tres; sound effects play on Master" % SFX_BUS)
+	_sfx = AudioStreamPlayer.new()
+	_sfx.name = "Sfx"
+	_sfx.bus = SFX_BUS
+	_sfx.max_polyphony = SFX_VOICES
+	add_child(_sfx)
+	# Tool runs (the tests, the project check, the headless main-scene run) drive the
+	# tree from a SceneTree script; they must never read or overwrite the player's save.
+	if get_tree().get_script() != null:
+		save_path = TOOL_SAVE_PATH
+	load_game()
 	_fit_window()
 	get_viewport().size_changed.connect(_update_screen_fit)
 	_update_screen_fit()
@@ -118,6 +190,7 @@ func goto(new_state: Flow, args: Dictionary = {}) -> void:
 	flow_args = args
 	await _fade(0.0)
 	_transitioning = false
+	print("[Game] Arrived at %s" % to_name)
 	transition_finished.emit(new_state)
 
 
@@ -131,13 +204,186 @@ func abort_to(fallback: Flow, message: String) -> void:
 	_report_error(message)
 
 
+## Called on the player's first input; from then on play_sfx() plays.
+func unlock_audio() -> void:
+	if audio_unlocked:
+		return
+	audio_unlocked = true
+	print("[Game] Audio unlocked by the first input")
+
+
+## Plays `stream` on the SFX bus at `pitch`. Before the first input (audio_unlocked)
+## it plays nothing (logged once), so browsers never see an autoplay attempt.
+## Without an audio device (the Dummy driver of headless runs) it only counts: that
+## driver never mixes, so its playbacks would never finish and leak at exit.
+func play_sfx(stream: AudioStream, pitch := 1.0) -> void:
+	if not audio_unlocked:
+		if not _told_audio_locked:
+			print("[Game] Sound skipped until the first input unlocks audio")
+			_told_audio_locked = true
+		return
+	sfx_played += 1
+	if AudioServer.get_driver_name() == SILENT_AUDIO_DRIVER:
+		return
+	if _sfx.stream != stream:
+		_sfx.stream = stream
+	_sfx.pitch_scale = pitch
+	_sfx.play()
+
+
 func is_transitioning() -> bool:
 	return _transitioning
 
 
-## The Station tolerance_scale the settings ask for (upgrades multiply in later).
-func tolerance_scale() -> float:
-	return GENTLE_TOLERANCE_SCALE if gentle_mode else 1.0
+## The Station tolerance_scale for station step `step` ("stir", ...): its owned
+## upgrade's multiplier, times GENTLE_TOLERANCE_SCALE while Gentle mode is on.
+func tolerance_scale(step: String) -> float:
+	var gentle := GENTLE_TOLERANCE_SCALE if gentle_mode else 1.0
+	var upgrade := Content.upgrade_for(step)
+	if upgrade == null:
+		return gentle
+	return Economy.upgrade_tolerance(upgrade, upgrades.get(step, 0)) * gentle
+
+
+## Starts a new story from day 1's starting coins and stock (settings and the Rush
+## Hour best stay) and saves it.
+func new_game() -> void:
+	var best := rush_best
+	_reset_progress()
+	rush_best = best
+	var first := Content.day(Content.FIRST_DAY)
+	if first != null:
+		coins = first.starting_coins
+		stock = first.starting_stock.duplicate()
+	print("[Game] New game: day %d, %d coins, stock %s" % [day, coins, stock])
+	save_game()
+
+
+## True when a saved story can be resumed: past day 1 and not past the last day.
+func can_continue() -> bool:
+	return day > Content.FIRST_DAY and day <= Content.days().size()
+
+
+## Resumes the saved story: the open market, else the morning of `day`.
+func continue_game() -> void:
+	goto(Flow.MARKET if at_market else Flow.MORNING)
+
+
+## The shop's end of day: commits the day's coins, stock and reputation change,
+## moves on to the next day (its market opens when that day exists), saves, and
+## shows the summary with `result` (Shop.day_result()).
+func finish_day(result: Dictionary, coins_now: int, stock_now: Dictionary[String, int], reputation_change: int) -> void:
+	coins = coins_now
+	for id in stock_now:
+		stock[id] = stock_now[id]
+	reputation += reputation_change
+	day = int(result["day"]) + 1
+	at_market = day <= Content.days().size()
+	print("[Game] Day %d finished: %d coins, reputation %d, next day %d%s" % [day - 1, coins, reputation, day, " (market open)" if at_market else " (story over)"])
+	save_game()
+	goto(Flow.SUMMARY, result)
+
+
+## Closes the market and goes to the next morning.
+func leave_market() -> void:
+	at_market = false
+	save_game()
+	goto(Flow.MORNING)
+
+
+## Buys one `item` for `price` coins. False (nothing changes) when coins fall short.
+func buy_stock(item: Ingredient, price: int) -> bool:
+	if price > coins:
+		print("[Game] Cannot buy %s for %d: %d coins" % [item.id, price, coins])
+		return false
+	coins -= price
+	stock[item.id] = stock.get(item.id, 0) + 1
+	print("[Game] Bought %s for %d: %d in stock, %d coins" % [item.id, price, stock[item.id], coins])
+	save_game()
+	return true
+
+
+## Buys the next level of `upgrade`. False (nothing changes) when it is maxed or coins fall short.
+func buy_upgrade(upgrade: Upgrade) -> bool:
+	var level: int = upgrades.get(upgrade.station, 0)
+	var cost := Economy.upgrade_cost(upgrade, level)
+	if cost == Economy.MAXED or cost > coins:
+		print("[Game] Cannot buy %s level %d (cost %d): %d coins" % [upgrade.id, level + 1, cost, coins])
+		return false
+	coins -= cost
+	upgrades[upgrade.station] = level + 1
+	print("[Game] Bought %s level %d for %d: tolerance x%.2f, %d coins" % [upgrade.id, level + 1, cost, Economy.upgrade_tolerance(upgrade, level + 1), coins])
+	save_game()
+	return true
+
+
+## Writes progress and settings to save_path; a failure is reported, never silent.
+## The data goes to a temporary file first, which then replaces the save, so a
+## failed write leaves the last good save in place.
+func save_game() -> void:
+	var data := {
+		"version": SAVE_VERSION, "day": day, "at_market": at_market, "coins": coins, "reputation": reputation,
+		"stock": stock, "upgrades": upgrades, "codex": codex, "flags": flags, "rush_best": rush_best,
+		"settings": {"assist": assist_mode, "gentle": gentle_mode},
+	}
+	var temp := save_path + ".tmp"
+	var file := FileAccess.open(temp, FileAccess.WRITE)
+	if file == null:
+		_report_error("Could not open '%s' for writing the save: %s; '%s' is unchanged" % [temp, error_string(FileAccess.get_open_error()), save_path])
+		return
+	var written := file.store_string(JSON.stringify(data, "  "))
+	file.close()
+	if not written:
+		DirAccess.remove_absolute(temp)
+		_report_error("Could not write the save to '%s'; '%s' is unchanged" % [temp, save_path])
+		return
+	var replaced := DirAccess.rename_absolute(temp, save_path)
+	if replaced != OK:
+		DirAccess.remove_absolute(temp)
+		_report_error("Could not replace save '%s' with '%s': %s; the save is unchanged" % [save_path, temp, error_string(replaced)])
+		return
+	print("[Game] Saved to %s: day %d%s, %d coins, reputation %d, upgrades %s, assist %s, gentle %s" % [
+		save_path, day, " (market)" if at_market else "", coins, reputation, upgrades, assist_mode, gentle_mode])
+
+
+## Loads save_path into progress and settings. A missing save starts fresh silently
+## (a log line only); an unreadable or corrupt one is reported (push_error and the
+## error label), moved to backup_path() and replaced by defaults. A JSON instance
+## reports parse errors as return values, so each problem is reported once, by us.
+func load_game() -> void:
+	_reset_progress()
+	assist_mode = false
+	gentle_mode = false
+	if not FileAccess.file_exists(save_path):
+		print("[Game] No save at %s; starting fresh" % save_path)
+		return
+	if not Content.errors().is_empty():
+		# The save is checked against the content; with broken content a valid save would
+		# look corrupt. The title keeps the shop closed, so the save is left untouched.
+		print("[Game] Content has problems; the save at %s is left unread and untouched" % save_path)
+		return
+	var text := FileAccess.get_file_as_string(save_path)
+	if text.is_empty() and FileAccess.get_open_error() != OK:
+		_discard_save("unreadable (%s)" % error_string(FileAccess.get_open_error()))
+		return
+	var json := JSON.new()
+	if json.parse(text) != OK:
+		_discard_save("corrupt (line %d: %s)" % [json.get_error_line(), json.get_error_message()])
+		return
+	var problem := _apply_save(json.data)
+	if problem != "":
+		_reset_progress()
+		assist_mode = false
+		gentle_mode = false
+		_discard_save("corrupt (%s)" % problem)
+		return
+	print("[Game] Loaded save from %s: day %d%s, %d coins, reputation %d, stock %s, upgrades %s, assist %s, gentle %s" % [
+		save_path, day, " (market)" if at_market else "", coins, reputation, stock, upgrades, assist_mode, gentle_mode])
+
+
+## Where a corrupt save is moved: save.json -> save.corrupt.json.
+func backup_path() -> String:
+	return save_path.get_basename() + ".corrupt.json"
 
 
 ## The visible area in base units: 270x480 or larger on one axis (aspect expand).
@@ -183,6 +429,128 @@ func _update_screen_fit() -> void:
 	_safe_rect = safe
 	print("[Game] ScreenFit: visible %s, safe %s, column %s" % [visible, safe, column_rect()])
 	screen_fit_changed.emit()
+
+
+func _reset_progress() -> void:
+	day = Content.FIRST_DAY
+	at_market = false
+	coins = 0
+	reputation = 0
+	stock = {}
+	upgrades = {}
+	codex = {}
+	flags = {}
+	rush_best = 0
+
+
+## Applies a parsed save; returns "" or what is wrong with it (the caller then
+## resets the progress it may have half applied).
+func _apply_save(data: Variant) -> String:
+	if not data is Dictionary:
+		return "not an object"
+	var saved: Dictionary = data
+	var outdated := migrate_save(saved, save_migrations(), SAVE_VERSION)
+	if outdated != "":
+		return outdated
+	for key: Variant in saved:
+		if not SAVE_KEYS.has(str(key)):
+			return "unknown key '%s'" % key
+	for key in SAVE_KEYS:
+		if not saved.has(key):
+			return "missing key '%s'" % key
+		var value: Variant = saved[key]
+		var ok := _is_whole(value) if SAVE_KEYS[key] == TYPE_INT else typeof(value) == SAVE_KEYS[key]
+		if not ok:
+			return "'%s' is not %s" % [key, "a whole number" if SAVE_KEYS[key] == TYPE_INT else type_string(SAVE_KEYS[key])]
+	day = int(saved["day"])
+	if day < Content.FIRST_DAY or day > Content.LAST_DAY + 1:
+		return "day %d is outside %d..%d" % [day, Content.FIRST_DAY, Content.LAST_DAY + 1]
+	at_market = saved["at_market"]
+	coins = int(saved["coins"])
+	if coins < 0 or coins > SAVE_COINS_MAX:
+		return "coins %d is outside 0..%d" % [coins, SAVE_COINS_MAX]
+	reputation = int(saved["reputation"])
+	if absi(reputation) > SAVE_SCORE_MAX:
+		return "reputation %d is outside -%d..%d" % [reputation, SAVE_SCORE_MAX, SAVE_SCORE_MAX]
+	rush_best = int(saved["rush_best"])
+	if rush_best < 0 or rush_best > SAVE_SCORE_MAX:
+		return "rush_best %d is outside 0..%d" % [rush_best, SAVE_SCORE_MAX]
+	var saved_stock: Dictionary = saved["stock"]
+	for id: Variant in saved_stock:
+		if Content.ingredients().all(func(item: Ingredient) -> bool: return item.id != str(id)):
+			return "stock has unknown ingredient '%s'" % id
+		var count: Variant = saved_stock[id]
+		if not _is_whole(count) or int(count) < 0 or int(count) > SAVE_STOCK_MAX:
+			return "stock of '%s' is not a count 0..%d" % [id, SAVE_STOCK_MAX]
+		stock[str(id)] = int(count)
+	var saved_upgrades: Dictionary = saved["upgrades"]
+	for station: Variant in saved_upgrades:
+		var matching := Content.upgrades().filter(func(item: Upgrade) -> bool: return item.station == str(station))
+		if matching.is_empty():
+			return "upgrades has unknown station '%s'" % station
+		var top: int = (matching[0] as Upgrade).max_level()
+		var level: Variant = saved_upgrades[station]
+		if not _is_whole(level) or int(level) < 0 or int(level) > top:
+			return "upgrade level of '%s' is not 0..%d" % [station, top]
+		upgrades[str(station)] = int(level)
+	codex = saved["codex"]
+	flags = saved["flags"]
+	var settings: Dictionary = saved["settings"]
+	if settings.size() != SETTINGS_KEYS.size() or not SETTINGS_KEYS.all(func(key: String) -> bool: return typeof(settings.get(key)) == TYPE_BOOL):
+		return "settings must be exactly %s, each true or false" % [SETTINGS_KEYS]
+	assist_mode = settings["assist"]
+	gentle_mode = settings["gentle"]
+	return ""
+
+
+## Upgrades `saved` (a parsed save, changed in place) to version `target`:
+## migrations[i] turns a version i + 1 save into version i + 2. Returns "" or why
+## it cannot (no whole version >= 1, or a version newer than `target`).
+static func migrate_save(saved: Dictionary, migrations: Array[Callable], target: int) -> String:
+	if not _is_whole(saved.get("version")) or int(saved["version"]) < 1:
+		return "'version' is not a whole number >= 1"
+	if migrations.size() != target - 1:
+		push_error("[Game] %d save upgrade steps for save version %d (expected %d)" % [migrations.size(), target, target - 1])
+		return "this game cannot upgrade saves (%d steps for version %d)" % [migrations.size(), target]
+	var version := int(saved["version"])
+	if version > target:
+		return "version %d is newer than this game's %d" % [version, target]
+	while version < target:
+		migrations[version - 1].call(saved)
+		version += 1
+		saved["version"] = version
+		print("[Game] Upgraded the save to version %d" % version)
+	return ""
+
+
+## The save format's upgrade steps: entry i turns a version i + 1 save into
+## version i + 2 (none yet: version 1 is the first). Steps run before the save is
+## validated, so they must read keys with get() and leave anything malformed for
+## the validation to report.
+static func save_migrations() -> Array[Callable]:
+	return []
+
+
+## Reports `problem`, moves the bad save to backup_path() and writes defaults in
+## its place. When the move fails the bad save stays where it is (reported), and
+## the next save write replaces it.
+func _discard_save(problem: String) -> void:
+	var cleared := OK
+	if FileAccess.file_exists(backup_path()):
+		cleared = DirAccess.remove_absolute(backup_path())
+	var moved := DirAccess.rename_absolute(save_path, backup_path()) if cleared == OK else cleared
+	if moved != OK:
+		_report_error("Save '%s' is %s and could not be moved to '%s' (%s); the game starts fresh and the next save replaces it" % [save_path, problem, backup_path(), error_string(moved)])
+		return
+	_report_error("Save '%s' is %s; it was moved to '%s' and replaced with fresh progress" % [save_path, problem, backup_path()])
+	save_game()
+
+
+## JSON numbers load as floats; accept whole numbers only, and only those a float
+## holds exactly (|n| <= 2^53): int() of a larger float is CPU dependent (arm64
+## saturates, x86-64 gives INT64_MIN), so range checks after it could be fooled.
+static func _is_whole(value: Variant) -> bool:
+	return value is int or (value is float and is_finite(value) and value == floorf(value) and absf(value) <= SAVE_EXACT_MAX)
 
 
 func _fade(alpha: float) -> void:

@@ -1,0 +1,113 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/summary.gd" id="1_summary"]
+
+[node name="Summary" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_summary")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.29, 0.204, 0.251, 1)
+
+[node name="Column" type="Control" parent="."]
+anchors_preset = 0
+offset_right = 270.0
+offset_bottom = 480.0
+mouse_filter = 2
+
+[node name="DayLabel" type="Label" parent="Column"]
+layout_mode = 1
+anchors_preset = -1
+anchor_top = 0.1
+anchor_right = 1.0
+anchor_bottom = 0.1
+offset_top = -16.0
+offset_bottom = 16.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(1, 0.788, 0.361, 1)
+theme_override_colors/font_outline_color = Color(0.11, 0.078, 0.125, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 25
+text = "Day done"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="TitleLabel" type="Label" parent="Column"]
+layout_mode = 1
+anchors_preset = -1
+anchor_top = 0.17
+anchor_right = 1.0
+anchor_bottom = 0.17
+offset_left = 8.0
+offset_top = -12.0
+offset_right = -8.0
+offset_bottom = 12.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_type_variation = &"TitleLabel"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Card" type="PanelContainer" parent="Column"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 0.22
+anchor_right = 0.5
+anchor_bottom = 0.22
+offset_left = -118.0
+offset_right = 118.0
+offset_bottom = 60.0
+grow_horizontal = 2
+
+[node name="List" type="VBoxContainer" parent="Column/Card"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Served" type="Label" parent="Column/Card/List"]
+layout_mode = 2
+theme_type_variation = &"DarkLabel"
+horizontal_alignment = 1
+
+[node name="Grades" type="GridContainer" parent="Column/Card/List"]
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_constants/h_separation = 16
+theme_override_constants/v_separation = 2
+columns = 2
+
+[node name="Money" type="Label" parent="Column/Card/List"]
+layout_mode = 2
+theme_type_variation = &"DarkLabel"
+horizontal_alignment = 1
+
+[node name="ContinueButton" type="Button" parent="Column"]
+custom_minimum_size = Vector2(180, 44)
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 0.84
+anchor_right = 0.5
+anchor_bottom = 0.84
+offset_left = -90.0
+offset_top = -22.0
+offset_right = 90.0
+offset_bottom = 22.0
+grow_horizontal = 2
+grow_vertical = 2
+accessibility_name = "To the market"
+text = "To the market"

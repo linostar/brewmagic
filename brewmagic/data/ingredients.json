@@ -50,7 +50,7 @@
     "essence": [0, 1, 0, 2],
     "unlock_day": 2,
     "base_price": 4,
-    "grind": false,
-    "description": "Grows only on north-facing gravestones. A touch of calm, a lot of spooky."
+    "grind": true,
+    "description": "Grows on north-facing gravestones, tough as old boots. Grind it: a touch of calm, a lot of spooky."
   }
 ]

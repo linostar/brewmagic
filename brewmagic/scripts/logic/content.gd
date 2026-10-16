@@ -17,7 +17,7 @@ const DATA_DIR := "res://data/"
 ## vocabulary.request_ids, which is checked once requests.json is loaded.
 const FILES: Array[String] = [
 	"ingredients.json", "potions.json", "vocabulary.json", "archetypes.json",
-	"requests.json", "misbrews.json", "days.json",
+	"requests.json", "misbrews.json", "days.json", "upgrades.json",
 ]
 ## Essence names in Vector4i component order.
 const ESSENCES: Array[String] = ["ember", "frost", "bloom", "gloom"]
@@ -40,6 +40,8 @@ const TARGET_ESSENCE_MAX := 9
 const PRICE_MAX := 999
 const COINS_MAX := 9999
 const STOCK_MAX := 99
+## Upgrade tolerance multipliers lie in (1, UPGRADE_TOLERANCE_MAX].
+const UPGRADE_TOLERANCE_MAX := 3.0
 const MIN_REACTION_LINES := 3
 ## Speech bubble: greedy word wrap at BUBBLE_COLUMNS characters, at most BUBBLE_LINES lines.
 const BUBBLE_COLUMNS := 26
@@ -58,6 +60,7 @@ static var _archetypes: Dictionary[String, Archetype] = {}
 static var _requests: Dictionary[String, RequestLine] = {}
 static var _misbrews: Dictionary[String, MisbrewLine] = {}
 static var _days: Dictionary[int, DaySpec] = {}
+static var _upgrades: Dictionary[String, Upgrade] = {}
 ## The file and entry the loader is reading, for error messages.
 static var _file := ""
 static var _entry := ""
@@ -192,6 +195,25 @@ static func days() -> Array[DaySpec]:
 	return result
 
 
+## Every upgrade, in file order.
+static func upgrades() -> Array[Upgrade]:
+	_ensure_loaded()
+	var result: Array[Upgrade] = []
+	result.assign(_upgrades.values())
+	return result
+
+
+## The upgrade of station step `station` ("stir", ...), or null (with push_error) if there is none.
+static func upgrade_for(station: String) -> Upgrade:
+	_ensure_loaded()
+	for item: Upgrade in _upgrades.values():
+		if item.station == station:
+			return item
+	if not quiet_errors:
+		push_error("[Content] No upgrade for station '%s'" % station)
+	return null
+
+
 ## The requests written for `potion_id` in the voice of `archetype_id`, in file order.
 static func requests_for(potion_id: String, archetype_id: String) -> Array[RequestLine]:
 	_ensure_loaded()
@@ -281,6 +303,7 @@ static func _reset() -> void:
 	_requests.clear()
 	_misbrews.clear()
 	_days.clear()
+	_upgrades.clear()
 
 
 static func _load(texts: Dictionary[String, String]) -> void:
@@ -306,9 +329,11 @@ static func _load(texts: Dictionary[String, String]) -> void:
 				_load_misbrews(entries)
 			"days.json":
 				_load_days(entries)
-	print("[Content] Loaded %d ingredients, %d potions, %d hint words, %d archetypes, %d requests, %d misbrews, %d days: %d problem(s)" % [
+			"upgrades.json":
+				_load_upgrades(entries)
+	print("[Content] Loaded %d ingredients, %d potions, %d hint words, %d archetypes, %d requests, %d misbrews, %d days, %d upgrades: %d problem(s)" % [
 		_ingredients.size(), _potions.size(), _hint_words.size(), _archetypes.size(),
-		_requests.size(), _misbrews.size(), _days.size(), _errors.size()])
+		_requests.size(), _misbrews.size(), _days.size(), _upgrades.size(), _errors.size()])
 
 
 static func _load_ingredients(entries: Array[Dictionary]) -> void:
@@ -496,6 +521,53 @@ static func _load_days(entries: Array[Dictionary]) -> void:
 	for number in range(FIRST_DAY, FIRST_DAY + _days.size()):
 		if not _days.has(number):
 			_error("day", "days must be exactly %d..%d; day %d is missing" % [FIRST_DAY, _days.size(), number])
+
+
+static func _load_upgrades(entries: Array[Dictionary]) -> void:
+	for entry in entries:
+		var item := Upgrade.new()
+		item.id = _begin_entry(entry, ["id", "station", "name", "description", "unlock_day", "levels"], [], _upgrades)
+		item.station = _enum(entry, "station", STEPS)
+		for other: Upgrade in _upgrades.values():
+			if item.station != "" and other.station == item.station:
+				_error("station", "'%s' already has upgrade '%s'" % [item.station, other.id])
+		item.name = _string(entry, "name", NAME_MAX)
+		item.description = _string(entry, "description", DESCRIPTION_MAX)
+		item.unlock_day = _int(entry, "unlock_day", FIRST_DAY, LAST_DAY)
+		_load_levels(entry, item)
+		if item.id != "":
+			_upgrades[item.id] = item
+	_entry = "-"
+	for station in STEPS:
+		if not _upgrades.values().any(func(item: Upgrade) -> bool: return item.station == station):
+			_error("station", "station '%s' has no upgrade" % station)
+
+
+## An upgrade's `levels`: a non-empty array of {tolerance, cost}, tolerances strictly
+## increasing above 1.
+static func _load_levels(entry: Dictionary, item: Upgrade) -> void:
+	if not entry.has("levels"):
+		return
+	if typeof(entry["levels"]) != TYPE_ARRAY:
+		_error("levels", "expected Array, got %s" % type_string(typeof(entry["levels"])))
+		return
+	var list: Array = entry["levels"]
+	if list.is_empty():
+		_error("levels", "is empty")
+	var previous := 1.0
+	for i in list.size():
+		var path := "levels[%d]." % i
+		if typeof(list[i]) != TYPE_DICTIONARY:
+			_error(path.trim_suffix("."), "expected Dictionary, got %s" % type_string(typeof(list[i])))
+			continue
+		var level: Dictionary = list[i]
+		_check_keys(level, ["tolerance", "cost"], [], path)
+		var tolerance := _float(level, "tolerance", 1.0, UPGRADE_TOLERANCE_MAX, path)
+		if level.has("tolerance") and tolerance <= previous:
+			_error(path + "tolerance", "%s must be greater than %s (the level below)" % [tolerance, previous])
+		previous = maxf(previous, tolerance)
+		item.tolerances.append(tolerance)
+		item.costs.append(_int(level, "cost", 1, COINS_MAX, path))
 
 
 static func _load_customers(entry: Dictionary, item: DaySpec) -> void:
