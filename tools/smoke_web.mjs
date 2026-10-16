@@ -53,6 +53,11 @@ const STIR_RADIUS = 52;
 const STIR_TEMPO = 0.8;
 const STIR_TURNS = 3.4;
 const STIR_STEPS_PER_TURN = 24;
+// Largest angle between two stir samples. Each move waits for a rendered frame; on a
+// slow frame (the 3x phone canvas in CI renders at a few fps) the wall-clock angle can
+// jump past PI, which the game rightly reads as a turn backwards. Capping the step keeps
+// every circle recognisable; the stir then lags the wall clock (accuracy is not asserted).
+const STIR_MAX_STEP = Math.PI / 4;
 // A thumb holding low in the pour station; Pour fills the bottle in Pour.FILL_TIME seconds,
 // so holding line x FILL_TIME releases on the line (the snapped line is logged at begin).
 const POUR_POINT = { x: 135, y: 440 };
@@ -232,7 +237,7 @@ async function serveFirstCustomer(page, context, run, logs) {
   for (let angle = 0; angle < STIR_TURNS * 2 * Math.PI;) {
     const wait = stepMs - ((Date.now() - start) % stepMs);
     await page.waitForTimeout(wait);
-    angle = ((Date.now() - start) / 1000) * STIR_TEMPO * 2 * Math.PI;
+    angle = Math.min(((Date.now() - start) / 1000) * STIR_TEMPO * 2 * Math.PI, angle + STIR_MAX_STEP);
     await pointer.move(onRing(angle));
   }
   await pointer.up();
