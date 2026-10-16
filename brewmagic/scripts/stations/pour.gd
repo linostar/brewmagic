@@ -21,9 +21,6 @@ const FILL_TIME := 1.5
 ## Fill error that still scores 1 (fraction of the bottle).
 const LINE_WINDOW := 0.04
 const OVERFLOW_LIMIT := 1.25
-## Bottle art contract (art_src/brewing.px): the liquid mask spans rows 5..26 of the 20x28 canvas.
-const LIQUID_TOP_ROW := 5
-const LIQUID_BOTTOM_ROW := 27
 const BOTTLE_SIZE := Vector2(20, 28)
 ## Matches the Bottle node's scale in pour.tscn.
 const BOTTLE_SCALE := 4.0
@@ -41,6 +38,10 @@ var _pouring := false
 var _spilling := false
 var _spill_clock := 0.0
 var _liquid_region := Rect2()
+## The liquid mask's opaque rows, top and one past the bottom (art_src/brewing.px:
+## the depth depends on the bottle shape, so it is read from the mask itself).
+var _top_row := 0
+var _bottom_row := 0
 
 ## Scaled BOTTLE_SCALE and centred on BOTTLE_CENTRE (so it squashes around its
 ## middle); its Canvas child holds the sprites in art pixels, canvas origin top-left.
@@ -63,6 +64,11 @@ func target_line() -> float:
 	return _line
 
 
+## The current bottle's liquid rows on the 20x28 canvas: x = top row, y = one past the bottom row.
+func liquid_rows() -> Vector2i:
+	return Vector2i(_top_row, _bottom_row)
+
+
 func _station_begin(params: Dictionary) -> void:
 	var color := _color_param(params)
 	var shape := str(params.get("bottle", ""))
@@ -73,12 +79,16 @@ func _station_begin(params: Dictionary) -> void:
 	var liquid := Art.texture("brewing", "bottle_%s_liquid" % shape)
 	_liquid.texture = liquid.atlas
 	_liquid_region = liquid.region
+	var mask_rows := _mask_rows("bottle_%s_liquid" % shape, liquid)
+	_top_row = mask_rows.x
+	_bottom_row = mask_rows.y
 	_liquid.modulate = color
-	var rows := LIQUID_BOTTOM_ROW - LIQUID_TOP_ROW
+	var rows := _bottom_row - _top_row
 	var line := clampf(float(params.get("line", DEFAULT_LINE)), 0.1, 0.95)
 	var line_rows := roundi(line * rows)
 	_line = float(line_rows) / rows
-	_line_marker.position = Vector2(-2, LIQUID_BOTTOM_ROW - line_rows - 1)
+	_line_marker.position = Vector2(-2, _bottom_row - line_rows - 1)
+	print("[Pour] %s bottle, liquid rows %d..%d, line %.3f" % [shape, _top_row, _bottom_row - 1, _line])
 	_line_marker.show()
 	_cork.hide()
 	fill = 0.0
@@ -143,18 +153,34 @@ func _stop() -> void:
 
 ## Reveals the liquid mask from the bottom, one pixel row per 1/rows of fill.
 func _show_fill() -> void:
-	var rows := LIQUID_BOTTOM_ROW - LIQUID_TOP_ROW
+	var rows := _bottom_row - _top_row
 	var shown := clampi(roundi(fill * rows), 0, rows)
 	_liquid.visible = shown > 0
-	_liquid.region_rect = Rect2(_liquid_region.position.x, _liquid_region.position.y + LIQUID_BOTTOM_ROW - shown, _liquid_region.size.x, shown)
-	_liquid.position = Vector2(0, LIQUID_BOTTOM_ROW - shown)
+	_liquid.region_rect = Rect2(_liquid_region.position.x, _liquid_region.position.y + _bottom_row - shown, _liquid_region.size.x, shown)
+	_liquid.position = Vector2(0, _bottom_row - shown)
 	_stream.queue_redraw()
 
 
 func _draw_stream() -> void:
 	if not _pouring:
 		return
-	var rows := LIQUID_BOTTOM_ROW - LIQUID_TOP_ROW
-	var surface := LIQUID_BOTTOM_ROW - clampf(fill, 0.0, 1.0) * rows
+	var rows := _bottom_row - _top_row
+	var surface := _bottom_row - clampf(fill, 0.0, 1.0) * rows
 	var x := BOTTLE_SIZE.x / 2.0 - STREAM_WIDTH / 2.0
 	_stream.draw_rect(Rect2(x, STREAM_TOP, STREAM_WIDTH, surface - STREAM_TOP), _liquid.modulate)
+
+
+## The rows of `mask` (sprite `sprite_name`) that hold liquid pixels: x = top row,
+## y = one past the bottom row. An unreadable or empty mask is reported and the
+## whole sprite height is used.
+static func _mask_rows(sprite_name: String, mask: AtlasTexture) -> Vector2i:
+	var full := Vector2i(0, int(mask.region.size.y))
+	var image := mask.atlas.get_image()
+	if image == null:
+		push_error("[Pour] Cannot read the liquid mask %s; filling its whole height" % sprite_name)
+		return full
+	var used := image.get_region(Rect2i(mask.region)).get_used_rect()
+	if used.size.y == 0:
+		push_error("[Pour] Liquid mask %s is empty; filling its whole height" % sprite_name)
+		return full
+	return Vector2i(used.position.y, used.end.y)

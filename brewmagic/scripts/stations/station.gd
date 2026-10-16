@@ -81,6 +81,11 @@ func is_running() -> bool:
 	return _running
 
 
+## The Assist "Brew!" button while the Assist prompt shows, else null.
+func assist_button() -> Button:
+	return _assist_button
+
+
 ## 1.0 while `error` is within `window` (times tolerance_scale), falling linearly
 ## to 0.0 at FALLOFF scaled windows beyond it.
 func window_score(error: float, window: float) -> float:
@@ -144,7 +149,10 @@ func _show_assist_prompt() -> void:
 	_assist_button.pressed.connect(_finish.bind(ASSIST_QUALITY))
 	add_child(_assist_button)
 	# Keyboard users can press Enter straight away; the focus ring shows once they navigate.
-	_assist_button.grab_focus(true)
+	# A paused station (restarted from the pause panel) leaves focus in the panel;
+	# whoever unpauses hands focus to assist_button().
+	if can_process():
+		_assist_button.grab_focus(true)
 
 
 ## Lays out the visuals and resets the gesture for `params`.

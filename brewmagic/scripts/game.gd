@@ -5,7 +5,8 @@ extends Node
 ## units and the centred 270-wide gameplay column).
 ## Every flow change goes through goto(), which fades out, swaps the scene,
 ## fades in and logs the transition. A flow state whose scene is missing is
-## reported with push_error and a visible error label instead of crashing.
+## reported with push_error and a visible error label instead of crashing; a
+## scene that cannot start redirects with abort_to().
 
 signal transition_finished(state: Flow)
 ## Emitted when the visible rect or the safe area changes (resize, rotation).
@@ -84,6 +85,16 @@ func goto(new_state: Flow, args: Dictionary = {}) -> void:
 	await _fade(0.0)
 	_transitioning = false
 	transition_finished.emit(new_state)
+
+
+## For a scene that cannot start (it calls this from its _ready, during the
+## transition into it): goes to `fallback` once that transition has finished,
+## then reports `message` (log and the visible error label) on the fallback screen.
+func abort_to(fallback: Flow, message: String) -> void:
+	if _transitioning:
+		await transition_finished
+	await goto(fallback)
+	_report_error(message)
 
 
 func is_transitioning() -> bool:

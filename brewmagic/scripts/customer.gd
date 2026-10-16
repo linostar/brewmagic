@@ -1,30 +1,40 @@
 class_name Customer
 extends Node2D
 ## One shop visitor (CLAUDE.md "Customers"): assembled from the archetype's part
-## sprites (art_src/customer.px: 32x48 canvases, layer order body, head, hair,
-## accessory, idle-bob frames _0/_1), walking in from the door to stand behind
-## the counter. The node's origin is the canvas top-left; the shop places it at
-## y = CANVAS_Y so the waist (row 34) meets the counter top.
+## sprites (art_src/customer.px: 48x72 canvases, layer order body, head, hair,
+## face, accessory, idle-bob frames _0/_1), walking in from the door to stand
+## behind the counter. The node's origin is the canvas top-left; the shop places
+## it at y = CANVAS_Y so the counter row (52) meets the counter top. The face
+## part follows the mood (happy, neutral, annoyed; storming looks annoyed).
 ##
 ## States: ENTER -> WAIT_ORDER -> WAIT_BREW -> RECEIVE -> REACT -> LEAVE -> GONE.
 ## Patience (seconds, set by setup()) drains only in WAIT_ORDER and WAIT_BREW;
 ## the hearts show what is left and the emote shows the mood. At zero the
-## customer emits patience_ran_out once and waits for the shop to make it leave.
+## customer turns STORMING (it takes no order or brew any more), emits
+## patience_ran_out once and waits for the shop to make it leave.
 ## Palette swaps and part variety come with plan step 4.
 
 signal arrived
 signal patience_ran_out
 signal left
 
-enum State { ENTER, WAIT_ORDER, WAIT_BREW, RECEIVE, REACT, LEAVE, GONE }
+enum State { ENTER, WAIT_ORDER, WAIT_BREW, STORMING, RECEIVE, REACT, LEAVE, GONE }
 enum Mood { HAPPY, NEUTRAL, ANNOYED, STORMING }
 
-## Canvas top-left y in the shop: waist row 34 on the counter top (y = 148).
-const CANVAS_Y := 114.0
-const DOOR_X := 222.0
-const COUNTER_X := 119.0
+## The counter's top surface in the shop (art_src/shop.px) and the canvas
+## top-left y that puts the canvas' counter row (52) on it.
+const COUNTER_TOP := 148.0
+const CANVAS_Y := COUNTER_TOP - 52.0
+## The canvas column the head is centred on.
+const CENTER_X := 24.0
+## Canvas left x in the door opening (x 216..262) and at the counter (head on the stage centre, x 135).
+const DOOR_X := 215.0
+const COUNTER_X := 111.0
 ## The Body node's rest position: the canvas' feet centre, so squash and flip pivot there.
-const BODY_REST := Vector2(16, 48)
+const BODY_REST := Vector2(24, 72)
+## Canvas points the shop aims at: the hands on the counter (bottles), the chest (coins).
+const HANDS := Vector2(24, 48)
+const CHEST := Vector2(24, 42)
 const WALK_TIME := 1.1
 const WALK_HOP := 2.0
 const WALK_STEPS := 4.0
@@ -33,9 +43,11 @@ const HEARTS := 4
 ## Patience fractions at or above which the mood is HAPPY, then NEUTRAL; above 0 ANNOYED.
 const HAPPY_PATIENCE := 0.66
 const NEUTRAL_PATIENCE := 0.33
-## data/archetypes.json head ids -> customer atlas head sprites.
-const HEAD_SPRITES: Dictionary[String, String] = {"head_a": "head_round", "head_b": "head_long", "head_c": "head_square"}
 const EMOTES: Array[String] = ["emote_happy", "emote_neutral", "emote_annoyed", "emote_storming"]
+## Mood -> face part (art_src/customer.px has three expressions).
+const FACES: Array[String] = ["face_happy", "face_neutral", "face_annoyed", "face_annoyed"]
+## Index of the face in the part layers.
+const FACE_LAYER := 3
 ## Misbrew effect -> tint of the whole customer.
 const EFFECT_TINTS: Dictionary[String, Color] = {
 	"singed": Color("#b8804c"), "frosted": Color("#c8f0f0"), "sprouting": Color("#cce878"), "gloomy": Color("#9058c0"),
@@ -53,10 +65,9 @@ var effect := ""
 var _bob_clock := 0.0
 var _frame := 0
 var _part_names: Array[String] = []
-var _ran_out := false
 
 @onready var _body: Node2D = $Body
-@onready var _parts: Array[Sprite2D] = [$Body/BodyPart, $Body/Head, $Body/Hair, $Body/Accessory]
+@onready var _parts: Array[Sprite2D] = [$Body/BodyPart, $Body/Head, $Body/Hair, $Body/Face, $Body/Accessory]
 @onready var _hearts: Array[Sprite2D] = [$Hearts/Heart0, $Hearts/Heart1, $Hearts/Heart2, $Hearts/Heart3]
 @onready var _emote: Sprite2D = $Emote
 @onready var _effect_root: Node2D = $Effect
@@ -69,11 +80,8 @@ func setup(who: Archetype, wants: PotionType, says: RequestLine, patience_second
 	request = says
 	patience_total = maxf(patience_seconds, 0.01)
 	patience_left = patience_total
-	_part_names = ["body_" + who.part_body, HEAD_SPRITES.get(who.part_head, ""), "hair_" + who.part_hair]
-	if who.part_accessory != "none":
-		_part_names.append("acc_" + who.part_accessory)
-	if _part_names[1] == "":
-		push_error("[Customer] Archetype '%s' has head '%s' without a sprite (known: %s)" % [who.id, who.part_head, HEAD_SPRITES.keys()])
+	var accessory := "" if who.part_accessory == "none" else "acc_" + who.part_accessory
+	_part_names = ["body_" + who.part_body, "head_" + who.part_head, "hair_" + who.part_hair, FACES[Mood.HAPPY], accessory]
 
 
 func _ready() -> void:
@@ -134,15 +142,15 @@ func show_effect(name_of_effect: String) -> void:
 	effect = name_of_effect
 	_body.modulate = EFFECT_TINTS[name_of_effect]
 	Juice.squash(_body, 0.3, 0.4)
-	Juice.burst(self, Vector2(16, 14), EFFECT_TINTS[name_of_effect], 20)
+	Juice.burst(self, Vector2(24, 24), EFFECT_TINTS[name_of_effect], 20)
 	var particles := CPUParticles2D.new()
 	particles.amount = 14
 	particles.lifetime = 1.2
 	particles.scale_amount_min = 1.0
 	particles.scale_amount_max = 2.0
 	particles.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
-	particles.emission_rect_extents = Vector2(9, 3)
-	particles.position = Vector2(16, 8)
+	particles.emission_rect_extents = Vector2(13, 3)
+	particles.position = Vector2(24, 16)
 	match name_of_effect:
 		"singed":
 			particles.color = Color("#c8c0c8")
@@ -155,8 +163,8 @@ func show_effect(name_of_effect: String) -> void:
 			particles.initial_velocity_max = 14.0
 		"frosted":
 			particles.color = Color("#c8f0f0")
-			particles.position = Vector2(16, -6)
-			particles.emission_rect_extents = Vector2(16, 2)
+			particles.position = Vector2(24, 4)
+			particles.emission_rect_extents = Vector2(22, 2)
 			particles.gravity = Vector2(0, 18)
 			particles.spread = 180.0
 			particles.initial_velocity_max = 4.0
@@ -169,8 +177,8 @@ func show_effect(name_of_effect: String) -> void:
 			particles.initial_velocity_max = 30.0
 		"gloomy":
 			particles.color = Color("#583088")
-			particles.position = Vector2(16, -4)
-			particles.emission_rect_extents = Vector2(12, 2)
+			particles.position = Vector2(24, 6)
+			particles.emission_rect_extents = Vector2(16, 2)
 			particles.gravity = Vector2.ZERO
 			particles.spread = 180.0
 			particles.initial_velocity_max = 3.0
@@ -211,12 +219,12 @@ func _process(delta: float) -> void:
 	if _bob_clock >= BOB_TIME:
 		_bob_clock -= BOB_TIME
 		_show_frame(1 - _frame)
-	if not is_waiting() or _ran_out:
+	if not is_waiting():
 		return
 	patience_left = maxf(patience_left - delta, 0.0)
 	_update_patience()
 	if patience_left <= 0.0:
-		_ran_out = true
+		state = State.STORMING
 		print("[Customer] %s ran out of patience" % archetype.id)
 		Juice.shake(_body, 2.0, 0.3)
 		patience_ran_out.emit()
@@ -252,3 +260,6 @@ func _update_patience() -> void:
 
 func _show_mood(value: Mood) -> void:
 	_emote.texture = Art.texture("ui", EMOTES[value])
+	if _part_names.size() > FACE_LAYER and _part_names[FACE_LAYER] != FACES[value]:
+		_part_names[FACE_LAYER] = FACES[value]
+		_show_frame(_frame)

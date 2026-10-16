@@ -1,0 +1,1 @@
+res://scenes/screen.tscn: interactive Control 'HighButton' starts at y=40, inside the top 40% reading zone

@@ -19,6 +19,7 @@ const BASE_WINDOW := Vector2i(270, 480)
 ## Window sizes in pixels for the aspect ratios the game must fit: 9:16, 9:19.5 and 16:9.
 const PHONE_9_16 := Vector2i(1080, 1920)
 const PHONE_9_19_5 := Vector2i(1080, 2340)
+const PHONE_9_21 := Vector2i(1080, 2520)
 const DESKTOP_16_9 := Vector2i(1920, 1080)
 const MIN_TARGET := 32.0
 const THUMB_ZONE_TOP := 0.4
@@ -74,6 +75,7 @@ func _tests() -> Array[Callable]:
 		_test_pour_perfect,
 		_test_pour_sloppy_and_overflow,
 		_test_pour_idle,
+		_test_pour_liquid_rows_match_mask,
 		_test_pour_tolerance_scale,
 		_test_stations_assist_tap,
 		_test_stations_assist_ui_accept,
@@ -81,8 +83,17 @@ func _tests() -> Array[Callable]:
 		_test_shop_day1_assist,
 		_test_shop_wrong_recipe_misbrews,
 		_test_shop_patience_timeout,
+		_test_shop_storm_off_locks_brew,
+		_test_shop_missing_day_returns_to_title,
 		_test_shop_pot_add_remove,
 		_test_shop_pause_toggles,
+		_test_shop_pause_focus,
+		_test_shop_controls_size_and_zone,
+		_test_shop_ceiling_covers_extra_height,
+		_test_shop_customer_canvas,
+		_test_shop_shelf_down_reaches_brew,
+		_test_shop_perfect_serve_reaction,
+		_test_shop_keyboard_day1_assist,
 	]
 
 
@@ -377,6 +388,19 @@ func _test_pour_idle() -> void:
 	pour.free()
 
 
+## Each bottle's fill spans exactly its liquid mask's opaque rows (art: rows 5..25,
+## teardrop 5..26), and the line snaps to a whole row of that bottle.
+func _test_pour_liquid_rows_match_mask() -> void:
+	for shape in Pour.BOTTLES:
+		var pour := _add_station(POUR_SCENE) as Pour
+		pour.begin({"color": Color.WHITE, "bottle": shape})
+		var rows := pour.liquid_rows()
+		_check(rows == (Vector2i(5, 27) if shape == "teardrop" else Vector2i(5, 26)), "pour %s liquid rows match its mask" % shape, str(rows))
+		var line_rows := pour.target_line() * (rows.y - rows.x)
+		_check(is_equal_approx(line_rows, roundf(line_rows)), "pour %s line is a whole liquid row" % shape, "%.3f rows" % line_rows)
+		pour.free()
+
+
 ## Releasing 0.08 over the line: a wider tolerance window scores higher.
 func _test_pour_tolerance_scale() -> void:
 	var qualities: Array[float] = []
@@ -469,6 +493,8 @@ func _test_shop_day1_assist() -> void:
 		if not await _serve(shop, _exact_recipe(wants, shop.stock), label):
 			break
 		expected_coins += Economy.pay(wants.price, Brew.Grade.GOOD)
+		var bubble_text := (shop.get_node("Column/Stage/Bubble") as SpeechBubble).text
+		_check(bubble_text in shop.customer.archetype.reactions["good"], label + ": says a good reaction line", bubble_text)
 		await _skip_lines(shop)
 	var summary := shop.get_node("Modal/SummaryPanel") as Control
 	_check(await _until(func() -> bool: return summary.visible, FLOW_FRAMES), "day 1 ends with the summary", "summary hidden")
@@ -555,8 +581,10 @@ func _test_shop_pot_add_remove() -> void:
 		await _tap(shop.shelf_item(first))
 		_check(shop.pot.size() == 1 and shop.stock[first] == count - 1 and shop.shelf_item(first).stock == count - 1, "tap adds to the pot", "%d %d" % [shop.pot.size(), shop.stock[first]])
 		_check(shop.brew_button().disabled and not shop.slot_button(0).disabled, "one ingredient: slot filled, Brew disabled", "brew disabled %s" % shop.brew_button().disabled)
+		await _check_preview(shop, Content.ingredient(first).essence, "preview after adding")
 		await _tap(shop.slot_button(0))
 		_check(shop.pot.is_empty() and shop.stock[first] == count, "slot tap restores the stock", "%d %d" % [shop.pot.size(), shop.stock[first]])
+		await _check_preview(shop, Vector4i.ZERO, "preview after removing")
 		for i in 4:
 			await _tap(shop.shelf_item(ids[i]))
 		_check(shop.pot.size() == Shop.POT_CAPACITY and shop.stock[ids[3]] == shop.shelf_item(ids[3]).stock and shop.stock[ids[3]] == Content.day(1).starting_stock[ids[3]], "pot holds at most 3", "%d" % shop.pot.size())
@@ -602,6 +630,321 @@ func _test_shop_pause_toggles() -> void:
 		_check(not _game.assist_mode and not shop.station.assist and shop.station.get_node_or_null("AssistButton") == null and shop.station.is_running(), "assist off restarts the station as a gesture", "assist %s" % shop.station.assist)
 		await _tap(shop.get_node("Modal/PausePanel/List/ResumeButton") as Button)
 	await _close_shop()
+
+
+## Patience running out with 2 ingredients in the pot: the customer is STORMING,
+## Brew is disabled and a tap on it starts nothing; the next customer comes in
+## untouched (no brew, no grade, full patience). Then the same mid-station with
+## Assist on: the station is dropped, the shelf takes focus again, Brew stays
+## locked, and the third customer comes in untouched.
+func _test_shop_storm_off_locks_brew() -> void:
+	_game.assist_mode = true
+	var shop := await _open_shop()
+	var day := Content.day(1)
+	if await _wait_for_order(shop, "storm-off"):
+		for id in _exact_recipe(shop.customer.potion, shop.stock):
+			await _tap(shop.shelf_item(id))
+		_check(not shop.brew_button().disabled, "storm-off: Brew enabled with 2", "disabled")
+		var leaving := shop.customer
+		var leaving_id := leaving.get_instance_id()
+		leaving.patience_left = 0.2
+		_check(await _until(func() -> bool: return shop.stormed_off == 1, FLOW_FRAMES), "storm-off: patience runs out", str(shop.stormed_off))
+		_check(leaving.state == Customer.State.STORMING and shop.brew_button().disabled, "storm-off: customer STORMING, Brew disabled", "state %s disabled %s" % [Customer.State.keys()[leaving.state], shop.brew_button().disabled])
+		await _tap(shop.brew_button())
+		await process_frame
+		_check(not shop.is_brewing() and shop.station == null and shop.pot.size() == 2, "storm-off: Brew tap starts nothing", "brewing %s pot %d" % [shop.is_brewing(), shop.pot.size()])
+		_check(await _until(func() -> bool: return shop.customer != null and shop.customer.get_instance_id() != leaving_id and shop.customer.state == Customer.State.WAIT_ORDER, FLOW_FRAMES), "storm-off: next customer waits for an order", "no next customer")
+		_check(shop.customer.potion.id == day.customers[1].potion and shop.served == 0 and shop.grades.is_empty() and not shop.is_brewing(), "storm-off: next customer unaffected", "served %d grades %s" % [shop.served, shop.grades])
+		# Patience drains from the moment the order is up; allow a second of it.
+		_check(shop.customer.patience_left >= shop.customer.patience_total - 1.0, "storm-off: next customer has fresh patience", "%f of %f" % [shop.customer.patience_left, shop.customer.patience_total])
+		for i in shop.pot.size():
+			await _tap(shop.slot_button(0))
+	if await _wait_for_order(shop, "storm-off mid-station"):
+		for id in _exact_recipe(shop.customer.potion, shop.stock):
+			await _tap(shop.shelf_item(id))
+		await _tap(shop.brew_button())
+		_check(await _until(func() -> bool: return shop.station != null and shop.station.assist_button() != null, FLOW_FRAMES), "storm-off mid-station: station runs", "no station")
+		var leaving := shop.customer
+		var leaving_id := leaving.get_instance_id()
+		leaving.patience_left = 0.2
+		_check(await _until(func() -> bool: return shop.stormed_off == 2, FLOW_FRAMES), "storm-off mid-station: patience runs out", str(shop.stormed_off))
+		await process_frame
+		_check(shop.station == null and not shop.is_brewing() and shop.brew_button().disabled, "storm-off mid-station: station dropped, Brew locked", "station %s" % shop.station)
+		_check(root.gui_get_focus_owner() is ShelfItem, "storm-off mid-station: focus back on the shelf", str(root.gui_get_focus_owner()))
+		await _tap(shop.brew_button())
+		_check(not shop.is_brewing() and shop.station == null, "storm-off mid-station: Brew tap starts nothing", "brewing %s" % shop.is_brewing())
+		_check(await _until(func() -> bool: return shop.customer != null and shop.customer.get_instance_id() != leaving_id and shop.customer.state == Customer.State.WAIT_ORDER, FLOW_FRAMES), "storm-off mid-station: third customer waits", "no third customer")
+		_check(shop.customer.potion.id == day.customers[2].potion and shop.served == 0 and shop.station == null, "storm-off mid-station: third customer unaffected", "served %d" % shop.served)
+	await _close_shop()
+
+
+## A day missing from the content: the player lands back on the title with the
+## error label saying why, and the error is reported once.
+func _test_shop_missing_day_returns_to_title() -> void:
+	_game.quiet_errors = true
+	Content.quiet_errors = true
+	var errors := _game.reported_errors.size()
+	_game.goto(GameState.Flow.SHOP, {"day": 99})
+	var back := await _until(func() -> bool: return _game.state == GameState.Flow.TITLE and not _game.is_transitioning() and _game.reported_errors.size() > errors, FLOW_FRAMES)
+	_game.quiet_errors = false
+	Content.quiet_errors = false
+	var error_label := _game.get_node("Fade/ErrorLabel") as Label
+	_check(back and current_scene is Title, "missing day returns to the title", "state %s scene %s" % [GameState.Flow.keys()[_game.state], current_scene])
+	_check(_game.reported_errors.size() == errors + 1 and "Day 99" in _game.reported_errors.back(), "missing day is reported once", str(_game.reported_errors.slice(errors)))
+	_check(error_label.visible and "Day 99" in error_label.text, "missing day shows the error label", error_label.text)
+	error_label.hide()
+
+
+## Resume puts focus back where it was (a shelf item), and focus cannot leave the
+## pause panel while it is open. While a station runs, the shelf and Brew under
+## its dim take no focus; toggling Assist in the pause panel keeps focus in the
+## panel, and Resume hands it to the station's Assist button.
+func _test_shop_pause_focus() -> void:
+	_game.assist_mode = true
+	var shop := await _open_shop()
+	if await _wait_for_order(shop, "pause focus"):
+		var panel := shop.get_node("Modal/PausePanel") as Control
+		var resume := shop.get_node("Modal/PausePanel/List/ResumeButton") as Button
+		var ids: Array[String] = []
+		ids.assign(shop.stock.keys())
+		var item := shop.shelf_item(ids[1])
+		item.grab_focus()
+		shop.open_pause()
+		await process_frame
+		_check(root.gui_get_focus_owner() == resume, "pause focuses Resume", str(root.gui_get_focus_owner()))
+		_check(await _focus_stays_in(panel), "focus stays in the pause panel", str(root.gui_get_focus_owner()))
+		resume.grab_focus()
+		await _action(&"ui_accept")
+		_check(not paused and root.gui_get_focus_owner() == item, "resume restores the focused shelf item", str(root.gui_get_focus_owner()))
+		for id in _exact_recipe(shop.customer.potion, shop.stock):
+			await _tap(shop.shelf_item(id))
+		await _tap(shop.brew_button())
+		_check(await _until(func() -> bool: return shop.station != null and shop.station.assist_button() != null, FLOW_FRAMES), "pause focus: station runs", "no station")
+		var under_dim: Array[Control] = [shop.brew_button()]
+		for id in ids:
+			under_dim.append(shop.shelf_item(id))
+		var focusable := under_dim.filter(func(control: Control) -> bool: return control.get_focus_mode_with_override() != Control.FOCUS_NONE)
+		_check(focusable.is_empty(), "shelf and Brew take no focus under the station dim", str(focusable))
+		var reached: Array[Control] = []
+		for i in 6:
+			await _action(&"ui_focus_next")
+			reached.append(root.gui_get_focus_owner())
+		_check(reached.all(func(control: Control) -> bool: return control not in under_dim), "Tab never reaches controls under the dim", str(reached))
+		await _tap(shop.get_node("Column/Hud/PauseButton") as Button)
+		var assist_toggle := shop.get_node("Modal/PausePanel/List/AssistButton") as Button
+		await _tap(assist_toggle)
+		await _tap(assist_toggle)
+		await process_frame
+		_check(_game.assist_mode and shop.station.assist_button() != null, "assist toggled back on restarts the station with Assist", "assist %s" % _game.assist_mode)
+		var owner := root.gui_get_focus_owner()
+		_check(owner != null and panel.is_ancestor_of(owner), "assist restart keeps focus in the pause panel", str(owner))
+		await _tap(resume)
+		_check(not paused and root.gui_get_focus_owner() == shop.station.assist_button(), "resume focuses the station's Assist button", str(root.gui_get_focus_owner()))
+	await _close_shop()
+
+
+## Every interactive control of the shop (shelf items, Brew, pot slots, the
+## workspace skip area, Pause, the pause and summary panel buttons, a station's
+## Assist button) is at least 32x32, inside the safe area and, except Pause, in
+## the thumb zone (lower 60%) at 9:16, 9:19.5 and 16:9.
+func _test_shop_controls_size_and_zone() -> void:
+	_game.assist_mode = true
+	var shop := await _open_shop()
+	if await _wait_for_order(shop, "layout"):
+		for id in _exact_recipe(shop.customer.potion, shop.stock):
+			await _tap(shop.shelf_item(id))
+		var pause := shop.get_node("Column/Hud/PauseButton") as Button
+		var play: Array[Control] = [shop.brew_button(), shop.slot_button(0), shop.slot_button(1), shop.slot_button(2), shop.get_node("Column/Stage/SkipButton") as Control, pause]
+		for item in shop.get_node("Column/Stage/ShelfItems").get_children():
+			play.append(item as Control)
+		var pause_buttons: Array[Control] = []
+		for button in shop.get_node("Modal/PausePanel/List").get_children():
+			if button is Button:
+				pause_buttons.append(button as Control)
+		var summary := shop.get_node("Modal/SummaryPanel") as Control
+		var back: Array[Control] = [shop.get_node("Modal/SummaryPanel/List/BackButton") as Control]
+		for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
+			root.size = window
+			await _frames(30)
+			_check_targets(play, pause, "shop at %s" % window)
+			shop.open_pause()
+			await _frames(30)
+			_check_targets(pause_buttons, pause, "pause panel at %s" % window)
+			shop.close_pause()
+			summary.show()
+			await _frames(30)
+			_check_targets(back, pause, "summary panel at %s" % window)
+			summary.hide()
+		root.size = BASE_WINDOW
+		await _tap(shop.brew_button())
+		if await _until(func() -> bool: return shop.station != null and shop.station.assist_button() != null, FLOW_FRAMES):
+			for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
+				root.size = window
+				await _frames(10)
+				_check_targets([shop.station.assist_button()] as Array[Control], pause, "station Assist at %s" % window)
+		else:
+			_check(false, "layout: station shows Assist", "no station")
+		root.size = BASE_WINDOW
+		await process_frame
+	await _close_shop()
+
+
+## Tall phones show more shop, never a blank band: shop_ceiling copies stack up
+## from the stage's top edge, as wide as the stage, until they pass the screen top
+## (9:19.5 and 9:21); 9:16 and 16:9 have no room above the stage and show none.
+func _test_shop_ceiling_covers_extra_height() -> void:
+	var shop := await _open_shop()
+	var stage := shop.get_node("Column/Stage") as Control
+	var ceiling := Art.texture("shop", "shop_ceiling")
+	for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, PHONE_9_21, DESKTOP_16_9]:
+		root.size = window
+		await _frames(3)
+		var label := "ceiling at %s" % window
+		var screen_top := _game.visible_rect().position.y
+		var stage_rect := stage.get_global_rect()
+		var covered := stage_rect.position.y
+		var problems := PackedStringArray()
+		for rect: TextureRect in shop._ceilings:
+			if not rect.visible:
+				continue
+			var at := rect.get_global_rect()
+			if (rect.texture as AtlasTexture).region != ceiling.region:
+				problems.append("%s is not shop_ceiling" % rect)
+			if not at.size.is_equal_approx(ceiling.get_size()) or not is_equal_approx(at.position.x, stage_rect.position.x) or not is_equal_approx(at.end.y, covered):
+				problems.append("copy at %s (expected bottom %.0f, x %.0f)" % [at, covered, stage_rect.position.x])
+			covered = at.position.y
+		var expect_copies := stage_rect.position.y > screen_top
+		_check(problems.is_empty(), label + ": copies are stacked on the stage top", ", ".join(problems))
+		_check(covered <= screen_top and (covered < stage_rect.position.y) == expect_copies, label + ": no blank band above the stage", "covered from %.0f, screen top %.0f, stage top %.0f" % [covered, screen_top, stage_rect.position.y])
+	root.size = BASE_WINDOW
+	await process_frame
+	await _close_shop()
+
+
+## The waiting customer: a 48x72 canvas in every layer, head centred on the stage,
+## the whole head above the counter top and at least 48 rows showing above it; the
+## face layer follows the mood.
+func _test_shop_customer_canvas() -> void:
+	var shop := await _open_shop()
+	if await _wait_for_order(shop, "customer canvas"):
+		var visitor := shop.customer
+		var parts: Array[Sprite2D] = []
+		for node in visitor.get_node("Body").get_children():
+			if node is Sprite2D and (node as Sprite2D).visible:
+				parts.append(node as Sprite2D)
+		var sizes := parts.map(func(part: Sprite2D) -> Vector2: return part.texture.get_size())
+		_check(parts.size() >= 4 and sizes.all(func(size: Vector2) -> bool: return size == Vector2(48, 72)), "customer parts are 48x72 canvases", str(sizes))
+		_check(is_equal_approx(visitor.position.x + Customer.CENTER_X, Shop.STAGE_SIZE.x / 2.0), "customer head on the stage centre", str(visitor.position))
+		var counter_row := int(Customer.COUNTER_TOP - visitor.position.y)
+		var head := _opaque_rows((visitor.get_node("Body/Head") as Sprite2D).texture as AtlasTexture)
+		var top := 72
+		for part in parts:
+			top = mini(top, _opaque_rows(part.texture as AtlasTexture).x)
+		_check(head.y < counter_row and counter_row - top >= 48, "customer: head above the counter, %d rows show" % (counter_row - top), "head rows %s, counter row %d" % [head, counter_row])
+		visitor.patience_left = visitor.patience_total * 0.2
+		await _frames(2)
+		var face := (visitor.get_node("Body/Face") as Sprite2D).texture as AtlasTexture
+		var expected := [Art.texture("customer", "face_annoyed_0").region, Art.texture("customer", "face_annoyed_1").region]
+		_check(face.region in expected, "annoyed customer shows the annoyed face", str(face.region))
+	await _close_shop()
+
+
+## Keyboard: ui_down from every shelf item lands on Brew (the items share a row,
+## so Godot's nearest-neighbour search would pick another item), ui_up from Brew
+## goes back to the shelf.
+func _test_shop_shelf_down_reaches_brew() -> void:
+	var shop := await _open_shop()
+	if await _wait_for_order(shop, "shelf focus"):
+		for id in _exact_recipe(shop.customer.potion, shop.stock):
+			await _tap(shop.shelf_item(id))
+		var brew := shop.brew_button()
+		_check(not brew.disabled, "shelf focus: Brew enabled", "pot %d" % shop.pot.size())
+		for item: ShelfItem in shop.get_node("Column/Stage/ShelfItems").get_children():
+			item.grab_focus()
+			await _action(&"ui_down")
+			_check(root.gui_get_focus_owner() == brew, "ui_down from %s focuses Brew" % item.ingredient.id, str(root.gui_get_focus_owner()))
+		brew.grab_focus()
+		await _action(&"ui_up")
+		_check(root.gui_get_focus_owner() is ShelfItem, "ui_up from Brew focuses the shelf", str(root.gui_get_focus_owner()))
+	await _close_shop()
+
+
+## (first, last) rows of `texture`'s region with an opaque pixel, (72, -1) if none.
+func _opaque_rows(texture: AtlasTexture) -> Vector2i:
+	var image := texture.atlas.get_image().get_region(Rect2i(texture.region))
+	var rows := Vector2i(image.get_height(), -1)
+	for y in image.get_height():
+		for x in image.get_width():
+			if image.get_pixel(x, y).a > 0.0:
+				rows = Vector2i(mini(rows.x, y), maxi(rows.y, y))
+				break
+	return rows
+
+
+## Gestures driven straight into the shop's stations (perfect stir circles, a
+## pour released on the line) on the exact recipe: Perfect, and the customer
+## says one of the archetype's "perfect" reaction lines.
+func _test_shop_perfect_serve_reaction() -> void:
+	var shop := await _open_shop()
+	if await _wait_for_order(shop, "perfect"):
+		var who := shop.customer.archetype
+		for id in _exact_recipe(shop.customer.potion, shop.stock):
+			await _tap(shop.shelf_item(id))
+		await _tap(shop.brew_button())
+		for step in shop.customer.potion.steps:
+			if not await _until(func() -> bool: return shop.station != null and shop.station.is_running(), FLOW_FRAMES):
+				_check(false, "perfect: %s station runs" % step, "no station")
+				break
+			var running := shop.station
+			var running_id := running.get_instance_id()
+			if running is Stir:
+				_stir_circles(running as Stir, Stir.DEFAULT_TEMPO, Stir.ROTATIONS, 0.0)
+			elif running is Pour:
+				_pour_to(running as Pour, (running as Pour).target_line())
+			await _until(func() -> bool: return shop.station == null or shop.station.get_instance_id() != running_id, FLOW_FRAMES)
+		_check(await _until(func() -> bool: return shop.served == 1, FLOW_FRAMES), "perfect: served", "served %d" % shop.served)
+		var bubble_text := (shop.get_node("Column/Stage/Bubble") as SpeechBubble).text
+		_check(shop.grades == ([Brew.Grade.PERFECT] as Array[Brew.Grade]), "perfect gestures on the exact recipe are Perfect", str(shop.grades))
+		_check(bubble_text in who.reactions["perfect"], "perfect: says a perfect reaction line", bubble_text)
+	await _close_shop()
+
+
+## Day 1 with Assist on, by keyboard alone (ui_* actions): arrows move focus
+## between shelf items and Brew, ui_accept adds an ingredient, brews, presses
+## each station's Assist button and leaves through the summary's Back button.
+func _test_shop_keyboard_day1_assist() -> void:
+	_game.assist_mode = true
+	var shop := await _open_shop()
+	var day := Content.day(1)
+	for n in day.customers.size():
+		var label := "keyboard customer %d" % (n + 1)
+		if not await _wait_for_order(shop, label):
+			break
+		_check(root.gui_get_focus_owner() is ShelfItem, label + ": a shelf item has focus", str(root.gui_get_focus_owner()))
+		var served := shop.served
+		for id in _exact_recipe(shop.customer.potion, shop.stock):
+			var before := shop.pot.size()
+			var focused := await _focus_by_keys(shop.shelf_item(id))
+			await _action(&"ui_accept")
+			_check(focused and shop.pot.size() == before + 1, "%s: ui_accept adds %s" % [label, id], "focus %s pot %d" % [root.gui_get_focus_owner(), shop.pot.size()])
+		var on_brew := await _focus_by_keys(shop.brew_button())
+		await _action(&"ui_accept")
+		_check(on_brew and shop.is_brewing(), label + ": ui_accept on Brew brews", "focus %s" % root.gui_get_focus_owner())
+		for step in shop.customer.potion.steps:
+			var ready := await _until(func() -> bool: return shop.station != null and shop.station.is_running() and shop.station.assist_button() != null and shop.station.assist_button().has_focus(), FLOW_FRAMES)
+			_check(ready, "%s: %s Assist button has focus" % [label, step], str(root.gui_get_focus_owner()))
+			if not ready:
+				break
+			await _action(&"ui_accept")
+		_check(await _until(func() -> bool: return shop.served == served + 1, FLOW_FRAMES), label + ": served", "served %d" % shop.served)
+	var back := shop.get_node("Modal/SummaryPanel/List/BackButton") as Button
+	_check(await _until(func() -> bool: return back.is_visible_in_tree() and back.has_focus(), FLOW_FRAMES), "keyboard day 1 ends on the focused Back button", str(root.gui_get_focus_owner()))
+	_check(shop.served == day.customers.size() and shop.stormed_off == 0, "keyboard day 1 serves everyone", "%d %d" % [shop.served, shop.stormed_off])
+	await _action(&"ui_accept")
+	if _game.is_transitioning():
+		await _game.transition_finished
+	_check(_game.state == GameState.Flow.TITLE, "keyboard Back goes to the title", str(_game.state))
+	_game.assist_mode = false
 
 
 func _open_shop() -> Shop:
@@ -695,6 +1038,76 @@ func _tap(control: Control) -> void:
 		touch.pressed = pressed
 		Input.parse_input_event(touch)
 		await process_frame
+
+
+## Presses and releases input action `action`, as a key bound to it would.
+func _action(action: StringName) -> void:
+	for pressed: bool in [true, false]:
+		var event := InputEventAction.new()
+		event.action = action
+		event.pressed = pressed
+		Input.parse_input_event(event)
+		await process_frame
+
+
+## Moves keyboard focus to `target` with ui_left/right/up/down, heading for it
+## from the current focus owner. True when it got there.
+func _focus_by_keys(target: Control) -> bool:
+	for i in 12:
+		var owner := root.gui_get_focus_owner()
+		if owner == target:
+			return true
+		if owner == null:
+			return false
+		var to := target.get_global_rect().get_center() - owner.get_global_rect().get_center()
+		if absf(to.y) > absf(to.x):
+			await _action(&"ui_down" if to.y > 0.0 else &"ui_up")
+		else:
+			await _action(&"ui_right" if to.x > 0.0 else &"ui_left")
+	return root.gui_get_focus_owner() == target
+
+
+## Tabs forwards and back a few times; true if focus never leaves `container`.
+func _focus_stays_in(container: Control) -> bool:
+	for action: StringName in [&"ui_focus_next", &"ui_focus_next", &"ui_focus_next", &"ui_focus_next", &"ui_focus_next", &"ui_focus_prev", &"ui_focus_prev"]:
+		await _action(action)
+		var owner := root.gui_get_focus_owner()
+		if owner == null or not container.is_ancestor_of(owner):
+			return false
+	return true
+
+
+func _frames(count: int) -> void:
+	for i in count:
+		await process_frame
+
+
+## The cauldron preview shows `mix`: each essence count at once, and the liquid tint after its tween.
+func _check_preview(shop: Shop, mix: Vector4i, label: String) -> void:
+	var essences := shop.get_node("Column/Stage/Essences")
+	var counts := PackedStringArray()
+	for k in Content.ESSENCES.size():
+		counts.append((essences.get_child(k * 2 + 1) as Label).text)
+	var expected := PackedStringArray([str(mix.x), str(mix.y), str(mix.z), str(mix.w)])
+	_check(counts == expected, label + ": essence counts", "%s, expected %s" % [counts, expected])
+	await _frames(30)
+	var liquid := (shop.get_node("Column/Stage/Cauldron/Liquid") as Sprite2D).modulate
+	var color := shop._mix_color(mix)
+	_check(liquid.is_equal_approx(color), label + ": liquid colour", "%s, expected %s" % [liquid, color])
+
+
+## Each of `controls` is at least MIN_TARGET square, inside the safe area and,
+## except `top_exception`, in the thumb zone.
+func _check_targets(controls: Array[Control], top_exception: Control, label: String) -> void:
+	var visible := _game.visible_rect()
+	var safe := _game.safe_rect()
+	for control in controls:
+		var rect := control.get_global_rect()
+		var which := "%s %s" % [label, control.name]
+		_check(rect.size.x >= MIN_TARGET and rect.size.y >= MIN_TARGET, which + " size", str(rect.size))
+		_check(safe.encloses(rect), which + " inside safe area", "%s not in %s" % [rect, safe])
+		if control != top_exception:
+			_check(rect.position.y >= visible.position.y + visible.size.y * THUMB_ZONE_TOP, which + " in thumb zone", "%s in %s" % [rect, visible])
 
 
 ## A real touch dragged from `from` to `to` (canvas coordinates) in 8 steps.

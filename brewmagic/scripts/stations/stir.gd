@@ -36,6 +36,10 @@ const FIRE_FRAME_TIME := 0.12
 const PIP_Y := 236.0
 const PIP_SPACING := 20.0
 const PIP_RADIUS := 5.0
+## The pip's shape carries its result too (never colour alone): a four-point star
+## for perfect, a round dot for good, a cross for sloppy.
+const PIP_STAR_INNER := 1.5
+const PIP_CROSS_WIDTH := 2.0
 const RING_COLOR := Color("#fbedcd")
 const GHOST_COLOR := Color("#ffc95c")
 const PIP_PERFECT := Color("#ffc95c")
@@ -194,6 +198,22 @@ func _draw_guide() -> void:
 	for i in ROTATIONS:
 		var pip := Vector2(first_x + PIP_SPACING * i, PIP_Y)
 		if i < _scores.size():
-			_guide.draw_circle(pip, PIP_RADIUS, _pip_color(_scores[i]))
+			_draw_pip(pip, _scores[i])
 		else:
 			_guide.draw_circle(pip, PIP_RADIUS, PIP_EMPTY, false, 1.0)
+
+
+func _draw_pip(at: Vector2, score: float) -> void:
+	var color := _pip_color(score)
+	if score >= PERFECT_QUALITY:
+		var star := PackedVector2Array()
+		for corner: int in 8:
+			var radius := PIP_RADIUS + 1.0 if corner % 2 == 0 else PIP_STAR_INNER
+			star.append(at + Vector2.from_angle(-PI / 2.0 + corner * PI / 4.0) * radius)
+		_guide.draw_colored_polygon(star, color)
+	elif score >= ASSIST_QUALITY:
+		_guide.draw_circle(at, PIP_RADIUS, color)
+	else:
+		var arm := PIP_RADIUS * 0.8
+		_guide.draw_line(at + Vector2(-arm, -arm), at + Vector2(arm, arm), color, PIP_CROSS_WIDTH)
+		_guide.draw_line(at + Vector2(-arm, arm), at + Vector2(arm, -arm), color, PIP_CROSS_WIDTH)

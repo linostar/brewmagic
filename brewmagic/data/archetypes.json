@@ -6,7 +6,7 @@
     "tip_tendency": 0.2,
     "voice": { "pitch": 0.7, "timbre": "growl" },
     "speech_style": "Terse and grumpy, short sentences, blames everything on Duchess the goat, secretly adores her.",
-    "parts": { "body": "apron", "head": "head_a", "hair": "straw_hat", "accessory": "goat" },
+    "parts": { "body": "apron", "head": "round", "hair": "straw_hat", "accessory": "goat" },
     "reactions": {
       "perfect": [
         "Hmph. Good. Don't let it go to your head.",
@@ -42,7 +42,7 @@
     "tip_tendency": 0.6,
     "voice": { "pitch": 1.2, "timbre": "bell" },
     "speech_style": "Theatrical, exclamation marks, CAPITALISED drama, treats every errand as an epic ballad starring himself.",
-    "parts": { "body": "robe", "head": "head_b", "hair": "curly", "accessory": "none" },
+    "parts": { "body": "robe", "head": "long", "hair": "curly", "accessory": "none" },
     "reactions": {
       "perfect": [
         "BRAVO! I shall write you a ballad! Nine verses!",
@@ -78,7 +78,7 @@
     "tip_tendency": 0.4,
     "voice": { "pitch": 1.4, "timbre": "chirp" },
     "speech_style": "Nervous, polite, says 'um' and 'sorry' a lot, scared of most things, always measuring himself against Sir Gregor.",
-    "parts": { "body": "armour", "head": "head_c", "hair": "curly", "accessory": "lantern" },
+    "parts": { "body": "armour", "head": "square", "hair": "curly", "accessory": "lantern" },
     "reactions": {
       "perfect": [
         "Wow! Thank you! I feel ten percent less scared!",
@@ -114,7 +114,7 @@
     "tip_tendency": 0.8,
     "voice": { "pitch": 1.1, "timbre": "reed" },
     "speech_style": "Warm, nosy, calls everyone 'dearie' or 'love', drops village gossip mid-sentence, best friends and rivals with Edna.",
-    "parts": { "body": "robe", "head": "head_a", "hair": "witch_hat", "accessory": "none" },
+    "parts": { "body": "robe", "head": "round", "hair": "witch_hat", "accessory": "none" },
     "reactions": {
       "perfect": [
         "Oh, lovely! I'll tell everyone. EVERYONE, dearie.",

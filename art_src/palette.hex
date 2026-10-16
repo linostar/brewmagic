@@ -2,7 +2,7 @@
 ; Lines starting with ';' are comments; text after a colour's ';' is its role.
 ; In art_src/*.px, index N is written as the Nth character of 0123456789abcdefghijklmnopqrstuv.
 ; Ramps run dark -> light. Essence ramps: ember a-d, frost e-h, bloom i-l, gloom m-p.
-; Swappable on customer parts (palette_swap shader): cloth A = e f g, cloth B = i j k, hair = 2 3 4, skin = r s t.
+; Swappable on customer parts (palette_swap shader), contract in customer.px: cloth A = e f g, cloth B = i j k, hair = 1 2 3, hand skin = r s (remapped to the head's skin pair).
 #1c1420 ; 0 outline (near-black plum), deepest shadow
 #3a2830 ; 1 deep shadow brown
 #5c3c30 ; 2 wood dark, deep-skin shade

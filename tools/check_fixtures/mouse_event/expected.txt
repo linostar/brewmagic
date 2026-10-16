@@ -1,0 +1,1 @@
+res://scripts/cursor.gd: uses 'InputEventMouse'

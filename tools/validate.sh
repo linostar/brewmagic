@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# Validation gate: pixel art check (when tools/pixelart.py exists), asset import,
-# project check (touch-first restriction + strict script compile), headless
-# gameplay tests, content tests (when tools/test_content.gd exists), headless
-# run of the main scene. Exits non-zero on the first failure and points at the
+# Validation gate: pixel art check, asset import, project check (touch-first
+# restriction + strict script compile) and its violation fixtures, headless
+# gameplay tests, content tests, headless run of the main scene. Exits non-zero on the first failure and points at the
 # log that explains it. Every Godot call is killed after GODOT_TIMEOUT seconds.
 # Env: GODOT (Godot binary), GODOT_TIMEOUT (default 300), RUN_FRAMES (headless run length, default 300).
 set -euo pipefail
@@ -46,10 +45,8 @@ run_script() {
 }
 
 # The compiled sprites must match their sources before Godot imports them.
-if [ -f tools/pixelart.py ]; then
-  if ! python3 tools/pixelart.py --check >"$LOG_DIR/pixelart.log" 2>&1 || ! grep -q "^pixelart: OK" "$LOG_DIR/pixelart.log"; then
-    fail "pixel art check" "$LOG_DIR/pixelart.log"
-  fi
+if ! python3 tools/pixelart.py --check >"$LOG_DIR/pixelart.log" 2>&1 || ! grep -q "^pixelart: OK" "$LOG_DIR/pixelart.log"; then
+  fail "pixel art check" "$LOG_DIR/pixelart.log"
 fi
 
 # On a fresh clone (no import cache) the first import reports errors because the
@@ -66,12 +63,30 @@ godot "$LOG_DIR/import.log" --headless --path brewmagic --import || fail "import
 if grep -qE "ERROR|WARNING" "$LOG_DIR/import.log"; then fail "import reported problems" "$LOG_DIR/import.log"; fi
 
 run_script check_project "$LOG_DIR/check.log"
+
+# check_project.gd against the tiny projects in tools/check_fixtures/ (outside the game,
+# so they never ship): each <case>/expected.txt lists the violation lines that case must
+# report (each line a prefix of one reported violation), and nothing else; a case without expected.txt (allowed input use) must pass.
+fixtures=0
+for fixture in tools/check_fixtures/*/; do
+  case_name="$(basename "$fixture")"
+  log="$LOG_DIR/check_fixture_$case_name.log"
+  godot "$log" --headless --path "$fixture" --script "$PWD/tools/check_project.gd" || true
+  if grep -qE "ERROR|WARNING" "$log"; then fail "check_project fixture $case_name reported engine problems" "$log"; fi
+  if [ -f "$fixture/expected.txt" ]; then
+    while IFS= read -r line; do
+      grep -qF "check_project: $line" "$log" || fail "check_project fixture $case_name did not report: $line" "$log"
+    done <"$fixture/expected.txt"
+    expected="$(grep -c . "$fixture/expected.txt")"
+    grep -qxF "check_project: FAILED with $expected violation(s)" "$log" || fail "check_project fixture $case_name must report exactly $expected violation(s)" "$log"
+  elif ! grep -q "^check_project: OK" "$log"; then
+    fail "check_project fixture $case_name (allowed input use) must pass" "$log"
+  fi
+  fixtures=$((fixtures + 1))
+done
 run_script test_gameplay "$LOG_DIR/test.log" --fixed-fps 60
-summary="$(grep "^check_project: OK" "$LOG_DIR/check.log"); $(grep "^test_gameplay: OK" "$LOG_DIR/test.log")"
-if [ -f tools/test_content.gd ]; then
-  run_script test_content "$LOG_DIR/content.log"
-  summary="$summary; $(grep "^test_content: OK" "$LOG_DIR/content.log")"
-fi
+run_script test_content "$LOG_DIR/content.log"
+summary="$(grep "^check_project: OK" "$LOG_DIR/check.log"); check fixtures: $fixtures; $(grep "^test_gameplay: OK" "$LOG_DIR/test.log"); $(grep "^test_content: OK" "$LOG_DIR/content.log")"
 RUN_FRAMES="${RUN_FRAMES:-300}" run_script run_main "$LOG_DIR/run.log"
 
 echo "PASS validate ($summary)"

@@ -4,11 +4,11 @@ extends RefCounted
 ## data/SCHEMA.md. Static only. The data is loaded once, lazily, on the first call of any
 ## public function (the title screen's errors() call does it at boot); reload() and
 ## load_texts() replace it (tests).
-## Every problem (unreadable file, bad JSON, missing or unknown key, wrong type, non-integer
-## int, out-of-range value, duplicate id, unknown cross-reference) is collected in errors()
-## as "data/<file> [<entry id>] <field>: <problem>" and reported with push_error, all of
-## them, not just the first. Entries with problems are still loaded as far as they parse
-## (bad fields keep their resource defaults), and the title screen keeps the shop closed
+## Every problem (unreadable file, bad JSON, a file with no entries, missing or unknown key,
+## wrong type, non-integer int, out-of-range value, duplicate id, unknown cross-reference) is
+## collected in errors() as "data/<file> [<entry id>] <field>: <problem>" and reported with
+## push_error, all of them, not just the first. Entries with problems are still loaded as
+## far as they parse (bad fields keep their resource defaults), and the title screen keeps the shop closed
 ## while errors() is non-empty. Cross-file invariants (solvability, hint fairness, coverage)
 ## are checked by tools/test_content.gd.
 
@@ -27,7 +27,7 @@ const BOTTLES: Array[String] = ["round", "tall", "flask", "teardrop"]
 const STEPS: Array[String] = ["stir", "pour", "mortar", "bellows"]
 const TIMBRES: Array[String] = ["reed", "bell", "growl", "chirp"]
 const BODIES: Array[String] = ["robe", "apron", "armour"]
-const HEADS: Array[String] = ["head_a", "head_b", "head_c"]
+const HEADS: Array[String] = ["round", "long", "square"]
 const HAIRS: Array[String] = ["witch_hat", "straw_hat", "curly", "bald_beard"]
 const ACCESSORIES: Array[String] = ["none", "goat", "lantern"]
 const FIRST_DAY := 1
@@ -45,7 +45,8 @@ const MIN_REACTION_LINES := 3
 const BUBBLE_COLUMNS := 26
 const BUBBLE_LINES := 3
 
-## Tests set quiet_errors to assert on expected errors without failing the log check.
+## Tests set quiet_errors to assert on expected errors (load errors and unknown-id lookups)
+## without failing the log check.
 static var quiet_errors := false
 
 static var _loaded := false
@@ -126,7 +127,8 @@ static func request(id: String) -> RequestLine:
 static func day(number: int) -> DaySpec:
 	_ensure_loaded()
 	if not _days.has(number):
-		push_error("[Content] Unknown day %d" % number)
+		if not quiet_errors:
+			push_error("[Content] Unknown day %d" % number)
 		return null
 	return _days[number]
 
@@ -526,7 +528,7 @@ static func _load_customers(entry: Dictionary, item: DaySpec) -> void:
 
 
 ## Parses a file's text into its entries; reports a parse error or a top level that is not
-## an array of objects.
+## a non-empty array of objects.
 static func _parse_entries(text: String) -> Array[Dictionary]:
 	var entries: Array[Dictionary] = []
 	var json := JSON.new()
@@ -537,6 +539,8 @@ static func _parse_entries(text: String) -> Array[Dictionary]:
 		_error("(file)", "top level must be an array, got %s" % type_string(typeof(json.data)))
 		return entries
 	var list: Array = json.data
+	if list.is_empty():
+		_error("(file)", "has no entries")
 	for i in list.size():
 		if typeof(list[i]) == TYPE_DICTIONARY:
 			entries.append(list[i])
@@ -717,7 +721,8 @@ static func _ingredient_unlocked(id: String, day_number: int, field: String) -> 
 
 static func _lookup(table: Dictionary, id: String, kind: String) -> Resource:
 	if not table.has(id):
-		push_error("[Content] Unknown %s id '%s'" % [kind, id])
+		if not quiet_errors:
+			push_error("[Content] Unknown %s id '%s'" % [kind, id])
 		return null
 	return table[id]
 

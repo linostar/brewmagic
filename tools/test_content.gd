@@ -8,6 +8,8 @@ extends SceneTree
 ## and append it to the list in _tests(). Every test leaves Content loaded from the real data.
 
 const TITLE_SCENE := preload("res://scenes/title.tscn")
+## Customer part sprites (SCHEMA.md archetypes.parts).
+const CUSTOMER_ATLAS := Art.ART_DIR + "customer.json"
 const BASE_WINDOW := Vector2i(270, 480)
 ## Real-time limit for the whole run; a test stuck on an await fails instead of hanging.
 const WATCHDOG_MSEC := 60000
@@ -49,8 +51,10 @@ func _tests() -> Array[Callable]:
 		_test_i6_no_potion_names,
 		_test_i7_potions_and_days_solvable,
 		_test_i8_day1_stock_serves_day1,
+		_test_i8_market_serves_later_days,
 		_test_i9_misbrews_overshoot,
 		_test_i10_coverage,
+		_test_part_values_have_sprites,
 		_test_malformed_data_errors,
 		_test_title_shows_content_errors,
 	]
@@ -211,6 +215,20 @@ func _test_i8_day1_stock_serves_day1() -> void:
 	_check(_can_serve_all(options, 0, stock), "I8 day-1 starting stock brews every day-1 customer Perfect", str(day1.starting_stock))
 
 
+## I8 for days >= 2 on the real data, and a day-2 market too dear for the day-1 pay must fail it.
+func _test_i8_market_serves_later_days() -> void:
+	var problems := _market_shortfalls()
+	_check(problems.is_empty(), "I8 day N-1 Perfect pay buys every day-N customer at day N's market", "\n".join(problems))
+	var texts := _real_texts()
+	var data: Array = JSON.parse_string(texts["days.json"])
+	data[1]["market"]["moonmoss"] = 30
+	texts["days.json"] = JSON.stringify(data)
+	var errors := _load_quietly(texts)
+	var expensive := _market_shortfalls()
+	Content.reload()
+	_check(errors.is_empty() and expensive.size() == 1 and expensive[0].begins_with("day_2:"), "I8 rejects a day-2 market the day-1 pay cannot cover", "%s / %s" % [errors, expensive])
+
+
 func _test_i9_misbrews_overshoot() -> void:
 	var problems: Array[String] = []
 	for item in Content.potions():
@@ -248,6 +266,27 @@ func _test_i10_coverage() -> void:
 	_check(problems.is_empty(), "I10 coverage", "\n".join(problems))
 
 
+## Every part value the schema allows has both idle frames in the customer atlas, so the
+## data ids and the sprite names cannot drift apart.
+func _test_part_values_have_sprites() -> void:
+	var atlas: Variant = JSON.parse_string(FileAccess.get_file_as_string(CUSTOMER_ATLAS))
+	if not (atlas is Dictionary and (atlas as Dictionary).get("sprites") is Dictionary):
+		_check(false, "customer atlas sidecar has sprites", CUSTOMER_ATLAS)
+		return
+	var sprites: Dictionary = atlas["sprites"]
+	var parts: Dictionary[String, Array] = {"body": Content.BODIES, "head": Content.HEADS, "hair": Content.HAIRS, "acc": Content.ACCESSORIES}
+	var problems: Array[String] = []
+	for prefix: String in parts:
+		for value: String in parts[prefix]:
+			if prefix == "acc" and value == "none":
+				continue
+			for frame in 2:
+				var sprite := "%s_%s_%d" % [prefix, value, frame]
+				if not sprites.has(sprite):
+					problems.append("%s missing from %s" % [sprite, CUSTOMER_ATLAS])
+	_check(problems.is_empty(), "every archetype part value has its sprite frames", "\n".join(problems))
+
+
 ## Each malformed variant of the real data must produce exactly one error, the expected one.
 ## Each case: [label, file, mutation (Callable on the parsed Array), expected message].
 func _test_malformed_data_errors() -> void:
@@ -282,6 +321,14 @@ func _test_malformed_data_errors() -> void:
 	broken["misbrews.json"] = "[{"
 	var parse_errors := _load_quietly(broken)
 	_check(parse_errors.size() == 1 and parse_errors[0].begins_with("data/misbrews.json [-] (file): JSON parse error at line 1"), "malformed data: bad JSON", "\n".join(parse_errors))
+	# An empty file is an error; other files' references into it may add more, but an empty
+	# days.json has nothing referring to it and must give exactly this one.
+	for file in Content.FILES:
+		var emptied := _real_texts()
+		emptied[file] = "[]"
+		var empty_errors := _load_quietly(emptied)
+		var expected := "data/%s [-] (file): has no entries" % file
+		_check(expected in empty_errors and (file != "days.json" or empty_errors == [expected]), "malformed data: empty " + file, "\n".join(empty_errors))
 	Content.reload()
 	_check(Content.errors().is_empty(), "real data reloads clean after malformed runs", "\n".join(Content.errors()))
 
@@ -362,6 +409,33 @@ func _overshoots(brew: Vector4i, target: Vector4i) -> bool:
 		if brew[k] > target[k]:
 			return true
 	return false
+
+
+## SCHEMA.md I8 for days >= 2 on the loaded content: one problem per day N whose customers'
+## cheapest exact recipes, at day N's market prices, cost more than day N-1's Perfect pay.
+func _market_shortfalls() -> Array[String]:
+	var problems: Array[String] = []
+	var days := Content.days()
+	for n in range(1, days.size()):
+		var spec := days[n]
+		var budget := 0
+		for customer in days[n - 1].customers:
+			budget += Economy.pay(Content.potion(customer.potion).price, Brew.Grade.PERFECT)
+		var cost := 0
+		for customer in spec.customers:
+			var cheapest := -1
+			for recipe in _exact_recipes(Content.potion(customer.potion).target, Content.ingredients_unlocked_by(spec.day)):
+				var price := 0
+				for id in recipe:
+					price += spec.market[id]
+				if cheapest < 0 or price < cheapest:
+					cheapest = price
+			if cheapest < 0:
+				problems.append("%s: %s has no exact recipe" % [spec.id, customer.potion])
+			cost += maxi(cheapest, 0)
+		if cost > budget:
+			problems.append("%s: cheapest exact recipes cost %d at its market, day %d Perfect pay is %d" % [spec.id, cost, days[n - 1].day, budget])
+	return problems
 
 
 ## Backtracking: can customers `index..` each get one of their recipes from `stock`?

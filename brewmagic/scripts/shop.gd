@@ -4,8 +4,9 @@ extends Control
 ## Game.flow_args["day"], default day 1): its starting coins and stock, its
 ## customers in order, its patience scale. Layout per CLAUDE.md "Shop scene
 ## layout": the 270x480 Stage sits at the bottom of the ScreenFit column (extra
-## height on tall phones goes above it), and its edge rows and columns are
-## stretched into the rest of the visible rect so the shop fills any screen.
+## height on tall phones goes above it, covered by shop_ceiling copies stacked up
+## from the backdrop's top edge), and its edge rows and columns are stretched
+## into the rest of the visible rect so the shop fills any screen.
 ##
 ## Loop per customer: walks in, says a hint request -> the player puts 2-3
 ## ingredients in the pot (tap or Enter on a shelf item, or drag it into the
@@ -21,9 +22,11 @@ extends Control
 ##
 ## Taps on the workspace (SkipButton) complete or advance the speech bubble; the
 ## bubble itself sits in the reading zone and takes no input.
-
-signal customer_finished(customer: Customer)
-signal day_finished
+##
+## Keyboard focus: the pause and summary panels keep focus inside them (the
+## Column takes no focus while one is open); the shelf and Brew take no focus
+## while a station runs under its dim. Resume returns focus to the running
+## station's Assist button, else to the control focused before pausing.
 
 const CUSTOMER_SCENE := preload("res://scenes/customer.tscn")
 const SHELF_ITEM_SCENE := preload("res://scenes/shelf_item.tscn")
@@ -58,7 +61,8 @@ const GOLD := Color("#ffc95c")
 const CREAM := Color("#fbedcd")
 const RED := Color("#c43c2c")
 ## Stage-relative bands stretched sideways into extra width: [atlas, sprite, stage y].
-## A row of shop_backdrop's left edge that is plain wall (art_src/shop.px), used for the fill above the stage.
+## A row of shop_backdrop's left edge that is plain wall (art_src/shop.px), used for the fill above the stage
+## beside the ceiling copies (only seen on a screen with extra width and extra height).
 const WALL_ROW := 20.0
 const BANDS: Array[Array] =[["shop", "shop_backdrop", 0.0], ["workspace", "workspace_bg", 192.0], ["workspace", "shelf_panel", 360.0]]
 
@@ -95,7 +99,11 @@ var _qualities: Array[float] = []
 var _after_line := Callable()
 var _clock := 0.0
 var _fills: Array[TextureRect] = []
+## shop_ceiling copies above the stage, the first one right on the backdrop's top edge.
+var _ceilings: Array[TextureRect] = []
 var _essence_counts: Array[Label] = []
+## The control that had focus when the pause panel opened.
+var _focus_before_pause: Control
 
 @onready var _fill: Control = $Fill
 @onready var _column: Control = $Column
@@ -149,8 +157,8 @@ func _ready() -> void:
 	var number := int(_game.flow_args.get("day", Content.FIRST_DAY))
 	day = Content.day(number)
 	if day == null:
-		# Content.day() already reported the missing day; the title screen is the only safe place to go.
-		_game.goto(GameState.Flow.TITLE)
+		# The title screen is the only safe place to go; the player sees why there.
+		_game.abort_to(GameState.Flow.TITLE, "Day %d is missing from data/days.json; the shop cannot open." % number)
 		return
 	_rng.randomize()
 	coins = day.starting_coins
@@ -226,6 +234,8 @@ func open_pause() -> void:
 	if _summary_panel.visible:
 		return
 	get_tree().paused = true
+	_focus_before_pause = get_viewport().gui_get_focus_owner()
+	_column.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_DISABLED
 	_modal_dim.show()
 	_pause_panel.show()
 	Juice.squash(_pause_panel, 0.08)
@@ -237,6 +247,13 @@ func close_pause() -> void:
 	_pause_panel.hide()
 	_modal_dim.hide()
 	get_tree().paused = false
+	_column.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_INHERITED
+	var before := _focus_before_pause
+	_focus_before_pause = null
+	if (station == null or station.assist_button() == null) and is_instance_valid(before) and before.is_visible_in_tree() and before.get_focus_mode_with_override() != Control.FOCUS_NONE:
+		before.grab_focus(true)
+	else:
+		_focus_play()
 	print("[Shop] Resumed")
 
 
@@ -315,7 +332,18 @@ func _fit() -> void:
 	_fills[bands * 2].size = Vector2(screen.size.x, stage_rect.position.y - screen.position.y)
 	_fills[bands * 2 + 1].position = Vector2(screen.position.x, stage_rect.end.y)
 	_fills[bands * 2 + 1].size = Vector2(screen.size.x, screen.end.y - stage_rect.end.y)
-	print("[Shop] Stage at %s" % stage_rect.position)
+	var ceiling := Art.texture("shop", "shop_ceiling")
+	var copies := ceili((stage_rect.position.y - screen.position.y) / ceiling.get_height())
+	while _ceilings.size() < copies:
+		var rect := TextureRect.new()
+		rect.texture = ceiling
+		rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_fill.add_child(rect)
+		_ceilings.append(rect)
+	for i in _ceilings.size():
+		_ceilings[i].visible = i < copies
+		_ceilings[i].position = stage_rect.position - Vector2(0.0, (i + 1) * ceiling.get_height())
+	print("[Shop] Stage at %s, %d ceiling copies above it" % [stage_rect.position, copies])
 
 
 func _build_shelf() -> void:
@@ -330,8 +358,12 @@ func _build_shelf() -> void:
 		item.chosen.connect(_on_item_chosen)
 		item.dropped.connect(_on_item_dropped)
 		_shelf_row.add_child(item)
+		# Down from any shelf item goes to Brew (the items share a row, so Godot would pick a neighbour).
+		item.focus_neighbor_bottom = item.get_path_to(_brew_button)
 		_shelf_items[id] = item
 		layout.append("%s@%s" % [id, item.position + _shelf_row.position + ShelfItem.ITEM_SIZE / 2.0])
+	if not ids.is_empty():
+		_brew_button.focus_neighbor_top = _brew_button.get_path_to(_shelf_items[ids[floori((ids.size() - 1) / 2.0)]])
 	print("[Shop] Shelf (stage coordinates): %s, brew@%s" % [", ".join(layout), _brew_button.position + _brew_button.size / 2.0])
 
 
@@ -386,19 +418,26 @@ func _on_customer_arrived() -> void:
 	print("[Shop] Customer %d is waiting: \"%s\"" % [_next_customer, customer.request.text])
 	_say(customer.request.text, -1.0, Callable())
 	_update_pot()
-	var first: ShelfItem = null
+	_focus_play()
+
+
+## Gives keyboard focus to the next thing to do: the running station's Assist
+## button, else the first shelf item in stock. The focus ring shows once the
+## player navigates by keyboard.
+func _focus_play() -> void:
+	if station != null:
+		if station.assist_button() != null:
+			station.assist_button().grab_focus(true)
+		return
 	for item: ShelfItem in _shelf_items.values():
 		if not item.disabled:
-			first = item
-			break
-	if first != null:
-		# Keyboard users can start picking at once; the focus ring shows once they navigate.
-		first.grab_focus(true)
+			item.grab_focus(true)
+			return
 
 
 func _say(text: String, hold: float, then: Callable) -> void:
 	_after_line = then
-	_bubble.say(text, Customer.COUNTER_X + 16.0, hold)
+	_bubble.say(text, Customer.COUNTER_X + Customer.CENTER_X, hold)
 
 
 func _on_bubble_advanced() -> void:
@@ -530,6 +569,10 @@ func _show_station_layer(on: bool) -> void:
 	_cauldron.visible = not on
 	_slot_row.visible = not on
 	_essences.visible = not on
+	# The shelf and Brew stay visible under the dim; keep keyboard focus off them.
+	var behavior := Control.FOCUS_BEHAVIOR_DISABLED if on else Control.FOCUS_BEHAVIOR_INHERITED
+	_shelf_row.focus_behavior_recursive = behavior
+	_brew_button.focus_behavior_recursive = behavior
 
 
 func _station_params(step: String) -> Dictionary:
@@ -538,9 +581,13 @@ func _station_params(step: String) -> Dictionary:
 		"stir":
 			return {"color": _mix_color(_brew), "tempo": Stir.DEFAULT_TEMPO}
 		"pour":
-			var matched := _tier != Brew.Grade.MISBREW
-			return {"color": wants.color if matched else _mix_color(_brew), "bottle": wants.bottle}
+			return {"color": _potion_color(), "bottle": wants.bottle}
 	return {}
+
+
+## The delivered potion's colour: the requested potion's unless the brew is a Misbrew, then the mix's.
+func _potion_color() -> Color:
+	return customer.potion.color if _tier != Brew.Grade.MISBREW else _mix_color(_brew)
 
 
 func _on_station_finished(quality: float) -> void:
@@ -584,11 +631,11 @@ func _finish_brew() -> void:
 	bottle.texture = Art.texture("brewing", "bottle_" + wants.bottle)
 	var liquid := Sprite2D.new()
 	liquid.texture = Art.texture("brewing", "bottle_%s_liquid" % wants.bottle)
-	liquid.modulate = wants.color if _tier != Brew.Grade.MISBREW else _mix_color(_brew)
+	liquid.modulate = _potion_color()
 	liquid.show_behind_parent = true
 	bottle.add_child(liquid)
 	_fx.add_child(bottle)
-	var hands := customer.get_global_transform() * Vector2(16, 30)
+	var hands := customer.get_global_transform() * Customer.HANDS
 	bottle.scale = Vector2(Pour.BOTTLE_SCALE, Pour.BOTTLE_SCALE)
 	var tween := Juice.arc(bottle, _stage.get_global_transform() * BOTTLE_START, hands, 60.0, 0.45)
 	tween.parallel().tween_property(bottle, "rotation", TAU, 0.45)
@@ -627,7 +674,7 @@ func _deliver(grade: Brew.Grade, quality: float) -> void:
 	customer.react(grade)
 	_coin_burst(pay)
 	var label := "+%d" % pay
-	Juice.pop_text(_fx, customer.get_global_transform() * Vector2(64, 14), label, GOLD, 22)
+	Juice.pop_text(_fx, customer.get_global_transform() * Vector2(68, 4), label, GOLD, 22)
 	_say(reaction, REACTION_HOLD, customer.leave)
 
 
@@ -635,7 +682,7 @@ func _coin_burst(pay: int) -> void:
 	if pay <= 0:
 		return
 	var flights := mini(pay, COIN_FLIGHTS_MAX)
-	var start := customer.get_global_transform() * Vector2(16, 24)
+	var start := customer.get_global_transform() * Customer.CHEST
 	var target := _coin_icon.get_global_rect().get_center()
 	for i in flights:
 		var coin := Sprite2D.new()
@@ -662,12 +709,15 @@ func _coin_landed(coin: Sprite2D, last: bool, share: int) -> void:
 func _on_patience_ran_out() -> void:
 	stormed_off += 1
 	reputation += Economy.STORMED_OFF_REPUTATION
-	if station != null:
+	var dropped_station := station != null
+	if dropped_station:
 		station.queue_free()
 		station = null
 	_show_station_layer(false)
 	_brewing = false
 	_update_pot()
+	if dropped_station:
+		_focus_play()
 	print("[Shop] Customer %d/%d (%s) stormed off: reputation %+d" % [_next_customer, day.customers.size(), customer.archetype.id, Economy.STORMED_OFF_REPUTATION])
 	Juice.shake(_stage, 2.0, 0.3)
 	var lines := customer.archetype.reactions["stormed_off"]
@@ -681,7 +731,6 @@ func _on_customer_left() -> void:
 	_update_pot()
 	_update_hud()
 	gone.queue_free()
-	customer_finished.emit(gone)
 	get_tree().create_timer(NEXT_CUSTOMER_DELAY, false).timeout.connect(_spawn_next_customer)
 
 
@@ -689,12 +738,12 @@ func _end_day() -> void:
 	var earned := coins - _starting_coins
 	_summary_title.text = "Day %d done!" % day.day
 	_summary_stats.text = "Served %d of %d\nPerfect brews: %d\nCoins earned: %+d\nReputation: %+d" % [served, day.customers.size(), perfect, earned, reputation]
+	_column.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_DISABLED
 	_modal_dim.show()
 	_summary_panel.show()
 	Juice.squash(_summary_panel, 0.1)
 	($Modal/SummaryPanel/List/BackButton as Button).grab_focus(true)
 	print("[Shop] Day %d done: served %d/%d, perfect %d, stormed off %d, coins %d (%+d), reputation %+d" % [day.day, served, day.customers.size(), perfect, stormed_off, coins, earned, reputation])
-	day_finished.emit()
 
 
 func _update_hud() -> void:

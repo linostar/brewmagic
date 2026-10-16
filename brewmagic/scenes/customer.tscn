@@ -6,28 +6,32 @@
 script = ExtResource("1_customer")
 
 [node name="Body" type="Node2D" parent="."]
-position = Vector2(16, 48)
+position = Vector2(24, 72)
 
 [node name="BodyPart" type="Sprite2D" parent="Body"]
-position = Vector2(-16, -48)
+position = Vector2(-24, -72)
 centered = false
 
 [node name="Head" type="Sprite2D" parent="Body"]
-position = Vector2(-16, -48)
+position = Vector2(-24, -72)
 centered = false
 
 [node name="Hair" type="Sprite2D" parent="Body"]
-position = Vector2(-16, -48)
+position = Vector2(-24, -72)
+centered = false
+
+[node name="Face" type="Sprite2D" parent="Body"]
+position = Vector2(-24, -72)
 centered = false
 
 [node name="Accessory" type="Sprite2D" parent="Body"]
-position = Vector2(-16, -48)
+position = Vector2(-24, -72)
 centered = false
 
 [node name="Effect" type="Node2D" parent="."]
 
 [node name="Hearts" type="Node2D" parent="."]
-position = Vector2(-4, -11)
+position = Vector2(49, 16)
 
 [node name="Heart0" type="Sprite2D" parent="Hearts"]
 centered = false
@@ -45,5 +49,5 @@ position = Vector2(30, 0)
 centered = false
 
 [node name="Emote" type="Sprite2D" parent="."]
-position = Vector2(37, -13)
+position = Vector2(90, 14)
 centered = false

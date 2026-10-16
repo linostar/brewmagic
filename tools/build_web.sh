@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Full release pipeline: validate, clean single-threaded web export to
-# build/web/, Playwright smoke test (desktop and mobile emulation), then
+# build/web/, Playwright smoke test (desktop, mobile emulation, keyboard), then
 # build/brewmagic.zip for itch.io
 # (index.html at the zip root, no macOS metadata).
 # Env: GODOT (Godot binary).

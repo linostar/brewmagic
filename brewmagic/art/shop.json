@@ -3,7 +3,7 @@
  "texture": "shop.png",
  "size": [
   270,
-  249
+  362
  ],
  "sprites": {
   "shop_backdrop": {
@@ -17,6 +17,12 @@
    "y": 193,
    "w": 270,
    "h": 56
+  },
+  "shop_ceiling": {
+   "x": 0,
+   "y": 250,
+   "w": 270,
+   "h": 112
   }
  }
 }

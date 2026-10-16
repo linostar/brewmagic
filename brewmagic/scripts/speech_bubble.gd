@@ -15,8 +15,8 @@ signal advanced
 const CHARS_PER_SECOND := 40.0
 const PADDING := Vector2(7, 5)
 const LINE_SPACING := 2.0
-## The box's bottom edge (the tail hangs below it, towards the customer's head).
-const BOTTOM_Y := 92.0
+## The box's bottom edge (the tail hangs below it, its tip just above the tallest hat at y 96).
+const BOTTOM_Y := 88.0
 const SIDE_MARGIN := 4.0
 const TAIL_SIZE := Vector2(8, 6)
 const POP_TIME := 0.16

@@ -4,7 +4,7 @@ Source of truth for every file in `brewmagic/data/`. `Content` (`scripts/logic/c
 document and `tools/test_content.gd` checks the invariants at the end. If the code and this file disagree, fix one of them so they match. Do not leave the code working around the difference.
 
 ## Conventions (all files)
-- UTF-8 JSON. Every file's top level is an **array of objects**; every object has a unique `"id"`.
+- UTF-8 JSON. Every file's top level is a **non-empty array of objects**; every object has a unique `"id"`.
 - Ids are snake_case: `^[a-z][a-z0-9_]*$`, unique within their file.
 - Every field listed below is **required** unless marked *optional*. The loader reports a missing key, a
   wrong type, an out-of-range value, an unknown id **and an unknown key** with `push_error` naming the file,
@@ -21,7 +21,8 @@ Every string marked **bubble** must fit a speech bubble of **3 lines x 26 charac
 - no newline characters; at most 78 characters in total; no single word (space-separated token) longer than 26;
 - greedy word wrap at 26 characters (words joined by one space, a word moves to the next line if it would
   push the line past 26) produces at most 3 lines.
-The Godot bubble must wrap the same way (autowrap word mode, width = 26 glyphs of the pixel font).
+`Content.wrap_bubble()` implements this wrap and is the only layout: the Godot speech bubble shows exactly the lines it
+returns and never uses Label autowrap (the pixel font is not monospace, so a glyph-width wrap would break differently).
 
 Other strings: `name`/`title`/`word` <= 26 chars; `description` <= 120 chars; `speech_style` <= 200 chars
 (dev note, never shown).
@@ -90,9 +91,9 @@ freshness (`fresh`). gloom: sleep (`sleep`, `slept`), curses (`curse`), spooky (
 | `voice.pitch` | float | 0.5..2.0 | Voice-blip pitch multiplier. |
 | `voice.timbre` | string | `"reed" \| "bell" \| "growl" \| "chirp"` | Voice-blip sample set. |
 | `speech_style` | string | 1..200 chars | Writer's note, not shown in game. |
-| `parts` | object | keys exactly `body`, `head`, `hair`, `accessory` | Part names in the customer atlas. |
+| `parts` | object | keys exactly `body`, `head`, `hair`, `accessory` | A part value `<v>` is drawn from the customer atlas (`art/customer.json`) frames `<prefix>_<v>_0` and `<prefix>_<v>_1` (idle bob), with prefix `body`, `head`, `hair`, `acc` for `body`, `head`, `hair`, `accessory`. Accessory `"none"` draws nothing. Both frames must exist (checked by `tools/test_content.gd`). |
 | `parts.body` | string | `"robe" \| "apron" \| "armour"` | |
-| `parts.head` | string | `"head_a" \| "head_b" \| "head_c"` | |
+| `parts.head` | string | `"round" \| "long" \| "square"` | |
 | `parts.hair` | string | `"witch_hat" \| "straw_hat" \| "curly" \| "bald_beard"` | |
 | `parts.accessory` | string | `"none" \| "goat" \| "lantern"` | |
 | `reactions` | object | keys exactly `perfect`, `good`, `meh`, `misbrew`, `stormed_off` | |
@@ -128,7 +129,7 @@ Selection: a random customer with archetype A who wants potion P says a random r
 | `patience_scale` | float | 0.25..3.0 | Multiplies every customer's patience that day. |
 | `starting_coins` | int | 0..9999 | **Day 1 only (required there, an error on other days).** |
 | `starting_stock` | object `{ingredient id: int 0..99}` | keys ⊆ ingredients unlocked on day 1 | **Day 1 only (required there, an error on other days).** Missing keys mean 0. |
-| `market` | object `{ingredient id: int 1..999}` | keys == exactly the ingredients with `unlock_day <= day` | **Days >= 2 only (required there, an error on day 1).** Prices in the market screen held the evening *before* this day, so the player shops for this day. |
+| `market` | object `{ingredient id: int 1..999}` | keys == exactly the ingredients with `unlock_day <= day` | **Days >= 2 only (required there, an error on day 1).** Prices in the market screen held the evening *before* this day, so the player shops for this day. The market sells any quantity. |
 | `customers` | array of object | non-empty | In arrival order. |
 | `customers[].archetype` | string | archetype id | |
 | `customers[].potion` | string | potion id with `unlock_day <= day` | |
@@ -139,7 +140,7 @@ Stock carries over between days. The stock on day N >= 2 is what is left from da
 ---
 
 ## Invariants (`tools/test_content.gd` must check all of these)
-- **I1** Every file parses, is an array of objects, ids are snake_case and unique per file, and no entry has a missing or unknown key.
+- **I1** Every file parses, is a non-empty array of objects, ids are snake_case and unique per file, and no entry has a missing or unknown key.
 - **I2** Every field is in its type, range and enum above, every bubble string fits, every length limit holds.
 - **I3** Cross-references resolve: `requests.potion/archetype`, `requests.hints[]`, `vocabulary.request_ids[]`,
   `days.customers[].archetype/potion/request`, and the keys of `days.starting_stock` and `days.market`.
@@ -151,6 +152,8 @@ Stock carries over between days. The stock on day N >= 2 is what is left from da
 - **I7** Every potion has at least one exact (distance 0) brew of 2-3 ingredients with `unlock_day <= potion.unlock_day`.
   Every customer on day N is exactly solvable with ingredients unlocked by day N.
 - **I8** Day 1: `starting_stock` alone can brew every day-1 customer Perfect, all on the same day.
+  Day N >= 2: the Perfect pay of day N-1's customers alone (`Economy.pay(price, PERFECT)` summed; no tips, no coins or
+  stock carried over) buys, at day N's `market` prices, an exact recipe for every day-N customer, all on the same day.
 - **I9** For every potion and every 2-3 ingredient brew (all ingredients), distance >= 3 implies some essence overshoots.
   (With the current data, all brews total >= 4 and all targets total <= 5. A brew without an overshoot would be at most 1 away.)
 - **I10** Coverage. Every (potion, archetype) pair has >= 3 requests. Every essence has >= 5 misbrews, each with its fixed effect.

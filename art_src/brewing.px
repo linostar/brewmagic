@@ -4,7 +4,8 @@
 ; with `modulate` set to the potion colour. fire_0..2: 32x16 flames on logs, centred under the pot's legs.
 ; ladle: 12x40 stir spoon, pivot at the bowl. bottle_<shape> (round, tall, flask, teardrop): 20x28 glass with a
 ; transparent interior, all sharing one canvas (neck x 7..12, lip rows 0..4, base on row 27). Draw it OVER
-; bottle_<shape>_liquid, the matching neutral mask of the inner volume (rows 5..26); reveal it from the bottom to show
+; bottle_<shape>_liquid, the matching neutral mask of the inner volume (from row 5 down to the shape's lowest interior
+; row: 25, or 26 for teardrop; Pour reads the span from the mask); reveal it from the bottom to show
 ; the fill level and tint it with modulate (body v, shade 9).
 ; fill_line: 24x3 target marker, centred on the bottle. cork: 8x7, sits on the bottle neck (x 6..13).
 
