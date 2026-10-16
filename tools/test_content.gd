@@ -371,6 +371,16 @@ func _test_malformed_data_errors() -> void:
 			"data/misbrews.json [misbrew_ember_1] id: duplicate id 'misbrew_ember_1'"],
 		["upgrade level not stronger", "upgrades.json", func(data: Array) -> void: data[0]["levels"][1]["tolerance"] = 1.1,
 			"data/upgrades.json [balanced_ladle] levels[1].tolerance: 1.1 must be greater than 1.25 (the level below)"],
+		["upgrade tolerance too high", "upgrades.json", func(data: Array) -> void: data[0]["levels"][1]["tolerance"] = 9.0,
+			["data/upgrades.json [balanced_ladle] levels[1].tolerance: 9.0 is outside 1.0..3.0",
+			"data/upgrades.json [balanced_ladle] levels[1].tolerance: 1.0 must be greater than 1.25 (the level below)"]],
+		["upgrade levels empty", "upgrades.json", func(data: Array) -> void: data[0]["levels"] = [],
+			"data/upgrades.json [balanced_ladle] levels: is empty"],
+		["upgrade levels not a list", "upgrades.json", func(data: Array) -> void: data[0]["levels"] = "lots",
+			"data/upgrades.json [balanced_ladle] levels: expected Array, got String"],
+		["two upgrades for one station", "upgrades.json", func(data: Array) -> void: data[1]["station"] = "stir",
+			["data/upgrades.json [wide_neck_funnel] station: 'stir' already has upgrade 'balanced_ladle'",
+			"data/upgrades.json [-] station: station 'pour' has no upgrade"]],
 		["overlong line", "archetypes.json", func(data: Array) -> void: data[0]["reactions"]["perfect"][0] = "word ".repeat(16).strip_edges(),
 			"data/archetypes.json [goat_farmer] reactions.perfect[0]: bubble text is 79 characters (max 78)"],
 	]
@@ -382,7 +392,9 @@ func _test_malformed_data_errors() -> void:
 		mutate.call(data)
 		texts[file] = JSON.stringify(data)
 		var errors := _load_quietly(texts)
-		_check(errors == [case[3]], "malformed data: " + case[0], "\n".join(errors))
+		# The expected error, or the expected errors in order when one mistake causes several.
+		var expected: Array = case[3] if case[3] is Array else [case[3]]
+		_check(errors == expected, "malformed data: " + case[0], "\n".join(errors))
 	var broken := _real_texts()
 	broken["misbrews.json"] = "[{"
 	var parse_errors := _load_quietly(broken)

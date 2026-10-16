@@ -100,6 +100,8 @@ func _tests() -> Array[Callable]:
 		_test_shift_configs,
 		_test_save_round_trip,
 		_test_save_missing_and_corrupt,
+		_test_save_migrations,
+		_test_save_failed_write_keeps_save,
 		_test_upgrade_tolerance,
 		_test_shop_passes_station_tolerance,
 		_test_market_purchases,
@@ -107,6 +109,7 @@ func _tests() -> Array[Callable]:
 		_test_morning_missing_day_returns_to_title,
 		_test_loop_screens_size_and_zone,
 		_test_shop_day1_assist,
+		_test_shop_last_day_storm_off,
 		_test_shop_wrong_recipe_misbrews,
 		_test_shop_patience_timeout,
 		_test_shop_storm_off_locks_brew,
@@ -769,6 +772,63 @@ func _test_shop_day1_assist() -> void:
 	expected_stock["moonmoss"] = 1
 	_check(shop != null and shop.shift.day == 2 and shop.coins == expected_coins - price and shop.stock == expected_stock, "day 2 starts with the carried-over stock and the purchase", "%s %s" % [shop.stock if shop != null else {}, expected_stock])
 	await _close_shop()
+
+
+## The last story day, played with Assist: every customer but the last is served;
+## the last one storms off with an exact recipe already in the pot. The day ends
+## with those ingredients back in stock, the summary counts the storm-off and the
+## day's reputation (below zero when it outweighs the serves), the story is over
+## (no market, nothing to continue) and the summary goes back to the title.
+func _test_shop_last_day_storm_off() -> void:
+	var last := Content.days().size()
+	_game.new_game()
+	_game.assist_mode = true
+	_game.day = last
+	for item in Content.ingredients_unlocked_by(last):
+		_game.stock[item.id] = 9
+	_game.goto(GameState.Flow.SHOP, {"day": last})
+	await _game.transition_finished
+	var shop := current_scene as Shop
+	if shop == null:
+		_check(false, "last day: the shop opens", str(current_scene))
+		return
+	var count := shop.shift.customers.size()
+	var expected_stock := shop.stock.duplicate()
+	for n in count - 1:
+		var label := "last day customer %d" % (n + 1)
+		if not await _wait_for_order(shop, label):
+			await _close_shop()
+			return
+		_refill_patience(shop)
+		var recipe := _exact_recipe(shop.customer.potion, shop.stock)
+		if not await _serve(shop, recipe, label):
+			await _close_shop()
+			return
+		for id in recipe:
+			expected_stock[id] -= 1
+		await _skip_lines(shop)
+	if not await _wait_for_order(shop, "last day last customer"):
+		await _close_shop()
+		return
+	for id in _exact_recipe(shop.customer.potion, shop.stock):
+		await _tap(shop.shelf_item(id))
+	_check(shop.pot.size() == 2, "last day: the last order's ingredients are in the pot", str(shop.pot.size()))
+	shop.customer.patience_left = 0.1
+	_check(await _until(func() -> bool: return _game.state == GameState.Flow.SUMMARY and not _game.is_transitioning(), FLOW_FRAMES * 2), "last day: the day ends with the summary", str(_game.state))
+	var result := _game.flow_args
+	var reputation := (count - 1) * Economy.reputation_delta(Brew.Grade.GOOD) + Economy.STORMED_OFF_REPUTATION
+	_check(result.get("served") == count - 1 and result.get("stormed_off") == 1 and result.get("reputation") == reputation, "last day: summary numbers count the storm-off", str(result))
+	_check(_game.stock == expected_stock, "last day: the ingredients left in the pot are back in stock", "%s, expected %s" % [_game.stock, expected_stock])
+	_check(_game.day == last + 1 and not _game.at_market and not _game.can_continue(), "last day: the story is over (no market, nothing to continue)", "day %d market %s" % [_game.day, _game.at_market])
+	var summary := current_scene
+	var money := (summary.get_node("Column/Card/List/Money") as Label).text
+	_check(("Reputation: %+d" % reputation) in money and "Stormed off: 1" in money, "last day: the summary shows the storm-off and the reputation change", money)
+	var button := summary.get_node("Column/ContinueButton") as Button
+	_check(button.text == "Back to title", "last day: the summary offers the title", button.text)
+	await _tap(button)
+	_check(await _until(func() -> bool: return _game.state == GameState.Flow.TITLE and not _game.is_transitioning(), FLOW_FRAMES), "last day: Back to title opens the title", str(_game.state))
+	_game.assist_mode = false
+	_game.new_game()
 
 
 ## A brew far from the target is a Misbrew: no pay, the overshooting essence's
@@ -1540,8 +1600,9 @@ func _test_shop_patience_row() -> void:
 		var hourglass := parts[0] as Sprite2D
 		var hearts_after := parts.slice(1).all(func(heart: Node) -> bool: return heart.name.begins_with("Heart") and (heart as Sprite2D).position.x > hourglass.position.x + 8.0)
 		_check(row.is_visible_in_tree() and hourglass.name == "Hourglass" and (hourglass.texture as AtlasTexture).region == Art.texture("ui", "hourglass").region and parts.size() == 5 and hearts_after, "patience row: hourglass, then 4 hearts, while waiting", str(parts))
-		var stray := visitor.find_children("*", "Sprite2D", true, false).filter(func(sprite: Node) -> bool: return sprite.get_parent() != row and sprite.get_parent().name != "Body")
-		_check(visitor.get_node_or_null("Emote") == null and stray.is_empty(), "no mood emote on the customer (only body parts and the patience row)", str(stray))
+		var meter := visitor.get_node("QueueMeter") as Node2D
+		var stray := visitor.find_children("*", "Sprite2D", true, false).filter(func(sprite: Node) -> bool: return sprite.get_parent() != row and sprite.get_parent() != meter and sprite.get_parent().name != "Body")
+		_check(visitor.get_node_or_null("Emote") == null and stray.is_empty() and not meter.visible, "no mood emote on the customer (only body parts, the patience row and the hidden queue meter)", str(stray))
 		await _serve(shop, _exact_recipe(visitor.potion, shop.stock), "patience row")
 		_check(not row.is_visible_in_tree(), "patience row hides once the potion arrives", "visible")
 		await _skip_lines(shop)
@@ -1662,7 +1723,17 @@ func _test_shop_customer_look() -> void:
 					problems.append("%s has a swap without colours to swap" % part)
 			elif swap == null or swap.shader.resource_path != "res://shaders/palette_swap.gdshader" or int(swap.get_shader_parameter(&"count")) != swaps.size():
 				problems.append("%s: material %s, expected %d swaps" % [part, swap, swaps.size()])
-		_check(problems.is_empty() and visitor.look != null and not visitor.look.swaps(parts[0]).is_empty(), "customer parts draw with their look's palette swap", "\n".join(problems))
+			else:
+				# The shader gets exactly the look's pairs, in order: art colour -> visitor colour.
+				var from: PackedColorArray = swap.get_shader_parameter(&"from_colors")
+				var to: PackedColorArray = swap.get_shader_parameter(&"to_colors")
+				var art_colors := swaps.keys()
+				for i in swaps.size():
+					if not from[i].is_equal_approx(Color(art_colors[i])) or not to[i].is_equal_approx(Color(swaps[art_colors[i]])):
+						problems.append("%s swap %d: %s -> %s, expected %s -> %s" % [part, i, from[i], to[i], art_colors[i], swaps[art_colors[i]]])
+				if swaps.keys().all(func(art: String) -> bool: return art == swaps[art]):
+					problems.append("%s: every swap keeps its colour" % part)
+		_check(problems.is_empty() and visitor.look != null and not visitor.look.swaps(parts[0]).is_empty(), "customer parts draw with their look's palette swap (each art colour to the look's colour)", "\n".join(problems))
 		_check((visitor.get_node("Body/Face") as Sprite2D).material == null, "the face keeps its colours", "face has a material")
 	await _close_shop()
 
@@ -1680,11 +1751,25 @@ func _test_shop_queue() -> void:
 	_check(full and shop.customer != null and shop.customer.state == Customer.State.WAIT_ORDER, "queue: the counter customer plus 2 queued", "queue %d" % shop.queue.size())
 	if full:
 		var reading_zone := Shop.STAGE_SIZE.y * THUMB_ZONE_TOP
-		var placed := true
+		var stage := shop.get_node("Column/Stage") as Control
+		var placed := PackedStringArray()
 		for i in shop.queue.size():
 			var visitor := shop.queue[i]
-			placed = placed and is_equal_approx(visitor.position.x, Customer.SLOT_X[i + 1]) and visitor.position.y + Customer.COUNTER_TOP - Customer.CANVAS_Y <= reading_zone and not (visitor.get_node("Patience") as Node2D).visible
-		_check(placed, "queue: queued customers stand in their places in the reading zone, no patience row", str(shop.queue.map(func(c: Customer) -> Vector2: return c.position)))
+			# Where the visitor's sprites (parts and queue meter) are drawn, in stage coordinates.
+			var drawn := Rect2()
+			for sprite: Sprite2D in visitor.find_children("*", "Sprite2D", true, false):
+				if sprite.is_visible_in_tree() and sprite.texture != null:
+					var rect := stage.get_global_transform().affine_inverse() * sprite.get_global_transform() * sprite.get_rect()
+					drawn = rect if drawn.size == Vector2.ZERO else drawn.merge(rect)
+			var meter := visitor.get_node("QueueMeter") as Node2D
+			var meter_top := (stage.get_global_transform().affine_inverse() * meter.get_global_transform()).origin.y
+			if not is_equal_approx(visitor.position.x, Customer.SLOT_X[i + 1]) or drawn.end.y > reading_zone or drawn.position.y < SpeechBubble.BOTTOM_Y:
+				placed.append("queued %d drawn at %s (x %.0f)" % [i, drawn, visitor.position.x])
+			if (visitor.get_node("Patience") as Node2D).visible or not meter.visible or meter_top <= SpeechBubble.BOTTOM_Y:
+				placed.append("queued %d: patience row %s, queue meter %s at y %.0f" % [i, (visitor.get_node("Patience") as Node2D).visible, meter.visible, meter_top])
+		_check(placed.is_empty(), "queue: queued customers are drawn in their places in the reading zone under the bubble, with the queue meter, no patience row", "\n".join(placed))
+		var pips_full := shop.queue[0].get_node("QueueMeter").get_children().map(func(pip: Sprite2D) -> Texture2D: return pip.texture)
+		_check(pips_full.all(func(texture: Texture2D) -> bool: return texture == Art.texture("ui", "pip_full")), "queue: a fresh queued customer's meter is full", str(pips_full))
 		_check(shop.get_node("Column/Stage/Customers").find_children("*", "Control", true, false).is_empty(), "queue: customers are not interactive", "a Control in Customers")
 		var counter := shop.customer
 		var queued := shop.queue[0]
@@ -1694,6 +1779,11 @@ func _test_shop_queue() -> void:
 		var counter_drain := counter_before - counter.patience_left
 		var queued_drain := queued_before - queued.patience_left
 		_check(counter_drain > 0.5 and is_equal_approx(snappedf(queued_drain / counter_drain, 0.01), Customer.QUEUE_PATIENCE_RATE), "queue: queued patience drains at %.2fx" % Customer.QUEUE_PATIENCE_RATE, "counter %.3f queued %.3f" % [counter_drain, queued_drain])
+		# Half the patience left: 3 halves of 6 show as full, half, empty.
+		queued.patience_left = queued.patience_total * 0.5
+		await process_frame
+		var pips_half := queued.get_node("QueueMeter").get_children().map(func(pip: Sprite2D) -> Texture2D: return pip.texture)
+		_check(pips_half == [Art.texture("ui", "pip_full"), Art.texture("ui", "pip_half"), Art.texture("ui", "pip_empty")], "queue: the meter shows half the patience as full, half, empty pips", str(pips_half))
 		var storming := shop.queue[1]
 		var request := counter.request.text
 		var coins := shop.coins
@@ -1707,7 +1797,7 @@ func _test_shop_queue() -> void:
 		await _serve(shop, _exact_recipe(counter.potion, shop.stock), "queue serve")
 		await _skip_lines(shop)
 		_check(await _until(func() -> bool: return shop.customer == queued and queued.state == Customer.State.WAIT_ORDER, FLOW_FRAMES), "queue: the next one steps up to the counter", "customer %s" % shop.customer)
-		_check(is_equal_approx(queued.position.x, Customer.COUNTER_X) and (queued.get_node("Patience") as Node2D).visible, "queue: at the counter with its patience row", str(queued.position))
+		_check(is_equal_approx(queued.position.x, Customer.COUNTER_X) and (queued.get_node("Patience") as Node2D).visible and not (queued.get_node("QueueMeter") as Node2D).visible, "queue: at the counter with its patience row, no queue meter", str(queued.position))
 	await _close_shop()
 
 
@@ -1939,7 +2029,10 @@ func _test_save_missing_and_corrupt() -> void:
 		"upgrade level too high": JSON.stringify(_with(good, "upgrades", {"stir": 9})),
 		"day out of range": JSON.stringify(_with(good, "day", 0)),
 		"bad settings": JSON.stringify(_with(good, "settings", {"assist": true})),
-		"other version": JSON.stringify(_with(good, "version", 99)),
+		"newer version": JSON.stringify(_with(good, "version", 99)),
+		"version 0": JSON.stringify(_with(good, "version", 0)),
+		"huge reputation": JSON.stringify(_with(good, "reputation", 1e300)),
+		"huge rush_best": JSON.stringify(_with(good, "rush_best", GameState.SAVE_SCORE_MAX + 1)),
 	}
 	var error_label := _game.get_node("Fade/ErrorLabel") as Label
 	for case in cases:
@@ -1960,6 +2053,75 @@ func _test_save_missing_and_corrupt() -> void:
 	error_label.hide()
 	_delete_saves()
 	_game.load_game()
+
+
+## Save versions: the game has one upgrade step per version after the first;
+## migrate_save runs the steps from the save's version up, in order, and stamps
+## the new version; a save from a newer game is refused.
+func _test_save_migrations() -> void:
+	_check(GameState.save_migrations().size() == GameState.SAVE_VERSION - 1, "one save upgrade step per version after 1", "%d steps, version %d" % [GameState.save_migrations().size(), GameState.SAVE_VERSION])
+	var to_v2 := func(saved: Dictionary) -> void:
+		saved["coins"] = saved.get("gold", 0)
+		saved.erase("gold")
+	var to_v3 := func(saved: Dictionary) -> void:
+		saved["coins"] = saved.get("coins", 0) * 2
+	var steps: Array[Callable] = [to_v2, to_v3]
+	var old := {"version": 1, "gold": 5}
+	var problem := GameState.migrate_save(old, steps, 3)
+	_check(problem == "" and old == {"version": 3, "coins": 10}, "a version 1 save runs both upgrade steps in order", "%s %s" % [problem, old])
+	var middle := {"version": 2, "coins": 5}
+	_check(GameState.migrate_save(middle, steps, 3) == "" and middle == {"version": 3, "coins": 10}, "a version 2 save runs only the last step", str(middle))
+	var newer := {"version": 4}
+	_check("newer" in GameState.migrate_save(newer, steps, 3) and newer == {"version": 4}, "a save from a newer game is refused unchanged", str(newer))
+
+
+## Save files that cannot be written: a temporary file that cannot be created (the
+## last good save stays), one that cannot replace the save (cleaned up), and a corrupt
+## save that cannot be backed up (left in place); each reported once.
+func _test_save_failed_write_keeps_save() -> void:
+	_game.new_game()
+	_game.coins = 41
+	_game.save_game()
+	var good := FileAccess.get_file_as_string(_game.save_path)
+	var temp := _game.save_path + ".tmp"
+	DirAccess.make_dir_absolute(temp)
+	_game.coins = 99
+	_game.quiet_errors = true
+	var errors := _game.reported_errors.size()
+	_game.save_game()
+	_game.quiet_errors = false
+	var reported := _game.reported_errors.slice(errors)
+	DirAccess.remove_absolute(temp)
+	(_game.get_node("Fade/ErrorLabel") as Label).hide()
+	_check(reported.size() == 1 and "unchanged" in reported[0], "a failed save write is reported once", str(reported))
+	_check(FileAccess.get_file_as_string(_game.save_path) == good, "a failed save write keeps the last good save", FileAccess.get_file_as_string(_game.save_path))
+	# The temporary file cannot replace the save (a non-empty directory is in its place):
+	# reported, and the temporary file is cleaned up.
+	_delete_saves()
+	DirAccess.make_dir_recursive_absolute(_game.save_path.path_join("keep"))
+	_game.quiet_errors = true
+	errors = _game.reported_errors.size()
+	_game.save_game()
+	_game.quiet_errors = false
+	reported = _game.reported_errors.slice(errors)
+	_check(reported.size() == 1 and "Could not replace" in reported[0] and not FileAccess.file_exists(temp), "a save that cannot replace the old one is reported and its temporary file removed", str(reported))
+	# A corrupt save whose backup cannot be made (a non-empty directory is at the
+	# backup path): one accurate report, the bad save stays, nothing is overwritten.
+	DirAccess.remove_absolute(_game.save_path.path_join("keep"))
+	DirAccess.remove_absolute(_game.save_path)
+	_write_save("{{{ not json")
+	DirAccess.make_dir_recursive_absolute(_game.backup_path().path_join("keep"))
+	_game.quiet_errors = true
+	errors = _game.reported_errors.size()
+	_game.load_game()
+	_game.quiet_errors = false
+	reported = _game.reported_errors.slice(errors)
+	_check(reported.size() == 1 and "could not be moved" in reported[0] and FileAccess.get_file_as_string(_game.save_path) == "{{{ not json", "a corrupt save that cannot be backed up is reported once and left in place", str(reported))
+	DirAccess.remove_absolute(_game.backup_path().path_join("keep"))
+	DirAccess.remove_absolute(_game.backup_path())
+	(_game.get_node("Fade/ErrorLabel") as Label).hide()
+	_delete_saves()
+	_game.new_game()
 
 
 ## Game.tolerance_scale(step): the owned upgrade level's multiplier, times 1.5 in Gentle mode.
@@ -2002,9 +2164,9 @@ func _test_shop_passes_station_tolerance() -> void:
 	_game.new_game()
 
 
-## The market before day 2: day-2 prices, unaffordable cards disabled (and a tap on
-## one buys nothing), a tap buys one and saves, the Upgrades tab sells the next
-## level until the top level, which is disabled.
+## The market before day 2: day-2 prices, unaffordable cards faded but tappable (a
+## tap buys nothing and the info card says why), a tap buys one and saves, the
+## Upgrades tab sells the next level until the top level, which is disabled.
 func _test_market_purchases() -> void:
 	var market := await _open_market(10)
 	if market == null:
@@ -2016,16 +2178,19 @@ func _test_market_purchases() -> void:
 	var upgrades_match := Content.upgrades().all(func(u: Upgrade) -> bool: return (market.upgrade_card(u.id) != null) == (u.unlock_day <= 2))
 	_check(on_sale and upgrades_match, "market sells day-2 ingredients and the upgrades unlocked by day 2", "upgrades %s" % str(Content.upgrades().map(func(u: Upgrade) -> bool: return market.upgrade_card(u.id) != null)))
 	var ladle := Content.upgrade_for("stir")
-	_check(market.upgrade_card(ladle.id).disabled and not market.stock_card("moonmoss").disabled, "10 coins: the ladle (%d) is disabled, moonmoss (%d) is not" % [ladle.costs[0], price], "%s %s" % [market.upgrade_card(ladle.id).disabled, market.stock_card("moonmoss").disabled])
+	var ladle_card := market.upgrade_card(ladle.id)
+	_check(ladle_card.modulate == Market.UNAFFORDABLE_TINT and not ladle_card.disabled and market.stock_card("moonmoss").modulate == Color.WHITE, "10 coins: the ladle (%d) is faded but tappable, moonmoss (%d) is not faded" % [ladle.costs[0], price], "%s %s %s" % [ladle_card.modulate, ladle_card.disabled, market.stock_card("moonmoss").modulate])
+	await _tap(market.get_node("Column/Shop/Tabs/UpgradesTab") as Button)
+	await _tap(ladle_card)
+	var refusal := (market.get_node("Column/Info/Text") as Label).text
+	_check(_game.coins == 10 and _game.upgrades.is_empty() and "Not enough coins" in refusal and ladle.name in refusal, "a tap on a faded card buys nothing and says why", "%d %s '%s'" % [_game.coins, _game.upgrades, refusal])
+	await _tap(market.get_node("Column/Shop/Tabs/StockTab") as Button)
 	await _tap(market.stock_card("moonmoss"))
 	_check(_game.coins == 10 - price and _game.stock.get("moonmoss") == 1 and _read_save().get("coins") == float(10 - price), "a tap buys one moonmoss and saves", "%d %s" % [_game.coins, _game.stock])
 	_check((market.get_node("Column/Coins/Amount") as Label).text == str(10 - price) and "Moonmoss" in (market.get_node("Column/Info/Text") as Label).text, "the coins and the info card update", (market.get_node("Column/Info/Text") as Label).text)
 	await _tap(market.stock_card("moonmoss"))
 	var left := 10 - 2 * price
-	_check(_game.coins == left and market.stock_card("moonmoss").disabled == (left < price), "unaffordable stock is disabled", "%d %s" % [_game.coins, market.stock_card("moonmoss").disabled])
-	if market.stock_card("moonmoss").disabled:
-		await _tap(market.stock_card("moonmoss"))
-		_check(_game.coins == left and _game.stock["moonmoss"] == 2, "a tap on a disabled card buys nothing", "%d %s" % [_game.coins, _game.stock])
+	_check(_game.coins == left and (market.stock_card("moonmoss").modulate == Market.UNAFFORDABLE_TINT) == (left < price), "stock the coins no longer cover is faded", "%d %s" % [_game.coins, market.stock_card("moonmoss").modulate])
 	market = await _open_market(ladle.costs[0] + ladle.costs[1])
 	await _tap(market.get_node("Column/Shop/Tabs/UpgradesTab") as Button)
 	_check((market.get_node("Column/Shop/UpgradeList") as Control).visible and not (market.get_node("Column/Shop/StockGrid") as Control).visible, "the Upgrades tab shows the upgrades", "hidden")
@@ -2228,6 +2393,13 @@ func _serve(shop: Shop, recipe: Array[String], label: String) -> bool:
 	var done := await _until(func() -> bool: return shop.served == served + 1, FLOW_FRAMES)
 	_check(done, label + ": served", "served %d" % shop.served)
 	return done
+
+
+## Fills the patience of everyone in line, so slow test steps make no one storm off.
+func _refill_patience(shop: Shop) -> void:
+	for visitor: Customer in [shop.customer] + shop.queue:
+		if visitor != null:
+			visitor.patience_left = visitor.patience_total
 
 
 ## Taps the workspace until the current customer leaves (skipping the reaction lines).

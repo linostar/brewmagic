@@ -4,7 +4,8 @@ extends Control
 ## ingredient stock at that day's market prices (Economy.market_price) and the
 ## next level of station upgrades (Economy.upgrade_cost) on sale by that day, then
 ## "Next day" goes to its morning. Every buy is saved at once (Game.buy_stock,
-## Game.buy_upgrade); anything the coins do not cover, or a maxed upgrade, is disabled.
+## Game.buy_upgrade); a maxed upgrade is disabled; anything the coins do not cover
+## is faded (UNAFFORDABLE_TINT) and a tap on it shakes it and says why.
 ##
 ## Layout: the reading zone shows the coins and an info card about the last
 ## focused or bought item (its name, essences or effect, price); the thumb zone
@@ -15,6 +16,9 @@ const CARD_SIZE := Vector2(62, 64)
 const UPGRADE_SIZE := Vector2(258, 44)
 const GOLD := Color("#ffc95c")
 const RED := Color("#c43c2c")
+## A card the coins do not cover: faded as a whole (lighter, not a different hue);
+## it stays tappable, and a tap shakes it and says why in the info panel.
+const UNAFFORDABLE_TINT := Color(1, 1, 1, 0.45)
 
 var spec: DaySpec
 
@@ -60,7 +64,7 @@ func _ready() -> void:
 	_upgrades_tab.disabled = _upgrade_cards.is_empty()
 	_refresh()
 	_show_tab(true)
-	_info.text = "Tap an item to buy one. Stock carries over to tomorrow."
+	_info.text = "Tap an item to buy one. Faded items cost more coins than you have. Stock carries over to tomorrow."
 	print("[Market] Before day %d: %d coins, stock %s, upgrades %s, %d ingredients and %d upgrades on sale" % [
 		spec.day, _game.coins, _game.stock, _game.upgrades, _stock_cards.size(), _upgrade_cards.size()])
 
@@ -187,8 +191,9 @@ func _refresh() -> void:
 		var price := Economy.market_price(spec, item)
 		var owned: int = _game.stock.get(item.id, 0)
 		(card.get_node("Owned") as Label).text = "x%d" % owned
-		card.disabled = price > _game.coins
-		card.accessibility_name = "Buy one %s for %d coins, %d in stock%s" % [item.name, price, owned, " (not enough coins)" if card.disabled else ""]
+		var short := price > _game.coins
+		card.modulate = UNAFFORDABLE_TINT if short else Color.WHITE
+		card.accessibility_name = "Buy one %s for %d coins, %d in stock%s" % [item.name, price, owned, " (not enough coins)" if short else ""]
 	for upgrade in Content.upgrades():
 		if not _upgrade_cards.has(upgrade.id):
 			continue
@@ -204,15 +209,17 @@ func _refresh() -> void:
 			text.text = "%s (max level)\n%s: x%.2f forgiving" % [upgrade.name, upgrade.station.capitalize(), Economy.upgrade_tolerance(upgrade, level)]
 		else:
 			text.text = "%s (level %d of %d)\n%s: x%.2f -> x%.2f forgiving" % [upgrade.name, level, upgrade.max_level(), upgrade.station.capitalize(), Economy.upgrade_tolerance(upgrade, level), Economy.upgrade_tolerance(upgrade, level + 1)]
-		card.disabled = maxed or cost > _game.coins
-		card.accessibility_name = ("%s is at its max level" % upgrade.name) if maxed else "Buy %s level %d for %d coins%s" % [upgrade.name, level + 1, cost, " (not enough coins)" if cost > _game.coins else ""]
+		var short := not maxed and cost > _game.coins
+		card.disabled = maxed
+		card.modulate = UNAFFORDABLE_TINT if short else Color.WHITE
+		card.accessibility_name = ("%s is at its max level" % upgrade.name) if maxed else "Buy %s level %d for %d coins%s" % [upgrade.name, level + 1, cost, " (not enough coins)" if short else ""]
 
 
 func _on_stock_pressed(item: Ingredient) -> void:
 	var card := _stock_cards[item.id]
 	var price := Economy.market_price(spec, item)
 	if not _game.buy_stock(item, price):
-		Juice.shake(card, 2.0, 0.2)
+		_refuse(card, item.name, price)
 		return
 	_bought(card, price)
 	_describe_stock(item)
@@ -222,14 +229,20 @@ func _on_upgrade_pressed(upgrade: Upgrade) -> void:
 	var card := _upgrade_cards[upgrade.id]
 	var cost := Economy.upgrade_cost(upgrade, _game.upgrades.get(upgrade.station, 0))
 	if not _game.buy_upgrade(upgrade):
-		Juice.shake(card, 2.0, 0.2)
+		_refuse(card, upgrade.name, cost)
 		return
 	_bought(card, cost)
 	_describe_upgrade(upgrade)
 
 
+## Feedback for a tap on `card` the coins do not cover: a shake and the reason.
+func _refuse(card: Button, what: String, price: int) -> void:
+	Juice.shake(card, 2.0, 0.2)
+	_info.text = "Not enough coins: %s costs %d, you have %d." % [what, price, _game.coins]
+
+
 ## Feedback for a purchase of `price` from `card`: squash, "-price" popping off the
-## coins, every card refreshed (focus moves on if this card can no longer be bought).
+## coins, every card refreshed (focus moves on when this upgrade reached its max level).
 func _bought(card: Button, price: int) -> void:
 	Juice.squash(card, 0.25)
 	Juice.squash(_coin_icon, 0.3, 0.16)

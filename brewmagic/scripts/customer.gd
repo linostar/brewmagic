@@ -14,8 +14,10 @@ extends Node2D
 ## (and `arrived`), anywhere else QUEUED.
 ## Patience (seconds, set by setup()) drains in WAIT_ORDER and WAIT_BREW, and at
 ## QUEUE_PATIENCE_RATE while QUEUED (also while stepping forward); the patience row
-## (an hourglass, then the hearts) shows what is left at the counter only (in the
-## queue it would cover the next customer), and the face always shows the mood.
+## (an hourglass, then the hearts) shows what is left at the counter (in the queue
+## it would cover the next customer), the queue meter (3 pips over the head,
+## each full, half or empty by shape) shows it at a queue place, and the face
+## always shows the mood.
 ## At zero the customer turns STORMING (it takes no order or brew any more), emits
 ## patience_ran_out once and waits for the shop to make it leave. The patience row
 ## hides once the potion arrives or the customer storms off.
@@ -58,7 +60,6 @@ const WALK_HOP := 2.0
 const WALK_STEPS := 4.0
 const MIN_WALK_TIME := 0.25
 const BOB_TIME := 0.45
-const HEARTS := 4
 ## Patience fractions at or above which the mood is HAPPY, then NEUTRAL; above 0 ANNOYED.
 const HAPPY_PATIENCE := 0.66
 const NEUTRAL_PATIENCE := 0.33
@@ -95,6 +96,8 @@ var _walk_tween: Tween
 @onready var _parts: Array[Sprite2D] = [$Body/BodyPart, $Body/Head, $Body/Hair, $Body/Face, $Body/Accessory]
 @onready var _patience_row: Node2D = $Patience
 @onready var _hearts: Array[Sprite2D] = [$Patience/Heart0, $Patience/Heart1, $Patience/Heart2, $Patience/Heart3]
+@onready var _queue_meter: Node2D = $QueueMeter
+@onready var _pips: Array[Sprite2D] = [$QueueMeter/Pip0, $QueueMeter/Pip1, $QueueMeter/Pip2]
 @onready var _effect_root: Node2D = $Effect
 
 
@@ -122,6 +125,7 @@ func setup(who: Archetype, wants: PotionType, says: RequestLine, patience_second
 func _ready() -> void:
 	($Patience/Hourglass as Sprite2D).texture = Art.texture("ui", "hourglass")
 	_patience_row.hide()
+	_queue_meter.hide()
 	_apply_look()
 	_show_frame(0)
 	_update_patience()
@@ -140,6 +144,7 @@ func enter(to_slot: int) -> void:
 ## turns it WAIT_ORDER and emits `arrived`; anywhere else it is QUEUED.
 func walk_to(to_slot: int) -> void:
 	slot = to_slot
+	_queue_meter.visible = slot > 0
 	if _walk_tween != null:
 		_walk_tween.kill()
 	_walk_tween = _walk(SLOT_X[to_slot])
@@ -247,6 +252,7 @@ func show_effect(name_of_effect: String) -> void:
 func leave() -> void:
 	state = State.LEAVE
 	_patience_row.hide()
+	_queue_meter.hide()
 	if _walk_tween != null:
 		_walk_tween.kill()
 	var tween := _walk(DOOR_X)
@@ -285,6 +291,7 @@ func _process(delta: float) -> void:
 	if patience_left <= 0.0:
 		state = State.STORMING
 		_patience_row.hide()
+		_queue_meter.hide()
 		print("[Customer] %s ran out of patience%s" % [archetype.id, " in the queue" if slot > 0 else ""])
 		Juice.shake(_body, 2.0, 0.3)
 		patience_ran_out.emit()
@@ -346,12 +353,18 @@ func _show_frame(frame: int) -> void:
 
 
 func _update_patience() -> void:
-	var halves := ceili(patience_left / patience_total * HEARTS * 2.0)
-	for i in HEARTS:
-		var left_halves := halves - i * 2
-		var sprite := "heart_full" if left_halves >= 2 else ("heart_half" if left_halves == 1 else "heart_empty")
-		_hearts[i].texture = Art.texture("ui", sprite)
+	_fill(_hearts, "heart")
+	_fill(_pips, "pip")
 	_show_mood(mood())
+
+
+## Shows the patience left on `sprites` in half steps: <kind>_full, _half or _empty.
+func _fill(sprites: Array[Sprite2D], kind: String) -> void:
+	var halves := ceili(patience_left / patience_total * sprites.size() * 2.0)
+	for i in sprites.size():
+		var left_halves := halves - i * 2
+		var sprite := "_full" if left_halves >= 2 else ("_half" if left_halves == 1 else "_empty")
+		sprites[i].texture = Art.texture("ui", kind + sprite)
 
 
 func _show_mood(value: Mood) -> void:

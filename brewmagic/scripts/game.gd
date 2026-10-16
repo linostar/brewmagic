@@ -46,10 +46,16 @@ const SILENT_AUDIO_DRIVER := "Dummy"
 const SAVE_PATH := "user://save.json"
 ## The save of tool runs (see _ready); tests delete it when they finish.
 const TOOL_SAVE_PATH := "user://tool_save.json"
+## The save format's version. Every change to the format bumps it and appends one
+## step to save_migrations(), so saves of older versions are upgraded, not discarded.
 const SAVE_VERSION := 1
-## Upper bounds a save's numbers must respect (anything else marks it corrupt).
+## Upper bounds a save's numbers must respect (anything else marks it corrupt);
+## SAVE_SCORE_MAX bounds reputation (either sign) and rush_best.
 const SAVE_COINS_MAX := 999999
 const SAVE_STOCK_MAX := 9999
+const SAVE_SCORE_MAX := 999999
+## The largest whole number a JSON (double) number holds exactly: 2^53.
+const SAVE_EXACT_MAX := 9007199254740992.0
 ## The keys of a save, each with the type its value must have.
 const SAVE_KEYS: Dictionary[String, Variant.Type] = {
 	"version": TYPE_INT, "day": TYPE_INT, "at_market": TYPE_BOOL, "coins": TYPE_INT, "reputation": TYPE_INT,
@@ -312,20 +318,29 @@ func buy_upgrade(upgrade: Upgrade) -> bool:
 
 
 ## Writes progress and settings to save_path; a failure is reported, never silent.
+## The data goes to a temporary file first, which then replaces the save, so a
+## failed write leaves the last good save in place.
 func save_game() -> void:
 	var data := {
 		"version": SAVE_VERSION, "day": day, "at_market": at_market, "coins": coins, "reputation": reputation,
 		"stock": stock, "upgrades": upgrades, "codex": codex, "flags": flags, "rush_best": rush_best,
 		"settings": {"assist": assist_mode, "gentle": gentle_mode},
 	}
-	var file := FileAccess.open(save_path, FileAccess.WRITE)
+	var temp := save_path + ".tmp"
+	var file := FileAccess.open(temp, FileAccess.WRITE)
 	if file == null:
-		_report_error("Could not open save '%s' for writing: %s" % [save_path, error_string(FileAccess.get_open_error())])
+		_report_error("Could not open '%s' for writing the save: %s; '%s' is unchanged" % [temp, error_string(FileAccess.get_open_error()), save_path])
 		return
 	var written := file.store_string(JSON.stringify(data, "  "))
 	file.close()
 	if not written:
-		_report_error("Could not write save '%s'" % save_path)
+		DirAccess.remove_absolute(temp)
+		_report_error("Could not write the save to '%s'; '%s' is unchanged" % [temp, save_path])
+		return
+	var replaced := DirAccess.rename_absolute(temp, save_path)
+	if replaced != OK:
+		DirAccess.remove_absolute(temp)
+		_report_error("Could not replace save '%s' with '%s': %s; the save is unchanged" % [save_path, temp, error_string(replaced)])
 		return
 	print("[Game] Saved to %s: day %d%s, %d coins, reputation %d, upgrades %s, assist %s, gentle %s" % [
 		save_path, day, " (market)" if at_market else "", coins, reputation, upgrades, assist_mode, gentle_mode])
@@ -434,6 +449,9 @@ func _apply_save(data: Variant) -> String:
 	if not data is Dictionary:
 		return "not an object"
 	var saved: Dictionary = data
+	var outdated := migrate_save(saved, save_migrations(), SAVE_VERSION)
+	if outdated != "":
+		return outdated
 	for key: Variant in saved:
 		if not SAVE_KEYS.has(str(key)):
 			return "unknown key '%s'" % key
@@ -444,8 +462,6 @@ func _apply_save(data: Variant) -> String:
 		var ok := _is_whole(value) if SAVE_KEYS[key] == TYPE_INT else typeof(value) == SAVE_KEYS[key]
 		if not ok:
 			return "'%s' is not %s" % [key, "a whole number" if SAVE_KEYS[key] == TYPE_INT else type_string(SAVE_KEYS[key])]
-	if int(saved["version"]) != SAVE_VERSION:
-		return "version %s (expected %d)" % [saved["version"], SAVE_VERSION]
 	day = int(saved["day"])
 	if day < Content.FIRST_DAY or day > Content.LAST_DAY + 1:
 		return "day %d is outside %d..%d" % [day, Content.FIRST_DAY, Content.LAST_DAY + 1]
@@ -454,9 +470,11 @@ func _apply_save(data: Variant) -> String:
 	if coins < 0 or coins > SAVE_COINS_MAX:
 		return "coins %d is outside 0..%d" % [coins, SAVE_COINS_MAX]
 	reputation = int(saved["reputation"])
+	if absi(reputation) > SAVE_SCORE_MAX:
+		return "reputation %d is outside -%d..%d" % [reputation, SAVE_SCORE_MAX, SAVE_SCORE_MAX]
 	rush_best = int(saved["rush_best"])
-	if rush_best < 0:
-		return "rush_best %d is negative" % rush_best
+	if rush_best < 0 or rush_best > SAVE_SCORE_MAX:
+		return "rush_best %d is outside 0..%d" % [rush_best, SAVE_SCORE_MAX]
 	var saved_stock: Dictionary = saved["stock"]
 	for id: Variant in saved_stock:
 		if Content.ingredients().all(func(item: Ingredient) -> bool: return item.id != str(id)):
@@ -485,22 +503,54 @@ func _apply_save(data: Variant) -> String:
 	return ""
 
 
-## Reports `problem`, moves the bad save to backup_path() and writes defaults in its place.
+## Upgrades `saved` (a parsed save, changed in place) to version `target`:
+## migrations[i] turns a version i + 1 save into version i + 2. Returns "" or why
+## it cannot (no whole version >= 1, or a version newer than `target`).
+static func migrate_save(saved: Dictionary, migrations: Array[Callable], target: int) -> String:
+	if not _is_whole(saved.get("version")) or int(saved["version"]) < 1:
+		return "'version' is not a whole number >= 1"
+	if migrations.size() != target - 1:
+		push_error("[Game] %d save upgrade steps for save version %d (expected %d)" % [migrations.size(), target, target - 1])
+		return "this game cannot upgrade saves (%d steps for version %d)" % [migrations.size(), target]
+	var version := int(saved["version"])
+	if version > target:
+		return "version %d is newer than this game's %d" % [version, target]
+	while version < target:
+		migrations[version - 1].call(saved)
+		version += 1
+		saved["version"] = version
+		print("[Game] Upgraded the save to version %d" % version)
+	return ""
+
+
+## The save format's upgrade steps: entry i turns a version i + 1 save into
+## version i + 2 (none yet: version 1 is the first). Steps run before the save is
+## validated, so they must read keys with get() and leave anything malformed for
+## the validation to report.
+static func save_migrations() -> Array[Callable]:
+	return []
+
+
+## Reports `problem`, moves the bad save to backup_path() and writes defaults in
+## its place. When the move fails the bad save stays where it is (reported), and
+## the next save write replaces it.
 func _discard_save(problem: String) -> void:
-	_report_error("Save '%s' is %s; it was moved to '%s' and replaced with fresh progress" % [save_path, problem, backup_path()])
+	var cleared := OK
 	if FileAccess.file_exists(backup_path()):
-		DirAccess.remove_absolute(backup_path())
-	var moved := DirAccess.rename_absolute(save_path, backup_path())
+		cleared = DirAccess.remove_absolute(backup_path())
+	var moved := DirAccess.rename_absolute(save_path, backup_path()) if cleared == OK else cleared
 	if moved != OK:
-		# Keep the only copy of the bad save; it is overwritten by the next save write.
-		_report_error("Could not move the bad save '%s' to '%s': %s" % [save_path, backup_path(), error_string(moved)])
+		_report_error("Save '%s' is %s and could not be moved to '%s' (%s); the game starts fresh and the next save replaces it" % [save_path, problem, backup_path(), error_string(moved)])
 		return
+	_report_error("Save '%s' is %s; it was moved to '%s' and replaced with fresh progress" % [save_path, problem, backup_path()])
 	save_game()
 
 
-## JSON numbers load as floats; accept whole numbers only.
+## JSON numbers load as floats; accept whole numbers only, and only those a float
+## holds exactly (|n| <= 2^53): int() of a larger float is CPU dependent (arm64
+## saturates, x86-64 gives INT64_MIN), so range checks after it could be fooled.
 static func _is_whole(value: Variant) -> bool:
-	return value is int or (value is float and is_finite(value) and value == floorf(value))
+	return value is int or (value is float and is_finite(value) and value == floorf(value) and absf(value) <= SAVE_EXACT_MAX)
 
 
 func _fade(alpha: float) -> void:

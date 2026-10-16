@@ -1101,8 +1101,12 @@ func day_result() -> Dictionary:
 	}
 
 
+## Commits the day. Ingredients still in the pot (put in after the last order, or
+## left by a customer who stormed off before the brew) go back to stock first.
 func _end_day() -> void:
 	_day_over = true
+	while not pot.is_empty():
+		remove_from_pot(0)
 	var result := day_result()
 	print("[Shop] Day %d done: %s" % [shift.day, result])
 	_game.finish_day(result, coins, stock, reputation)
