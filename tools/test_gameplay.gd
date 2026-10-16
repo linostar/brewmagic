@@ -106,6 +106,13 @@ func _tests() -> Array[Callable]:
 		_test_shop_stir_real_touch,
 		_test_shop_grade_stamps,
 		_test_shop_patience_row,
+		_test_look_palette_and_count,
+		_test_look_distinct_per_shift,
+		_test_shop_customer_look,
+		_test_shop_queue,
+		_test_shop_queue_double_storm,
+		_test_bubble_blips,
+		_test_audio_unlock_and_voices,
 	]
 
 
@@ -1320,6 +1327,228 @@ func _test_shop_patience_row() -> void:
 		_check(not row.is_visible_in_tree(), "patience row hides when the customer storms off", "visible")
 	await _close_shop()
 
+
+## Palette swap: every look colour is a palette.hex colour, the atlas sidecar's
+## colour lists match the customer sprites' pixels, no part needs more swaps than
+## the shader holds, looks are deterministic by seed, and the archetypes' parts
+## times the looks give at least 200 distinct visitors (counted by what they show).
+func _test_look_palette_and_count() -> void:
+	var palette := {}
+	var palette_path := ProjectSettings.globalize_path("res://").path_join("../art_src/palette.hex")
+	for raw in FileAccess.get_file_as_string(palette_path).split("\n"):
+		var line := raw.get_slice(";", 0).strip_edges()
+		if line != "":
+			palette[line.to_lower()] = true
+	_check(palette.size() == 32, "palette.hex read (%d colours)" % palette.size(), palette_path)
+	var outside := PackedStringArray()
+	for ramps: Dictionary in [Look.CLOTHS, Look.HAIRS, Look.SKINS]:
+		for ramp_name: String in ramps:
+			for color: String in ramps[ramp_name]:
+				if not palette.has(color):
+					outside.append("%s %s" % [ramp_name, color])
+	_check(outside.is_empty(), "every look colour is in palette.hex", str(outside))
+	var atlas := Art.texture("customer", "body_robe_0").atlas.get_image()
+	var mismatched := PackedStringArray()
+	var too_many := PackedStringArray()
+	var all_looks := Look.all()
+	for archetype in Content.archetypes():
+		for part in Customer.parts_of(archetype):
+			for frame in 2:
+				var sprite := "%s_%d" % [part, frame]
+				var used := {}
+				var image := atlas.get_region(Rect2i(Art.texture("customer", sprite).region))
+				for y in image.get_height():
+					for x in image.get_width():
+						var pixel := image.get_pixel(x, y)
+						if pixel.a > 0.0:
+							used["#" + pixel.to_html(false)] = true
+				var listed := Array(Art.colors("customer", sprite))
+				var found := used.keys()
+				found.sort()
+				if found != listed:
+					mismatched.append("%s: pixels %s, sidecar %s" % [sprite, found, listed])
+			for look in all_looks:
+				if look.swaps(part).size() > Customer.MAX_SWAPS:
+					too_many.append(part)
+					break
+	_check(mismatched.is_empty(), "sidecar colour lists match the customer sprites", "\n".join(mismatched))
+	_check(too_many.is_empty(), "no part needs more swaps than the shader holds", str(too_many))
+	_check(Look.from_seed(42).describe() == Look.from_seed(42).describe() and Look.from_seed(42).cloth_a != Look.from_seed(42).cloth_b, "a look is deterministic by seed, two different cloths", Look.from_seed(42).describe())
+	var distinct := {}
+	for archetype in Content.archetypes():
+		var parts := Customer.parts_of(archetype)
+		for look in all_looks:
+			distinct[" ".join(parts) + "|" + look.signature(parts)] = true
+	_check(Content.archetypes().size() >= 8, "at least 8 archetypes", str(Content.archetypes().size()))
+	_check(distinct.size() >= 200, "at least 200 distinct customer looks (%d)" % distinct.size(), str(distinct.size()))
+
+
+## No two customers of a shift look alike: every story day in days.json, and a
+## generated 60-customer run cycling the archetypes in random order.
+func _test_look_distinct_per_shift() -> void:
+	var problems := PackedStringArray()
+	var shifts: Dictionary[String, Array] = {}
+	for day in Content.days():
+		var archetypes: Array[Archetype] = []
+		for spec in day.customers:
+			archetypes.append(Content.archetype(spec.archetype))
+		shifts["day %d" % day.day] = archetypes
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 60
+	var run: Array[Archetype] = []
+	for i in 60:
+		run.append(Content.archetypes()[rng.randi_range(0, Content.archetypes().size() - 1)])
+	shifts["60-customer run"] = run
+	for shift_name in shifts:
+		for shift_seed: int in [1, 2, 3]:
+			var parts: Array[Array] = []
+			for archetype: Archetype in shifts[shift_name]:
+				parts.append(Customer.parts_of(archetype))
+			var looks := Look.distinct_for(parts, shift_seed)
+			var seen := {}
+			for i in looks.size():
+				var part_names: Array[String] = []
+				part_names.assign(parts[i])
+				seen[" ".join(part_names) + "|" + looks[i].signature(part_names)] = true
+			if seen.size() != looks.size():
+				problems.append("%s seed %d: %d distinct of %d" % [shift_name, shift_seed, seen.size(), looks.size()])
+			var again := Look.distinct_for(parts, shift_seed)
+			if looks.map(func(look: Look) -> String: return look.describe()) != again.map(func(look: Look) -> String: return look.describe()):
+				problems.append("%s seed %d: not deterministic" % [shift_name, shift_seed])
+	_check(problems.is_empty(), "no two customers of a shift look alike (every day, a 60-customer run)", "\n".join(problems))
+
+
+## Shop customers draw through the palette swap: every part with swappable colours
+## has the shader with exactly its look's swaps; the face has none.
+func _test_shop_customer_look() -> void:
+	var shop := await _open_shop()
+	if await _wait_for_order(shop, "customer look"):
+		var visitor := shop.customer
+		var problems := PackedStringArray()
+		var layers := {"body": "BodyPart", "head": "Head", "hair": "Hair", "acc": "Accessory"}
+		var parts := Customer.parts_of(visitor.archetype)
+		for part in parts:
+			var sprite := visitor.get_node("Body/" + str(layers[part.get_slice("_", 0)])) as Sprite2D
+			var swaps := visitor.look.swaps(part)
+			var swap := sprite.material as ShaderMaterial
+			if swaps.is_empty():
+				if swap != null:
+					problems.append("%s has a swap without colours to swap" % part)
+			elif swap == null or swap.shader.resource_path != "res://shaders/palette_swap.gdshader" or int(swap.get_shader_parameter(&"count")) != swaps.size():
+				problems.append("%s: material %s, expected %d swaps" % [part, swap, swaps.size()])
+		_check(problems.is_empty() and visitor.look != null and not visitor.look.swaps(parts[0]).is_empty(), "customer parts draw with their look's palette swap", "\n".join(problems))
+		_check((visitor.get_node("Body/Face") as Sprite2D).material == null, "the face keeps its colours", "face has a material")
+	await _close_shop()
+
+
+## The line: up to 2 customers queue in front of the window (reading zone, not
+## interactive, no patience row) while the counter one is served; queued patience
+## drains at Customer.QUEUE_PATIENCE_RATE; a queued customer whose patience runs out
+## storms off from the queue (reputation -2, its stormed_off line, no stamp, no pay)
+## and the counter's request comes back; the queue steps forward when the served
+## customer leaves.
+func _test_shop_queue() -> void:
+	_game.assist_mode = true
+	var shop := await _open_shop()
+	var full := await _until(func() -> bool: return shop.queue.size() == 2 and shop.queue.all(func(c: Customer) -> bool: return c.state == Customer.State.QUEUED), FLOW_FRAMES * 3)
+	_check(full and shop.customer != null and shop.customer.state == Customer.State.WAIT_ORDER, "queue: the counter customer plus 2 queued", "queue %d" % shop.queue.size())
+	if full:
+		var reading_zone := Shop.STAGE_SIZE.y * THUMB_ZONE_TOP
+		var placed := true
+		for i in shop.queue.size():
+			var visitor := shop.queue[i]
+			placed = placed and is_equal_approx(visitor.position.x, Customer.SLOT_X[i + 1]) and visitor.position.y + Customer.COUNTER_TOP - Customer.CANVAS_Y <= reading_zone and not (visitor.get_node("Patience") as Node2D).visible
+		_check(placed, "queue: queued customers stand in their places in the reading zone, no patience row", str(shop.queue.map(func(c: Customer) -> Vector2: return c.position)))
+		_check(shop.get_node("Column/Stage/Customers").find_children("*", "Control", true, false).is_empty(), "queue: customers are not interactive", "a Control in Customers")
+		var counter := shop.customer
+		var queued := shop.queue[0]
+		var counter_before := counter.patience_left
+		var queued_before := queued.patience_left
+		await _frames(60)
+		var counter_drain := counter_before - counter.patience_left
+		var queued_drain := queued_before - queued.patience_left
+		_check(counter_drain > 0.5 and is_equal_approx(snappedf(queued_drain / counter_drain, 0.01), Customer.QUEUE_PATIENCE_RATE), "queue: queued patience drains at %.2fx" % Customer.QUEUE_PATIENCE_RATE, "counter %.3f queued %.3f" % [counter_drain, queued_drain])
+		var storming := shop.queue[1]
+		var request := counter.request.text
+		var coins := shop.coins
+		storming.patience_left = 0.1
+		_check(await _until(func() -> bool: return shop.stormed_off == 1, FLOW_FRAMES), "queue: a queued customer storms off", str(shop.stormed_off))
+		var bubble := shop.get_node("Column/Stage/Bubble") as SpeechBubble
+		_check(bubble.text in storming.archetype.reactions["stormed_off"] and storming.state == Customer.State.LEAVE, "queue: it says a stormed_off line and leaves", "'%s' %s" % [bubble.text, Customer.State.keys()[storming.state]])
+		_check(shop.reputation == Economy.STORMED_OFF_REPUTATION and shop.coins == coins and shop.served == 0 and not (shop.get_node("Column/Stage/Stamp") as Control).visible, "queue: storming off costs reputation only, no stamp", "rep %d coins %d" % [shop.reputation, shop.coins])
+		_check(shop.queue == ([queued] as Array[Customer]) and shop.customer == counter, "queue: the line closes up", str(shop.queue))
+		_check(await _until(func() -> bool: return bubble.text == request, FLOW_FRAMES), "queue: the counter's request comes back after the aside", bubble.text)
+		await _serve(shop, _exact_recipe(counter.potion, shop.stock), "queue serve")
+		await _skip_lines(shop)
+		_check(await _until(func() -> bool: return shop.customer == queued and queued.state == Customer.State.WAIT_ORDER, FLOW_FRAMES), "queue: the next one steps up to the counter", "customer %s" % shop.customer)
+		_check(is_equal_approx(queued.position.x, Customer.COUNTER_X) and (queued.get_node("Patience") as Node2D).visible, "queue: at the counter with its patience row", str(queued.position))
+	await _close_shop()
+
+
+## Both queued customers storming off within one aside hold: the second aside
+## still puts the counter customer's request back afterwards.
+func _test_shop_queue_double_storm() -> void:
+	var shop := await _open_shop()
+	var full := await _until(func() -> bool: return shop.queue.size() == 2 and shop.queue.all(func(c: Customer) -> bool: return c.state == Customer.State.QUEUED), FLOW_FRAMES * 3)
+	_check(full and shop.customer != null and shop.customer.state == Customer.State.WAIT_ORDER, "double storm: the line is full", "queue %d" % shop.queue.size())
+	if full:
+		var request := shop.customer.request.text
+		shop.queue[1].patience_left = 0.1
+		shop.queue[0].patience_left = 0.6
+		_check(await _until(func() -> bool: return shop.stormed_off == 2, FLOW_FRAMES), "double storm: both queued customers storm off", str(shop.stormed_off))
+		var bubble := shop.get_node("Column/Stage/Bubble") as SpeechBubble
+		_check(await _until(func() -> bool: return bubble.visible and bubble.text == request, FLOW_FRAMES), "double storm: the counter's request comes back", "'%s' visible %s" % [bubble.text, bubble.visible])
+		_check(shop.queue.is_empty() and shop.reputation == 2 * Economy.STORMED_OFF_REPUTATION, "double storm: queue empty, reputation for both", "rep %d" % shop.reputation)
+	await _close_shop()
+
+
+## The bubble blips on the 1st typed character and every BLIP_EVERY after (one per
+## frame at most), not after skip() completes the line.
+func _test_bubble_blips() -> void:
+	var bubble := SPEECH_BUBBLE_SCENE.instantiate() as SpeechBubble
+	root.add_child(bubble)
+	var blips := [0]
+	bubble.blip.connect(func() -> void: blips[0] += 1)
+	var line: String = Content.archetypes()[0].reactions["perfect"][0]
+	bubble.say(line, 135.0)
+	var total := (bubble.get_node("Box/Text") as RichTextLabel).get_total_character_count()
+	await _until(func() -> bool: return not bubble.is_typing(), FLOW_FRAMES)
+	_check(blips[0] == ceili(total / float(SpeechBubble.BLIP_EVERY)), "bubble blips every %d characters" % SpeechBubble.BLIP_EVERY, "%d blips for %d characters" % [blips[0], total])
+	blips[0] = 0
+	bubble.say(line, 135.0)
+	await _frames(6)
+	var before_skip: int = blips[0]
+	bubble.skip()
+	await _frames(30)
+	_check(before_skip > 0 and blips[0] == before_skip, "no blips once the line is skipped", "%d then %d" % [before_skip, blips[0]])
+	bubble.free()
+
+
+## No sound before the first input; the first touch unlocks audio; a customer's
+## request then plays voice blips through Game.play_sfx, and every archetype has
+## its voice file.
+func _test_audio_unlock_and_voices() -> void:
+	var unlock := _game.get_node("AudioUnlock")
+	_game.audio_unlocked = false
+	unlock.set_process_input(true)
+	var played := _game.sfx_played
+	_game.play_sfx(load(Shop.VOICE_PATH % Content.archetypes()[0].id) as AudioStream)
+	_check(_game.sfx_played == played, "no sound before the first input", str(_game.sfx_played - played))
+	await _tap_at(Vector2(4, 4))
+	_check(_game.audio_unlocked and not unlock.is_processing_input(), "the first touch unlocks audio", str(_game.audio_unlocked))
+	var missing := PackedStringArray()
+	for archetype in Content.archetypes():
+		if not ResourceLoader.exists(Shop.VOICE_PATH % archetype.id):
+			missing.append(archetype.id)
+	_check(missing.is_empty(), "every archetype has a voice blip", str(missing))
+	var shop := await _open_shop()
+	played = _game.sfx_played
+	if await _wait_for_order(shop, "voices"):
+		var bubble := shop.get_node("Column/Stage/Bubble") as SpeechBubble
+		await _until(func() -> bool: return not bubble.is_typing(), FLOW_FRAMES)
+		var total := (bubble.get_node("Box/Text") as RichTextLabel).get_total_character_count()
+		_check(_game.sfx_played - played >= ceili(total / float(SpeechBubble.BLIP_EVERY)), "the request plays voice blips while typing", "%d for %d characters" % [_game.sfx_played - played, total])
+	await _close_shop()
 
 ## The grade stamp right after a serve: `grade`'s words, colour and icon; "+pay"
 ## flying in Fx (none when `pay` is 0); once landed, in the stage's reading zone

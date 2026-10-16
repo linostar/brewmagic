@@ -88,11 +88,11 @@ freshness (`fresh`). gloom: sleep (`sleep`, `slept`), curses (`curse`), spooky (
 | `name` | string | 1..26 chars | Display name of this recurring visitor. |
 | `patience_seconds` | int | 10..300 | Before `patience_scale`. |
 | `tip_tendency` | float | 0.0..1.0 | 0 never tips, 1 tips generously. |
-| `voice` | object | keys exactly `pitch`, `timbre` | |
-| `voice.pitch` | float | 0.5..2.0 | Voice-blip pitch multiplier. |
-| `voice.timbre` | string | `"reed" \| "bell" \| "growl" \| "chirp"` | Voice-blip sample set. |
+| `voice` | object | keys exactly `pitch`, `timbre` | `tools/sfx.py` synthesises `audio/sfx/voice_<id>.wav` from it (rerun it after adding or changing an archetype; `sfx.py --check` in `validate.sh` fails on a stale or missing file). |
+| `voice.pitch` | float | 0.5..2.0 | Voice-blip pitch multiplier (1.0 = 240 Hz). |
+| `voice.timbre` | string | `"reed" \| "bell" \| "growl" \| "chirp"` | Voice-blip synth: nasal pulse, bell with an inharmonic partial, buzzy saw, upward sine sweep. |
 | `speech_style` | string | 1..200 chars | Writer's note, not shown in game. |
-| `parts` | object | keys exactly `body`, `head`, `hair`, `accessory` | A part value `<v>` is drawn from the customer atlas (`art/customer.json`) frames `<prefix>_<v>_0` and `<prefix>_<v>_1` (idle bob), with prefix `body`, `head`, `hair`, `acc` for `body`, `head`, `hair`, `accessory`. Accessory `"none"` draws nothing. Both frames must exist (checked by `tools/test_content.gd`). |
+| `parts` | object | keys exactly `body`, `head`, `hair`, `accessory` | A part value `<v>` is drawn from the customer atlas (`art/customer.json`) frames `<prefix>_<v>_0` and `<prefix>_<v>_1` (idle bob), with prefix `body`, `head`, `hair`, `acc` for `body`, `head`, `hair`, `accessory`. Accessory `"none"` draws nothing. Both frames must exist (checked by `tools/test_content.gd`). The parts are the archetype's silhouette; each visitor's colours come from a palette swap (`Look`, CLAUDE.md "Customers"). |
 | `parts.body` | string | `"robe" \| "apron" \| "armour"` | |
 | `parts.head` | string | `"round" \| "long" \| "square"` | |
 | `parts.hair` | string | `"witch_hat" \| "straw_hat" \| "curly" \| "bald_beard"` | |

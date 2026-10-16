@@ -7,6 +7,10 @@ extends Node
 ## fades in and logs the transition. A flow state whose scene is missing is
 ## reported with push_error and a visible error label instead of crashing; a
 ## scene that cannot start redirects with abort_to().
+##
+## Sound: play_sfx() plays on the SFX bus (default_bus_layout.tres). Browsers
+## refuse audio before the player's first input, so nothing plays until the
+## AudioUnlock child (scripts/ui/audio_unlock.gd) reports that input (unlock_audio).
 
 signal transition_finished(state: Flow)
 ## Emitted when the visible rect or the safe area changes (resize, rotation).
@@ -27,6 +31,11 @@ const FADE_TIME := 0.18
 const COLUMN_WIDTH := 270.0
 ## Station tolerance multiplier while Gentle mode is on.
 const GENTLE_TOLERANCE_SCALE := 1.5
+const SFX_BUS := &"SFX"
+## Sound effects that may overlap (voice blips, later the rest of the SFX).
+const SFX_VOICES := 4
+## The audio driver of headless runs (no device, never mixes).
+const SILENT_AUDIO_DRIVER := "Dummy"
 
 ## Settings for this session (persisted with the save in plan step 6). Stations
 ## read them through the shop when they begin.
@@ -44,16 +53,29 @@ var transition_log: Array[String] = []
 var state := Flow.TITLE
 ## The args of the latest goto(); the new scene reads them in its _ready().
 var flow_args: Dictionary = {}
+## True once the player has touched, clicked or pressed a key (sound may play).
+var audio_unlocked := false
+## How many play_sfx() calls played (tests count voice blips with it).
+var sfx_played := 0
 
 var _transitioning := false
 var _visible_rect := Rect2()
 var _safe_rect := Rect2()
+var _sfx: AudioStreamPlayer
+var _told_audio_locked := false
 
 @onready var _curtain: ColorRect = $Fade/Curtain
 @onready var _error_label: Label = $Fade/ErrorLabel
 
 
 func _ready() -> void:
+	if AudioServer.get_bus_index(SFX_BUS) < 0:
+		push_error("[Game] Audio bus '%s' is missing from default_bus_layout.tres; sound effects play on Master" % SFX_BUS)
+	_sfx = AudioStreamPlayer.new()
+	_sfx.name = "Sfx"
+	_sfx.bus = SFX_BUS
+	_sfx.max_polyphony = SFX_VOICES
+	add_child(_sfx)
 	_fit_window()
 	get_viewport().size_changed.connect(_update_screen_fit)
 	_update_screen_fit()
@@ -129,6 +151,33 @@ func abort_to(fallback: Flow, message: String) -> void:
 		await transition_finished
 	await goto(fallback)
 	_report_error(message)
+
+
+## Called on the player's first input; from then on play_sfx() plays.
+func unlock_audio() -> void:
+	if audio_unlocked:
+		return
+	audio_unlocked = true
+	print("[Game] Audio unlocked by the first input")
+
+
+## Plays `stream` on the SFX bus at `pitch`. Before the first input (audio_unlocked)
+## it plays nothing (logged once), so browsers never see an autoplay attempt.
+## Without an audio device (the Dummy driver of headless runs) it only counts: that
+## driver never mixes, so its playbacks would never finish and leak at exit.
+func play_sfx(stream: AudioStream, pitch := 1.0) -> void:
+	if not audio_unlocked:
+		if not _told_audio_locked:
+			print("[Game] Sound skipped until the first input unlocks audio")
+			_told_audio_locked = true
+		return
+	sfx_played += 1
+	if AudioServer.get_driver_name() == SILENT_AUDIO_DRIVER:
+		return
+	if _sfx.stream != stream:
+		_sfx.stream = stream
+	_sfx.pitch_scale = pitch
+	_sfx.play()
 
 
 func is_transitioning() -> bool:

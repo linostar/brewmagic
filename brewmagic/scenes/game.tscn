@@ -1,6 +1,7 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/game.gd" id="1_game"]
+[ext_resource type="Script" path="res://scripts/ui/audio_unlock.gd" id="2_audio_unlock"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_error"]
 content_margin_left = 6.0
@@ -42,3 +43,6 @@ grow_horizontal = 2
 theme_override_colors/font_color = Color(0.984, 0.929, 0.804, 1)
 theme_override_styles/normal = SubResource("StyleBoxFlat_error")
 autowrap_mode = 3
+
+[node name="AudioUnlock" type="Node" parent="."]
+script = ExtResource("2_audio_unlock")

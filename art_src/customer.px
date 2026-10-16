@@ -9,8 +9,9 @@
 ; carry only nose and ears; hair never covers the face zone (the beard leaves room for the mouth).
 ; Palette swap (shaders/palette_swap.gdshader) may remap ONLY these indices, per part:
 ;   cloth A (bodies, witch hat): e f g        cloth B (trim, belts, hat bands, trousers): i j k
-;   hair (hair parts): 1 2 3                   skin (hands on bodies): r s -> the head's (main, shade) pair
-; Head skin pairs (main, shade): head_round r,s; head_long s,t; head_square t,2.
+;   hair (hair parts): 1 2 3                   skin: the hands on bodies (r s) and each head's own pair
+; Head skin pairs (main, shade): head_round r,s; head_long s,t; head_square t,2. Hands and head both become the
+; visitor's skin pair (scripts/logic/look.gd holds the ramps; the atlas sidecar lists each sprite's colours).
 ; Everything else (outline 0, iron 7 8 9, apron 6 9, straw 4 5 6, faces, boots, goat, lantern) is fixed.
 
 @ body_robe_0 48x72

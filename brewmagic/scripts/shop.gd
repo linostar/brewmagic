@@ -8,6 +8,19 @@ extends Control
 ## from the backdrop's top edge), and its edge rows and columns are stretched
 ## into the rest of the visible rect so the shop fills any screen.
 ##
+## Line: customers arrive in the day's order, one every ARRIVAL_GAP seconds while
+## the line (the counter plus the queue places of Customer.SLOT_X) has room, and
+## at once when it is empty. Only the one at the counter is served; the queue waits
+## in front of the window (patience draining at Customer.QUEUE_PATIENCE_RATE) and
+## steps forward when the served one leaves. Every visitor gets a Look from
+## Look.distinct_for at the start of the day, so no two look alike. A queued
+## customer whose patience runs out storms off from the queue (reputation as for
+## any storm-off, its line said aside, no stamp) and the ones behind step up.
+##
+## Voices: while the bubble types a customer's line, every SpeechBubble.blip plays
+## the speaker's voice blip (audio/sfx/voice_<archetype>.wav, tools/sfx.py) on the
+## SFX bus through Game.play_sfx; narration (misbrew lines) has no voice.
+##
 ## Loop per customer: walks in, says a hint request -> the player puts 2-3
 ## ingredients in the pot (tap or Enter on a shelf item, or drag it into the
 ## cauldron; tap a pot slot to take one back) -> Brew runs the requested potion's
@@ -59,6 +72,11 @@ const ESSENCE_COLORS: Array[Color] = [Color("#f07c2c"), Color("#68bede"), Color(
 const ESSENCE_ICONS: Array[String] = ["essence_ember", "essence_frost", "essence_bloom", "essence_gloom"]
 const FIRST_CUSTOMER_DELAY := 0.5
 const NEXT_CUSTOMER_DELAY := 0.7
+## Seconds between arrivals while the line has room.
+const ARRIVAL_GAP := 8.0
+const VOICE_PATH := "res://audio/sfx/voice_%s.wav"
+## Each blip's pitch varies this much either way, so a line does not drone.
+const VOICE_JITTER := 0.06
 const STEP_GAP := 0.5
 const REACTION_HOLD := 2.4
 const MISBREW_HOLD := 2.8
@@ -120,8 +138,10 @@ var perfect := 0
 var stormed_off := 0
 ## The grade of every served customer, in order.
 var grades: Array[Brew.Grade] = []
-## The customer at the counter, or null between customers.
+## The customer at the counter (or walking up to it), or null when the line is empty.
 var customer: Customer
+## The customers queued behind it, in line order (place 1, 2, ...).
+var queue: Array[Customer] = []
 ## The running station, or null.
 var station: Station
 
@@ -129,6 +149,17 @@ var _game: GameState
 var _starting_coins := 0
 var _shown_coins := 0
 var _next_customer := 0
+## One Look per customer of the day, by index.
+var _looks: Array[Look] = []
+## Seconds until the next arrival (counts down only while the line has room).
+var _until_arrival := FIRST_CUSTOMER_DELAY
+## Customers in the shop, leaving ones included.
+var _present := 0
+## The current bubble line as [text, hold, then, hints, voiced], to resume after an aside.
+var _line_said: Array = []
+## Whose voice the bubble's blips play, or null (narration, nothing said).
+var _speaker: Archetype
+var _voices: Dictionary[String, AudioStream] = {}
 var _rng := RandomNumberGenerator.new()
 ## "<kind>/<key>" -> the line picked last time, so the next pick avoids it.
 var _last_lines: Dictionary[String, String] = {}
@@ -203,6 +234,7 @@ func _ready() -> void:
 	_game.screen_fit_changed.connect(_fit)
 	_fit()
 	_bubble.advanced.connect(_on_bubble_advanced)
+	_bubble.blip.connect(_on_bubble_blip)
 	_skip_button.pressed.connect(_bubble.skip)
 	_brew_button.pressed.connect(_on_brew_pressed)
 	for i in _slots.size():
@@ -235,11 +267,16 @@ func _ready() -> void:
 	_update_pot()
 	_update_hud()
 	_sync_setting_buttons()
+	var parts: Array[Array] = []
+	for spec in day.customers:
+		var who := Content.archetype(spec.archetype)
+		parts.append(Customer.parts_of(who) if who != null else [])
+	_looks = Look.distinct_for(parts, _rng.randi())
 	print("[Shop] Day %d '%s': %d customers, %d coins, stock %s, patience x%.2f" % [day.day, day.title, day.customers.size(), coins, stock, day.patience_scale])
-	get_tree().create_timer(FIRST_CUSTOMER_DELAY, false).timeout.connect(_spawn_next_customer)
 
 
 func _process(delta: float) -> void:
+	_tick_arrivals(delta)
 	_clock += delta
 	_liquid.texture = Art.texture("brewing", "cauldron_liquid_%d" % (int(_clock / LIQUID_FRAME_TIME) % 3))
 	_fire.texture = Art.texture("brewing", "fire_%d" % (int(_clock / FIRE_FRAME_TIME) % 3))
@@ -492,27 +529,58 @@ func _build_shelf() -> void:
 	print("[Shop] Shelf (stage coordinates): %s, brew@%s" % [", ".join(layout), _brew_button.position + _brew_button.size / 2.0])
 
 
+## Lets the next customer in when the line has room: right away (after
+## NEXT_CUSTOMER_DELAY) when it is empty, else ARRIVAL_GAP after the last arrival.
+func _tick_arrivals(delta: float) -> void:
+	if day == null or _next_customer >= day.customers.size() or _line_size() >= Customer.SLOT_X.size():
+		return
+	if _line_size() == 0:
+		_until_arrival = minf(_until_arrival, NEXT_CUSTOMER_DELAY)
+	_until_arrival -= delta
+	if _until_arrival <= 0.0:
+		_until_arrival = ARRIVAL_GAP
+		_spawn_next_customer()
+
+
+## The customers in line: at (or walking to) the counter plus the queue.
+func _line_size() -> int:
+	return (0 if customer == null else 1) + queue.size()
+
+
+## Sends in the day's next customer to the first free place in line.
 func _spawn_next_customer() -> void:
 	if _next_customer >= day.customers.size():
-		_end_day()
+		_check_day_done()
 		return
 	var spec := day.customers[_next_customer]
+	var look := _looks[_next_customer]
 	_next_customer += 1
 	var who := Content.archetype(spec.archetype)
 	var wants := Content.potion(spec.potion)
-	var says := Content.request(spec.request) if spec.request != "" else _pick_request(wants.id, who.id)
+	var says: RequestLine = null
+	if who != null and wants != null:
+		says = Content.request(spec.request) if spec.request != "" else _pick_request(wants.id, who.id)
 	if who == null or wants == null or says == null:
 		push_error("[Shop] Day %d customer %d (%s wants %s) cannot be set up; skipping" % [day.day, _next_customer, spec.archetype, spec.potion])
 		_spawn_next_customer()
 		return
-	customer = CUSTOMER_SCENE.instantiate() as Customer
-	customer.setup(who, wants, says, who.patience_seconds * day.patience_scale)
-	customer.arrived.connect(_on_customer_arrived)
-	customer.patience_ran_out.connect(_on_patience_ran_out)
-	customer.left.connect(_on_customer_left)
-	_customers.add_child(customer)
-	customer.enter()
-	print("[Shop] Customer %d/%d: %s wants %s (request %s, patience %.0fs)" % [_next_customer, day.customers.size(), who.id, wants.id, says.id, customer.patience_total])
+	var visitor := CUSTOMER_SCENE.instantiate() as Customer
+	visitor.setup(who, wants, says, who.patience_seconds * day.patience_scale, look)
+	visitor.number = _next_customer
+	visitor.arrived.connect(_on_customer_arrived)
+	visitor.patience_ran_out.connect(_on_patience_ran_out.bind(visitor))
+	visitor.left.connect(_on_customer_left.bind(visitor))
+	var place := _line_size()
+	if customer == null:
+		customer = visitor
+	else:
+		queue.append(visitor)
+	_customers.add_child(visitor)
+	# Later arrivals are drawn behind the ones ahead of them in line.
+	_customers.move_child(visitor, 0)
+	_present += 1
+	visitor.enter(place)
+	print("[Shop] Customer %d/%d: %s wants %s (request %s, patience %.0fs, %s), place %d in line" % [visitor.number, day.customers.size(), who.id, wants.id, says.id, visitor.patience_total, look.describe(), place])
 
 
 func _pick_request(potion_id: String, archetype_id: String) -> RequestLine:
@@ -540,7 +608,7 @@ func _pick(key: String, options: PackedStringArray) -> String:
 
 
 func _on_customer_arrived() -> void:
-	print("[Shop] Customer %d is waiting: \"%s\"" % [_next_customer, customer.request.text])
+	print("[Shop] Customer %d is waiting: \"%s\"" % [customer.number, customer.request.text])
 	_say(customer.request.text, -1.0, Callable(), customer.request.hints)
 	_update_pot()
 	_focus_play()
@@ -560,10 +628,46 @@ func _focus_play() -> void:
 			return
 
 
-## Shows `text` in the bubble; `hints` (a request's hint word ids) marks those words.
-func _say(text: String, hold: float, then: Callable, hints := PackedStringArray()) -> void:
+## Shows `text` in the bubble over the counter; `hints` (a request's hint word ids)
+## marks those words; `voiced` lines blip in the customer's voice while typing.
+func _say(text: String, hold: float, then: Callable, hints := PackedStringArray(), voiced := true) -> void:
 	_after_line = then
+	_line_said = [text, hold, then, hints, voiced]
+	_speaker = customer.archetype if voiced and customer != null else null
 	_bubble.say(text, Customer.COUNTER_X + Customer.CENTER_X, hold, hints)
+
+
+## Says `text` over queued customer `who` for STORMED_HOLD seconds, then puts back
+## the line it interrupted (if any), with its own hold and follow-up. _line_said
+## keeps that line, so a second aside during the first still puts it back.
+func _say_aside(text: String, who: Customer) -> void:
+	var resume := _line_said.duplicate() if _bubble.visible else []
+	_speaker = who.archetype
+	_after_line = func() -> void:
+		if resume.is_empty():
+			_bubble.close()
+		else:
+			_say(resume[0], resume[1], resume[2], resume[3], resume[4])
+	_bubble.say(text, who.position.x + Customer.CENTER_X, STORMED_HOLD)
+
+
+func _on_bubble_blip() -> void:
+	if _speaker == null:
+		return
+	var voice := _voice_of(_speaker)
+	if voice != null:
+		_game.play_sfx(voice, _rng.randf_range(1.0 - VOICE_JITTER, 1.0 + VOICE_JITTER))
+
+
+## The voice blip of `who` (loaded once); null and reported once when missing.
+func _voice_of(who: Archetype) -> AudioStream:
+	if not _voices.has(who.id):
+		var path := VOICE_PATH % who.id
+		var stream := load(path) as AudioStream if ResourceLoader.exists(path) else null
+		if stream == null:
+			push_error("[Shop] No voice blip for '%s' at %s; run python3 tools/sfx.py" % [who.id, path])
+		_voices[who.id] = stream
+	return _voices[who.id]
 
 
 func _on_bubble_advanced() -> void:
@@ -811,7 +915,7 @@ func _deliver(grade: Brew.Grade, quality: float) -> void:
 	grades.append(grade)
 	if grade == Brew.Grade.PERFECT:
 		perfect += 1
-	print("[Shop] Served customer %d/%d (%s): %s, quality %.2f, paid %d, reputation %+d, coins %d" % [_next_customer, day.customers.size(), customer.archetype.id, Brew.Grade.keys()[grade], quality, pay, reputation_change, coins])
+	print("[Shop] Served customer %d/%d (%s): %s, quality %.2f, paid %d, reputation %+d, coins %d" % [customer.number, day.customers.size(), customer.archetype.id, Brew.Grade.keys()[grade], quality, pay, reputation_change, coins])
 	_update_hud()
 	_show_stamp(grade)
 	var grade_key: String = Archetype.GRADES[grade]
@@ -825,14 +929,14 @@ func _deliver(grade: Brew.Grade, quality: float) -> void:
 		for line in Content.misbrews_for(maxi(essence, 0)):
 			narration.append(line.text)
 		print("[Shop] Misbrew: %s overshoots, effect %s" % [Content.ESSENCES[maxi(essence, 0)], effect])
-		_say(_pick("misbrew/%d" % essence, narration), MISBREW_HOLD, _say.bind(reaction, REACTION_HOLD, customer.leave))
+		_say(_pick("misbrew/%d" % essence, narration), MISBREW_HOLD, _say.bind(reaction, REACTION_HOLD, _send_off.bind(customer)), PackedStringArray(), false)
 		return
 	customer.react(grade)
 	_coin_burst(pay)
 	if pay > 0:
 		var stage := _stage.get_global_transform()
 		Juice.fly_text(_fx, stage * PAY_FROM, _coin_icon.get_global_rect().get_center(), "+%d" % pay, GOLD, PAY_HOLD)
-	_say(reaction, REACTION_HOLD, customer.leave)
+	_say(reaction, REACTION_HOLD, _send_off.bind(customer))
 
 
 ## Slams the grade stamp onto the counter front (overshooting scale, an ink puff,
@@ -893,7 +997,10 @@ func _coin_landed(coin: Sprite2D, last: bool, share: int) -> void:
 	Juice.squash(_coin_icon, 0.3, 0.16)
 
 
-func _on_patience_ran_out() -> void:
+func _on_patience_ran_out(who: Customer) -> void:
+	if who != customer:
+		_storm_off_queue(who)
+		return
 	stormed_off += 1
 	reputation += Economy.STORMED_OFF_REPUTATION
 	var dropped_station := station != null
@@ -905,20 +1012,58 @@ func _on_patience_ran_out() -> void:
 	_update_pot()
 	if dropped_station:
 		_focus_play()
-	print("[Shop] Customer %d/%d (%s) stormed off: reputation %+d" % [_next_customer, day.customers.size(), customer.archetype.id, Economy.STORMED_OFF_REPUTATION])
+	print("[Shop] Customer %d/%d (%s) stormed off: reputation %+d" % [customer.number, day.customers.size(), customer.archetype.id, Economy.STORMED_OFF_REPUTATION])
 	Juice.shake(_stage, 2.0, 0.3)
 	var lines := customer.archetype.reactions["stormed_off"]
-	_say(_pick("reaction/%s/stormed_off" % customer.archetype.id, lines), STORMED_HOLD, customer.leave)
+	_say(_pick("reaction/%s/stormed_off" % customer.archetype.id, lines), STORMED_HOLD, _send_off.bind(customer))
 
 
-func _on_customer_left() -> void:
-	var gone := customer
-	customer = null
+## Queued customer `who` ran out of patience: it storms off from the queue (the
+## same reputation cost, its line said aside, no stamp) and the ones behind step up.
+func _storm_off_queue(who: Customer) -> void:
+	stormed_off += 1
+	reputation += Economy.STORMED_OFF_REPUTATION
+	queue.erase(who)
+	print("[Shop] Customer %d/%d (%s) stormed off from the queue: reputation %+d" % [who.number, day.customers.size(), who.archetype.id, Economy.STORMED_OFF_REPUTATION])
+	_say_aside(_pick("reaction/%s/stormed_off" % who.archetype.id, who.archetype.reactions["stormed_off"]), who)
+	who.leave()
+	_close_up_line()
+
+
+## The customer at the counter walks out; the queue steps forward.
+func _send_off(who: Customer) -> void:
+	who.leave()
+	if who != customer:
+		return
 	_bubble.close()
+	_line_said = []
+	_speaker = null
+	customer = null if queue.is_empty() else queue.pop_front()
+	_close_up_line()
 	_update_pot()
 	_update_hud()
-	gone.queue_free()
-	get_tree().create_timer(NEXT_CUSTOMER_DELAY, false).timeout.connect(_spawn_next_customer)
+
+
+## Sends everyone in line to their place: the counter, then the queue in order.
+func _close_up_line() -> void:
+	if customer != null and customer.slot != 0:
+		customer.walk_to(0)
+	for i in queue.size():
+		if queue[i].slot != i + 1:
+			queue[i].walk_to(i + 1)
+
+
+func _on_customer_left(who: Customer) -> void:
+	_present -= 1
+	who.queue_free()
+	_update_hud()
+	_check_day_done()
+
+
+## Ends the day once every customer has come in and gone.
+func _check_day_done() -> void:
+	if _next_customer >= day.customers.size() and _present == 0:
+		get_tree().create_timer(NEXT_CUSTOMER_DELAY, false).timeout.connect(_end_day)
 
 
 func _end_day() -> void:

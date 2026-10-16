@@ -61,5 +61,69 @@
 
   { "id": "moonbloom_gossip_granny_1", "potion": "moonbloom_draught", "archetype": "gossip_granny", "hints": ["hint_curse", "hint_night", "hint_heal", "hint_cool"], "text": "My cursed petunias gossip all night. Heal them, cool them down, dear." },
   { "id": "moonbloom_gossip_granny_2", "potion": "moonbloom_draught", "archetype": "gossip_granny", "hints": ["hint_grow", "hint_spooky", "hint_cold"], "text": "Help my roses grow for the vicar's ghost. Spooky, cold, lovely." },
-  { "id": "moonbloom_gossip_granny_3", "potion": "moonbloom_draught", "archetype": "gossip_granny", "hints": ["hint_night", "hint_grow", "hint_calm"], "text": "My night garden needs to grow, dearie. Quietly. Calmly. Edna's watching." }
+  { "id": "moonbloom_gossip_granny_3", "potion": "moonbloom_draught", "archetype": "gossip_granny", "hints": ["hint_night", "hint_grow", "hint_calm"], "text": "My night garden needs to grow, dearie. Quietly. Calmly. Edna's watching." },
+
+  {"id": "hearthglow_retired_wizard_1", "potion": "hearthglow_tonic", "archetype": "retired_wizard", "hints": ["hint_warm", "hint_heal"], "text": "My old bones need something warm and healing. Where was I?"},
+  {"id": "hearthglow_retired_wizard_2", "potion": "hearthglow_tonic", "archetype": "retired_wizard", "hints": ["hint_fire", "hint_fresh"], "text": "I left my fire spell in 1402. Something fresh to fill the gap?"},
+  {"id": "hearthglow_retired_wizard_3", "potion": "hearthglow_tonic", "archetype": "retired_wizard", "hints": ["hint_warm", "hint_heal"], "text": "A warm tonic, young apprentice. To heal my knees. And my memory."},
+
+  {"id": "slumber_retired_wizard_1", "potion": "slumber_syrup", "archetype": "retired_wizard", "hints": ["hint_sleep", "hint_calm"], "text": "Can't sleep. Too many memories. Something calm, young apprentice?"},
+  {"id": "slumber_retired_wizard_2", "potion": "slumber_syrup", "archetype": "retired_wizard", "hints": ["hint_night", "hint_cool"], "text": "My owl hoots all night. A cool brew to quiet us both?"},
+  {"id": "slumber_retired_wizard_3", "potion": "slumber_syrup", "archetype": "retired_wizard", "hints": ["hint_cold", "hint_curse"], "text": "A cold compress for a cursed headache. Or is it just Tuesday?"},
+
+  {"id": "valour_retired_wizard_1", "potion": "valour_cordial", "archetype": "retired_wizard", "hints": ["hint_courage", "hint_calm", "hint_spooky"], "text": "A dragon owes me money. I need courage, calm and a spooky stare."},
+  {"id": "valour_retired_wizard_2", "potion": "valour_cordial", "archetype": "retired_wizard", "hints": ["hint_night", "hint_brave", "hint_cool"], "text": "Must face my old rival at night. Brave but cool, like in '52."},
+  {"id": "valour_retired_wizard_3", "potion": "valour_cordial", "archetype": "retired_wizard", "hints": ["hint_curse", "hint_courage", "hint_calm"], "text": "The cursed library has my spectacles. Courage! And calm!"},
+
+  {"id": "moonbloom_retired_wizard_1", "potion": "moonbloom_draught", "archetype": "retired_wizard", "hints": ["hint_grow", "hint_cool", "hint_night"], "text": "My moonflowers won't grow. Need a cool, nightly charm. Old trick."},
+  {"id": "moonbloom_retired_wizard_2", "potion": "moonbloom_draught", "archetype": "retired_wizard", "hints": ["hint_heal", "hint_curse", "hint_calm"], "text": "Heal my cursed beard, apprentice. It hums at people. Calmly."},
+  {"id": "moonbloom_retired_wizard_3", "potion": "moonbloom_draught", "archetype": "retired_wizard", "hints": ["hint_fresh", "hint_cold", "hint_spooky"], "text": "A fresh, cold, spooky tonic. For my garden. Or my cat. One of them."},
+
+  {"id": "hearthglow_busy_baker_1", "potion": "hearthglow_tonic", "archetype": "busy_baker", "hints": ["hint_heal", "hint_brave"], "text": "Quick! Burnt my thumb! Something to heal it and keep me brave!"},
+  {"id": "hearthglow_busy_baker_2", "potion": "hearthglow_tonic", "archetype": "busy_baker", "hints": ["hint_warm", "hint_grow"], "text": "Dough won't rise! Needs warmth and a bit of growth! Hurry!"},
+  {"id": "hearthglow_busy_baker_3", "potion": "hearthglow_tonic", "archetype": "busy_baker", "hints": ["hint_fire", "hint_fresh"], "text": "My oven's fire went out! Something fresh and lively, quick quick!"},
+
+  {"id": "slumber_busy_baker_1", "potion": "slumber_syrup", "archetype": "busy_baker", "hints": ["hint_sleep", "hint_calm"], "text": "Up at four every day! I need sleep! And calm! And a nap! Go go!"},
+  {"id": "slumber_busy_baker_2", "potion": "slumber_syrup", "archetype": "busy_baker", "hints": ["hint_night", "hint_spooky", "hint_calm"], "text": "The bakery's haunted at night! Spooky crumbs! Calm me, quick!"},
+  {"id": "slumber_busy_baker_3", "potion": "slumber_syrup", "archetype": "busy_baker", "hints": ["hint_cool", "hint_sleep"], "text": "Hot ovens all day! I need to cool down and sleep! Fast, please!"},
+
+  {"id": "valour_busy_baker_1", "potion": "valour_cordial", "archetype": "busy_baker", "hints": ["hint_spooky", "hint_courage", "hint_calm"], "text": "Delivering pies to the spooky castle! Need courage and calm! Hurry!"},
+  {"id": "valour_busy_baker_2", "potion": "valour_cordial", "archetype": "busy_baker", "hints": ["hint_night", "hint_brave", "hint_cool"], "text": "Night shift and the ghost hates rye! Brave! Cool! Go!"},
+  {"id": "valour_busy_baker_3", "potion": "valour_cordial", "archetype": "busy_baker", "hints": ["hint_curse", "hint_courage", "hint_cold"], "text": "Cursed rolling pin chases me! Courage, a cold head, quickly!"},
+
+  {"id": "moonbloom_busy_baker_1", "potion": "moonbloom_draught", "archetype": "busy_baker", "hints": ["hint_grow", "hint_night", "hint_cold"], "text": "My herb pots won't grow at night! It's too cold! Help, quickly!"},
+  {"id": "moonbloom_busy_baker_2", "potion": "moonbloom_draught", "archetype": "busy_baker", "hints": ["hint_curse", "hint_heal", "hint_calm"], "text": "My sourdough starter is cursed! Heal it! Calm it! Fast!"},
+  {"id": "moonbloom_busy_baker_3", "potion": "moonbloom_draught", "archetype": "busy_baker", "hints": ["hint_fresh", "hint_spooky", "hint_cool"], "text": "Need fresh mint for spooky biscuits! Cool ones! Ten minutes!"},
+
+  {"id": "hearthglow_haughty_noble_1", "potion": "hearthglow_tonic", "archetype": "haughty_noble", "hints": ["hint_grow", "hint_warm"], "text": "One's hothouse orchids refuse to grow. Something warm, please."},
+  {"id": "hearthglow_haughty_noble_2", "potion": "hearthglow_tonic", "archetype": "haughty_noble", "hints": ["hint_courage", "hint_heal"], "text": "One needs courage for my aunt's ball, and to heal afterwards."},
+  {"id": "hearthglow_haughty_noble_3", "potion": "hearthglow_tonic", "archetype": "haughty_noble", "hints": ["hint_warm", "hint_fresh"], "text": "One's lapdog is shivering. Warm, fresh, and quickly. Kindly."},
+
+  {"id": "slumber_haughty_noble_1", "potion": "slumber_syrup", "archetype": "haughty_noble", "hints": ["hint_sleep", "hint_calm"], "text": "One cannot sleep on silk this lumpy. A calm tonic, please."},
+  {"id": "slumber_haughty_noble_2", "potion": "slumber_syrup", "archetype": "haughty_noble", "hints": ["hint_spooky", "hint_night", "hint_calm"], "text": "The east wing is spooky at night. One needs calm. And a candle."},
+  {"id": "slumber_haughty_noble_3", "potion": "slumber_syrup", "archetype": "haughty_noble", "hints": ["hint_curse", "hint_cool"], "text": "One's cousin cursed my tiara. One needs a cool, regal composure."},
+
+  {"id": "valour_haughty_noble_1", "potion": "valour_cordial", "archetype": "haughty_noble", "hints": ["hint_night", "hint_courage", "hint_calm", "hint_cool"], "text": "One must duel a baron at night. Courage, and a calm, cool aim."},
+  {"id": "valour_haughty_noble_2", "potion": "valour_cordial", "archetype": "haughty_noble", "hints": ["hint_curse", "hint_brave", "hint_cold"], "text": "One's portrait is cursed and glares. One must be brave, yet cold."},
+  {"id": "valour_haughty_noble_3", "potion": "valour_cordial", "archetype": "haughty_noble", "hints": ["hint_spooky", "hint_courage", "hint_calm"], "text": "A spooky ghost bores one at dinner. One needs courage and calm."},
+
+  {"id": "moonbloom_haughty_noble_1", "potion": "moonbloom_draught", "archetype": "haughty_noble", "hints": ["hint_grow", "hint_cold", "hint_night"], "text": "One's topiary swan won't grow in this cold night air. Dreadful."},
+  {"id": "moonbloom_haughty_noble_2", "potion": "moonbloom_draught", "archetype": "haughty_noble", "hints": ["hint_heal", "hint_curse", "hint_calm"], "text": "Heal one's cursed rosebush, would you? Calmly. It's rather rude."},
+  {"id": "moonbloom_haughty_noble_3", "potion": "moonbloom_draught", "archetype": "haughty_noble", "hints": ["hint_fresh", "hint_spooky", "hint_cool"], "text": "Fresh flowers for a spooky soiree. Cool and elegant, naturally."},
+
+  {"id": "hearthglow_night_watchman_1", "potion": "hearthglow_tonic", "archetype": "night_watchman", "hints": ["hint_warm", "hint_heal"], "text": "Patrol report: numb toes. Requesting something warm and healing."},
+  {"id": "hearthglow_night_watchman_2", "potion": "hearthglow_tonic", "archetype": "night_watchman", "hints": ["hint_courage", "hint_fresh"], "text": "Officer needs courage and a fresh pair of legs. Official request."},
+  {"id": "hearthglow_night_watchman_3", "potion": "hearthglow_tonic", "archetype": "night_watchman", "hints": ["hint_fire", "hint_warm", "hint_heal"], "text": "My lantern's fire went out. Need warmth. And a hand to heal."},
+
+  {"id": "slumber_night_watchman_1", "potion": "slumber_syrup", "archetype": "night_watchman", "hints": ["hint_night", "hint_calm"], "text": "Night watch again. Need calm. Not scared. Just noting it down."},
+  {"id": "slumber_night_watchman_2", "potion": "slumber_syrup", "archetype": "night_watchman", "hints": ["hint_sleep", "hint_cool"], "text": "Requesting sleep, constable grade. And a cool head. For the record."},
+  {"id": "slumber_night_watchman_3", "potion": "slumber_syrup", "archetype": "night_watchman", "hints": ["hint_spooky", "hint_calm"], "text": "Spooky noises on my beat. Calm required. Purely procedural."},
+
+  {"id": "valour_night_watchman_1", "potion": "valour_cordial", "archetype": "night_watchman", "hints": ["hint_curse", "hint_night", "hint_courage", "hint_calm"], "text": "Arresting a cursed scarecrow at night. Need courage. And calm."},
+  {"id": "valour_night_watchman_2", "potion": "valour_cordial", "archetype": "night_watchman", "hints": ["hint_spooky", "hint_brave", "hint_cool"], "text": "Spooky alley. Brave face needed. Cool head. Official request."},
+  {"id": "valour_night_watchman_3", "potion": "valour_cordial", "archetype": "night_watchman", "hints": ["hint_night", "hint_courage", "hint_cold"], "text": "Night shift by the crypt. Courage and a cold stare, please."},
+
+  {"id": "moonbloom_night_watchman_1", "potion": "moonbloom_draught", "archetype": "night_watchman", "hints": ["hint_grow", "hint_cold", "hint_night"], "text": "Station garden won't grow. It's dark. Cold. At night. Noted."},
+  {"id": "moonbloom_night_watchman_2", "potion": "moonbloom_draught", "archetype": "night_watchman", "hints": ["hint_curse", "hint_heal", "hint_calm"], "text": "Cursed hedge on my beat. Heal it. Calm it. Then I'll arrest it."},
+  {"id": "moonbloom_night_watchman_3", "potion": "moonbloom_draught", "archetype": "night_watchman", "hints": ["hint_fresh", "hint_spooky", "hint_cool", "hint_calm"], "text": "Fresh lavender for the spooky cells. Cool and calming. Noted."}
 ]
