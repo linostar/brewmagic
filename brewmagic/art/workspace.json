@@ -1,0 +1,22 @@
+{
+ "source": "art_src/workspace.px",
+ "texture": "workspace.png",
+ "size": [
+  270,
+  289
+ ],
+ "sprites": {
+  "workspace_bg": {
+   "x": 0,
+   "y": 0,
+   "w": 270,
+   "h": 168
+  },
+  "shelf_panel": {
+   "x": 0,
+   "y": 169,
+   "w": 270,
+   "h": 120
+  }
+ }
+}

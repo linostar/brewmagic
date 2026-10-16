@@ -1,0 +1,22 @@
+{
+ "source": "art_src/shop.px",
+ "texture": "shop.png",
+ "size": [
+  270,
+  249
+ ],
+ "sprites": {
+  "shop_backdrop": {
+   "x": 0,
+   "y": 0,
+   "w": 270,
+   "h": 192
+  },
+  "shop_counter": {
+   "x": 0,
+   "y": 193,
+   "w": 270,
+   "h": 56
+  }
+ }
+}

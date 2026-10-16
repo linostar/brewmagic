@@ -1,0 +1,46 @@
+{
+ "source": "art_src/ingredients.px",
+ "texture": "ingredients.png",
+ "size": [
+  256,
+  24
+ ],
+ "sprites": {
+  "ember_pepper": {
+   "x": 0,
+   "y": 0,
+   "w": 24,
+   "h": 24
+  },
+  "frost_mint": {
+   "x": 25,
+   "y": 0,
+   "w": 24,
+   "h": 24
+  },
+  "sunpetal": {
+   "x": 50,
+   "y": 0,
+   "w": 24,
+   "h": 24
+  },
+  "nightshade_cap": {
+   "x": 75,
+   "y": 0,
+   "w": 24,
+   "h": 24
+  },
+  "honeycomb": {
+   "x": 100,
+   "y": 0,
+   "w": 24,
+   "h": 24
+  },
+  "moonmoss": {
+   "x": 125,
+   "y": 0,
+   "w": 24,
+   "h": 24
+  }
+ }
+}
