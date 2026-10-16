@@ -61,6 +61,7 @@ func _tests() -> Array[Callable]:
 		_test_screen_fit_column_9_19_5,
 		_test_screen_fit_column_16_9,
 		_test_safe_area_notch,
+		_test_fit_window_rect,
 		_test_title_button_size_and_zone,
 		_test_title_button_tap_goes_to_shop,
 		_test_brew_combine_and_distance,
@@ -171,6 +172,28 @@ func _test_safe_area_notch() -> void:
 	_check(column.is_equal_approx(Rect2(0, 33, 270, 519)), "column spans the safe area", str(column))
 	var empty := GameState.safe_rect_in(visible, Rect2i(), Vector2i.ZERO, Transform2D.IDENTITY)
 	_check(empty == visible, "empty safe area means the visible rect", str(empty))
+
+
+## The 405x720 desktop window is in screen points: scaled by the screen density,
+## shrunk to fit the usable screen with its frame, centred.
+func _test_fit_window_rect() -> void:
+	var base := Vector2i(405, 720)
+	# 2x Retina with room to spare (macOS: 64 px title bar, menu bar above y 78).
+	var roomy := GameState.fit_window_rect(base, 2.0, Rect2i(0, 78, 3600, 2070), Vector2i(0, 64), Vector2i(0, 64))
+	# 1x 1366x768 laptop with a 40 px taskbar (Windows-style frame: borders and a 31 px title).
+	var small_usable := Rect2i(0, 0, 1366, 728)
+	var small := GameState.fit_window_rect(base, 1.0, small_usable, Vector2i(16, 39), Vector2i(8, 31))
+	var small_framed := Rect2i(small.position - Vector2i(8, 31), small.size + Vector2i(16, 39))
+	# 2x screen too short for the window: the framed top sits at the usable top.
+	var tight := GameState.fit_window_rect(base, 2.0, Rect2i(0, 74, 2560, 1400), Vector2i(0, 64), Vector2i(0, 64))
+	# 1x full-HD screen: unchanged.
+	var full_hd := GameState.fit_window_rect(base, 1.0, Rect2i(0, 0, 1920, 1040), Vector2i(16, 39), Vector2i(8, 31))
+	_check(roomy == Rect2i(1395, 425, 810, 1440), "fit_window_rect doubles on a roomy 2x screen", str(roomy))
+	_check(small_usable.encloses(small_framed) and small_framed.size.y == small_usable.size.y
+		and absf(float(small.size.x) / small.size.y - 9.0 / 16.0) < 0.01,
+		"fit_window_rect shrinks to a short 1x screen keeping 9:16", "%s (framed %s)" % [small, small_framed])
+	_check(tight.position.y - 64 == 74 and tight.size.y + 64 <= 1400, "fit_window_rect fits a short 2x screen", str(tight))
+	_check(full_hd.size == base, "fit_window_rect leaves a roomy 1x screen unchanged", str(full_hd))
 
 
 func _test_title_button_size_and_zone() -> void:
