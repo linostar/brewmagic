@@ -1,0 +1,51 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/stations/stir.gd" id="1_stir"]
+
+[node name="Stir" type="Control"]
+layout_mode = 3
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -288.0
+grow_horizontal = 2
+grow_vertical = 0
+script = ExtResource("1_stir")
+
+[node name="Prompt" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = 40.0
+grow_horizontal = 2
+theme_override_colors/font_outline_color = Color(0.11, 0.078, 0.125, 1)
+theme_override_constants/outline_size = 4
+text = "Stir in circles with the spark"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="Rig" type="Node2D" parent="."]
+position = Vector2(135, 150)
+
+[node name="Fire" type="Sprite2D" parent="Rig"]
+position = Vector2(0, 58)
+scale = Vector2(2, 2)
+
+[node name="Pot" type="Sprite2D" parent="Rig"]
+scale = Vector2(2, 2)
+
+[node name="Liquid" type="Sprite2D" parent="Rig"]
+scale = Vector2(2, 2)
+
+[node name="Ladle" type="Sprite2D" parent="."]
+position = Vector2(175, 121)
+scale = Vector2(2, 2)
+centered = false
+offset = Vector2(-6, -33)
+
+[node name="Guide" type="Node2D" parent="."]
