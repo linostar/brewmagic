@@ -28,7 +28,8 @@ done
 node tools/smoke_web.mjs build/web
 
 rm -f build/brewmagic.zip
-# The font's SIL OFL licence travels with the game.
-cp brewmagic/fonts/OFL.txt build/web/FONT-LICENSE-PixelifySans-OFL.txt
-(cd build/web && zip -X -q ../brewmagic.zip index.* FONT-LICENSE-PixelifySans-OFL.txt)
+# The fonts' SIL OFL licences travel with the game.
+cp brewmagic/fonts/Silkscreen-OFL.txt build/web/FONT-LICENSE-Silkscreen-OFL.txt
+cp brewmagic/fonts/VT323-OFL.txt build/web/FONT-LICENSE-VT323-OFL.txt
+(cd build/web && zip -X -q ../brewmagic.zip index.* FONT-LICENSE-*-OFL.txt)
 echo "PASS build: build/brewmagic.zip ($(du -h build/brewmagic.zip | cut -f1))"

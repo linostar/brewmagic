@@ -1,9 +1,10 @@
 class_name ShelfItem
 extends Button
-## One ingredient on the shop shelf: its sprite standing on the plank and its
-## stock count below. A focusable Button, so a tap, a click or Enter emits
-## `chosen`; dragging it (a touch that moves more than DRAG_THRESHOLD) shows a
-## ghost under the finger and emits `dropped` with the release point instead.
+## One ingredient on the shop shelf: its stock count above, its sprite standing on
+## the plank, and under it one essence icon per point of its essence (the pips).
+## A focusable Button, so a tap, a click or Enter emits `chosen`; dragging it (a
+## touch that moves more than DRAG_THRESHOLD) shows a ghost under the finger and
+## emits `dropped` with the release point instead.
 ## Touch handling lives here (scripts/ui/) per the project's input rule.
 
 signal chosen(item: ShelfItem)
@@ -25,6 +26,7 @@ var _suppress_press := false
 
 @onready var _icon: TextureRect = $Icon
 @onready var _count: Label = $Count
+@onready var _essences: HBoxContainer = $Essences
 @onready var _ghost: TextureRect = $Ghost
 
 
@@ -40,6 +42,13 @@ func _ready() -> void:
 		return
 	_icon.texture = Art.texture("ingredients", ingredient.id)
 	_ghost.texture = _icon.texture
+	# One essence icon per point of essence, in Content.ESSENCES order (ember_pepper: two flames).
+	for k in Content.ESSENCES.size():
+		for i in ingredient.essence[k]:
+			var pip := TextureRect.new()
+			pip.texture = Art.texture("ui", "essence_" + Content.ESSENCES[k])
+			pip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			_essences.add_child(pip)
 	set_stock(stock)
 
 
@@ -48,7 +57,17 @@ func set_stock(count: int) -> void:
 	_count.text = "x%d" % count
 	disabled = count <= 0
 	_icon.modulate.a = 1.0 if count > 0 else 0.35
-	accessibility_name = "%s, %d left" % [ingredient.name, count]
+	_essences.modulate.a = _icon.modulate.a
+	accessibility_name = "%s (%s), %d left" % [ingredient.name, essence_text(), count]
+
+
+## The ingredient's essences in words, e.g. "2 ember" or "1 frost, 1 bloom".
+func essence_text() -> String:
+	var parts := PackedStringArray()
+	for k in Content.ESSENCES.size():
+		if ingredient.essence[k] > 0:
+			parts.append("%d %s" % [ingredient.essence[k], Content.ESSENCES[k]])
+	return ", ".join(parts)
 
 
 ## Centre of the sprite in canvas coordinates (where a flying copy starts).

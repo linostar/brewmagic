@@ -10,6 +10,7 @@ const TITLE_SCENE := preload("res://scenes/title.tscn")
 const TITLE_PATH := "res://scenes/title.tscn"
 const STIR_SCENE := preload("res://scenes/stations/stir.tscn")
 const POUR_SCENE := preload("res://scenes/stations/pour.tscn")
+const SPEECH_BUBBLE_SCENE := preload("res://scenes/speech_bubble.tscn")
 const POTION_COLOR := Color("#f07c2c")
 ## One synthetic input frame for the station streams.
 const FRAME := 1.0 / 60.0
@@ -95,6 +96,14 @@ func _tests() -> Array[Callable]:
 		_test_shop_shelf_down_reaches_brew,
 		_test_shop_perfect_serve_reaction,
 		_test_shop_keyboard_day1_assist,
+		_test_shop_menu_and_mode_info,
+		_test_stations_assist_caption,
+		_test_stir_ghost_demo,
+		_test_shop_pour_line_random,
+		_test_bubble_marks_hint_words,
+		_test_shop_shelf_essence_pips,
+		_test_shop_pot_preview_needs,
+		_test_shop_stir_real_touch,
 	]
 
 
@@ -309,7 +318,7 @@ func _test_brew_final_grade() -> void:
 		_check(grade == entry[2], "final grade %s at quality %.2f" % [Brew.Grade.keys()[tier], quality], Brew.Grade.keys()[grade])
 
 
-## A clean circle on the guide ring at exactly the asked tempo scores Perfect.
+## A clean circle at RING_RADIUS (the ghost's arrows) at exactly the asked tempo scores Perfect.
 func _test_stir_perfect() -> void:
 	var stir := _add_station(STIR_SCENE) as Stir
 	var results := _collect_finished(stir)
@@ -970,6 +979,257 @@ func _test_shop_keyboard_day1_assist() -> void:
 	_game.assist_mode = false
 
 
+## Criterion 3: the pause button reads "Menu", is at least 32x32 in the top-right
+## corner of the safe area and has an accessibility name. Criteria 5 and 6: right
+## under each mode toggle, an always-visible one-line description, and the same
+## text as the toggle's tooltip, shown without delay.
+func _test_shop_menu_and_mode_info() -> void:
+	var shop := await _open_shop()
+	var safe := _game.safe_rect()
+	var menu := shop.get_node("Column/Hud/PauseButton") as Button
+	var rect := menu.get_global_rect()
+	_check(menu.text == "Menu" and menu.accessibility_name != "", "pause button reads Menu and is named", "%s / %s" % [menu.text, menu.accessibility_name])
+	_check(rect.size.x >= MIN_TARGET and rect.size.y >= MIN_TARGET and rect.end.x >= safe.end.x - 8.0 and rect.position.y <= safe.position.y + 8.0, "Menu button is 32x32+ in the top right", "%s in %s" % [rect, safe])
+	var tag := shop.get_node("Column/Hud/AssistTag") as Label
+	var tag_text := Rect2(tag.get_global_rect().end.x - tag.get_minimum_size().x, tag.get_global_rect().position.y, tag.get_minimum_size().x, tag.size.y)
+	_check(not rect.intersects(tag_text), "Menu button clears the ASSIST tag", "%s vs %s" % [rect, tag_text])
+	shop.open_pause()
+	await _frames(5)
+	var list := shop.get_node("Modal/PausePanel/List")
+	for pair: Array in [["AssistButton", "AssistInfo", Shop.ASSIST_INFO], ["GentleButton", "GentleInfo", Shop.GENTLE_INFO]]:
+		var toggle := list.get_node(pair[0] as String) as Button
+		var info := list.get_node(pair[1] as String) as Label
+		_check(info.get_index() == toggle.get_index() + 1 and info.is_visible_in_tree() and info.text == pair[2], "%s sits right under %s, visible" % [info.name, toggle.name], "index %d/%d '%s'" % [info.get_index(), toggle.get_index(), info.text])
+		_check(info.get_line_count() == 1 and info.get_global_rect().end.x <= _game.safe_rect().end.x, "%s is one line inside the screen" % info.name, "%d lines, %s" % [info.get_line_count(), info.get_global_rect()])
+		_check(toggle.tooltip_text == info.text, "%s tooltip matches its description" % toggle.name, toggle.tooltip_text)
+	_check("Good" in Shop.ASSIST_INFO and "never Perfect" in Shop.ASSIST_INFO, "Assist info says Good, never Perfect", Shop.ASSIST_INFO)
+	_check(("%sx" % GameState.GENTLE_TOLERANCE_SCALE) in Shop.GENTLE_INFO, "Gentle info names the tolerance scale", Shop.GENTLE_INFO)
+	_check(is_zero_approx(float(ProjectSettings.get_setting("gui/timers/tooltip_delay_sec", -1.0))), "tooltips appear without delay", str(ProjectSettings.get_setting("gui/timers/tooltip_delay_sec")))
+	shop.close_pause()
+	await _close_shop()
+
+
+## Criterion 4: with Assist on, the station's single button reads "Auto Stir" or
+## "Auto Pour" (accessibility name the same); with Assist off there is none.
+func _test_stations_assist_caption() -> void:
+	for entry: Array in [[STIR_SCENE, "Auto Stir"], [POUR_SCENE, "Auto Pour"]]:
+		var station := _add_station(entry[0] as PackedScene)
+		station.begin({"color": POTION_COLOR, "bottle": "round"})
+		_check(station.assist_button() == null and station.get_node_or_null("AssistButton") == null, "%s without Assist has no button" % station.name, str(station.assist_button()))
+		station.assist = true
+		station.begin({"color": POTION_COLOR, "bottle": "round"})
+		var button := station.assist_button()
+		_check(button != null and button.text == entry[1] and button.accessibility_name == entry[1], "%s Assist button reads %s" % [station.name, entry[1]], "%s / %s" % [button.text, button.accessibility_name] if button != null else "no button")
+		_check(not (station.get_node("Prompt") as Control).visible, "%s hides its gesture prompt in Assist" % station.name, "prompt visible")
+		station.free()
+
+
+## Criterion 7: the ghost ladle circles the surface at the asked tempo, plays one
+## loop at GHOST_ALPHA, keeps looping faintly and fades out after the first touch.
+## Assist shows no ghost.
+func _test_stir_ghost_demo() -> void:
+	var stir := _add_station(STIR_SCENE) as Stir
+	var tempo := 0.8
+	stir.begin({"color": POTION_COLOR, "tempo": tempo})
+	var ghost := stir.ghost()
+	_check(ghost.visible and is_equal_approx(ghost.modulate.a, Stir.GHOST_ALPHA), "ghost ladle shows at once", "visible %s alpha %.2f" % [ghost.visible, ghost.modulate.a])
+	var loop_frames := roundi(1.0 / tempo / FRAME)
+	var path_ok := true
+	for i in floori(loop_frames / 2.0):
+		stir.advance(FRAME)
+		var expected := Stir.CENTRE + Vector2.from_angle(Stir.GHOST_START_ANGLE + (i + 1) * FRAME * tempo * TAU) * Stir.SURFACE_RADII
+		path_ok = path_ok and ghost.position.distance_to(expected) < 0.01
+	_check(path_ok and is_equal_approx(ghost.modulate.a, Stir.GHOST_ALPHA), "ghost circles the surface at the tempo during its first loop", "at %s alpha %.2f" % [ghost.position, ghost.modulate.a])
+	for i in loop_frames:
+		stir.advance(FRAME)
+	_check(is_equal_approx(ghost.modulate.a, Stir.GHOST_FAINT_ALPHA), "ghost keeps looping faintly after one loop", "alpha %.2f" % ghost.modulate.a)
+	for i in 600:
+		stir.advance(FRAME)
+	_check(ghost.visible and is_equal_approx(ghost.modulate.a, Stir.GHOST_FAINT_ALPHA), "ghost still loops without a touch", "alpha %.2f" % ghost.modulate.a)
+	stir.feed(_touch(Stir.CENTRE + Vector2(Stir.RING_RADIUS, 0), true))
+	for i in ceili(Stir.GHOST_FADE_TIME / FRAME) + 1:
+		stir.advance(FRAME)
+	_check(is_zero_approx(ghost.modulate.a) and stir.rotation_scores().is_empty(), "ghost fades out after the first touch", "alpha %.2f" % ghost.modulate.a)
+	stir.free()
+	var assisted := _add_station(STIR_SCENE) as Stir
+	assisted.assist = true
+	assisted.begin({"color": POTION_COLOR})
+	_check(not assisted.ghost().visible, "Assist shows no ghost ladle", "visible")
+	assisted.free()
+
+
+## Criterion 8: the shop picks each pour's line with its own RNG: over many brews
+## every line is 45%..85% of the bottle's liquid height on a whole mask row, the
+## lines vary, a seed repeats them, and Pour keeps an explicit line exactly.
+func _test_shop_pour_line_random() -> void:
+	var shop := await _open_shop()
+	for shape in Pour.BOTTLES:
+		var rows := Pour.bottle_rows(shape)
+		var height := rows.y - rows.x
+		shop._rng.seed = 7
+		var lines: Array[float] = []
+		var problems := PackedStringArray()
+		for i in 300:
+			var line := shop.pour_line(shape)
+			lines.append(line)
+			if line < 0.45 or line > 0.85 or not is_equal_approx(line * height, roundf(line * height)):
+				problems.append("%.4f" % line)
+		var distinct := {}
+		for line in lines:
+			distinct[line] = true
+		_check(problems.is_empty(), "pour %s lines are in range on whole rows" % shape, ", ".join(problems))
+		_check(distinct.size() >= 5, "pour %s lines vary" % shape, "%d distinct" % distinct.size())
+		shop._rng.seed = 7
+		_check(is_equal_approx(shop.pour_line(shape), lines[0]), "pour %s lines repeat for a seed" % shape, "")
+		var pour := _add_station(POUR_SCENE) as Pour
+		pour.begin({"color": POTION_COLOR, "bottle": shape, "line": lines[1]})
+		_check(is_equal_approx(pour.target_line(), lines[1]) and pour.liquid_rows() == rows, "pour %s keeps the shop's line" % shape, "%.4f vs %.4f" % [pour.target_line(), lines[1]])
+		pour.free()
+	if await _wait_for_order(shop, "pour line"):
+		var params := shop._station_params("pour")
+		var line := float(params.get("line", -1.0))
+		_check(line >= 0.45 and line <= 0.85, "the shop passes its pour line to the station", str(params))
+	await _close_shop()
+
+
+## Criterion 9: in every request, each hint word (SCHEMA form rule, case-insensitive
+## word prefix) gets its essence's icon and colour, nothing else is marked, and the
+## bubble with its icons stays inside the stage. Lines without hints mark nothing.
+func _test_bubble_marks_hint_words() -> void:
+	var bubble := SPEECH_BUBBLE_SCENE.instantiate() as SpeechBubble
+	root.add_child(bubble)
+	var box := bubble.get_node("Box") as Control
+	var text := bubble.get_node("Box/Text") as RichTextLabel
+	var problems := PackedStringArray()
+	for request in Content.requests():
+		bubble.say(request.text, Customer.COUNTER_X + Customer.CENTER_X, -1.0, request.hints)
+		var expected: Array[Dictionary] = []
+		for id in request.hints:
+			var word := Content.hint_word(id)
+			for form in word.forms:
+				for hit in RegEx.create_from_string("(?i)\\b%s[a-z]*" % form).search_all(request.text):
+					expected.append({"at": hit.get_start(), "word": hit.get_string(), "essence": word.essence})
+		expected.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["at"] < b["at"])
+		var marks := bubble.marks()
+		var got := marks.map(func(mark: Dictionary) -> String: return "%s:%d" % [mark["word"], mark["essence"]])
+		var want := expected.map(func(mark: Dictionary) -> String: return "%s:%d" % [mark["word"], mark["essence"]])
+		if got != want or expected.is_empty():
+			problems.append("%s marks %s, expected %s" % [request.id, got, want])
+		# Each mark's icon is an inline image, one character of its own besides the text.
+		var plain := "\n".join(Content.wrap_bubble(request.text)).length()
+		if text.get_total_character_count() != plain + marks.size():
+			problems.append("%s: %d characters, expected %d text + %d icons" % [request.id, text.get_total_character_count(), plain, marks.size()])
+		var rect := Rect2(box.position, box.size)
+		if rect.position.x < 0.0 or rect.end.x > Shop.STAGE_SIZE.x or rect.position.y < 0.0:
+			problems.append("%s: box %s leaves the stage" % [request.id, rect])
+		for line in Content.wrap_bubble(request.text):
+			if bubble.line_width(line, request.hints) > box.size.x - 2.0 * SpeechBubble.PADDING.x:
+				problems.append("%s: '%s' is wider than its box" % [request.id, line])
+	_check(problems.is_empty(), "every request marks its hint words with icon and colour and fits", "\n".join(problems))
+	var reaction: String = Content.archetypes()[0].reactions["perfect"][0]
+	bubble.say(reaction, 135.0)
+	_check(bubble.marks().is_empty(), "lines said without hints mark nothing", str(bubble.marks()))
+	bubble.free()
+
+
+## Criterion 10: every shelf item shows one essence icon per point of its essence,
+## in essence order, 9x9 at 1x, under its sprite and inside the item, with the
+## stock count readable above the sprite.
+func _test_shop_shelf_essence_pips() -> void:
+	var shop := await _open_shop()
+	for id: String in shop.stock:
+		var item := shop.shelf_item(id)
+		var icon := (item.get_node("Icon") as Control).get_global_rect()
+		var count := item.get_node("Count") as Label
+		var expected := PackedStringArray()
+		for k in Content.ESSENCES.size():
+			for i in item.ingredient.essence[k]:
+				expected.append("essence_" + Content.ESSENCES[k])
+		var got := PackedStringArray()
+		var placed := true
+		for pip: TextureRect in item.get_node("Essences").get_children():
+			var region := (pip.texture as AtlasTexture).region
+			for k in Content.ESSENCES.size():
+				if region == Art.texture("ui", "essence_" + Content.ESSENCES[k]).region:
+					got.append("essence_" + Content.ESSENCES[k])
+			var at := pip.get_global_rect()
+			placed = placed and at.size == Vector2(9, 9) and at.position.y >= icon.end.y - 1.0 and item.get_global_rect().encloses(at)
+		_check(got == expected and placed, "%s shows its essence pips under its sprite" % id, "%s, expected %s, placed %s" % [got, expected, placed])
+		var count_rect := count.get_global_rect()
+		_check(count.visible and count.text == "x%d" % shop.stock[id] and count_rect.end.y <= icon.position.y + 1.0 and item.get_global_rect().encloses(count_rect), "%s stock count shows above its sprite" % id, "%s at %s" % [count.text, count_rect])
+		_check(item.essence_text() in item.accessibility_name, "%s names its essences" % id, item.accessibility_name)
+	await _close_shop()
+
+
+## Criterion 11: the pot preview shows the pot's amounts alone with no order, then
+## "in pot/needed" per essence with a matched/missing/over mark, updated on every
+## add and remove; each mark has its own shape (pixels), not just its own colour.
+func _test_shop_pot_preview_needs() -> void:
+	var shop := await _open_shop()
+	await _check_preview(shop, Vector4i.ZERO, "preview without an order")
+	if await _wait_for_order(shop, "preview"):
+		await _check_preview(shop, Vector4i.ZERO, "preview of an empty pot")
+		var recipe := _exact_recipe(shop.customer.potion, shop.stock)
+		var mix := Vector4i.ZERO
+		for id in recipe:
+			await _tap(shop.shelf_item(id))
+			mix += Content.ingredient(id).essence
+			await _check_preview(shop, mix, "preview after adding %s" % id)
+		var extra: String = shop.stock.keys().filter(func(id: String) -> bool: return shop.stock[id] > 0)[0]
+		await _tap(shop.shelf_item(extra))
+		await _check_preview(shop, mix + Content.ingredient(extra).essence, "preview over the order")
+		await _tap(shop.slot_button(2))
+		await _check_preview(shop, mix, "preview after removing")
+	var shapes := {}
+	for need: Shop.Need in [Shop.Need.MATCHED, Shop.Need.MISSING, Shop.Need.OVER]:
+		shapes["".join(Shop.NEED_PIXELS[need])] = need
+	_check(shapes.size() == 3, "matched, missing and over marks differ in shape", str(shapes))
+	await _close_shop()
+
+
+## Stirring in the shop with real touches through the viewport (Input.parse_input_event,
+## as a phone delivers them) on a 390x844 phone at 3x: the first touch lands while the
+## ghost demo still plays its first loop, and the circles must count 3 rotations; then
+## again on a restarted stir once the demo has dropped to its faint loop.
+func _test_shop_stir_real_touch() -> void:
+	for wait_loops: float in [0.0, 1.5]:
+		var label := "stir by touch after %.1f demo loops" % wait_loops
+		var shop := await _open_shop()
+		root.size = Vector2i(1170, 2532)
+		await _frames(5)
+		if await _wait_for_order(shop, label):
+			for id in _exact_recipe(shop.customer.potion, shop.stock):
+				await _tap(shop.shelf_item(id))
+			await _tap(shop.brew_button())
+			if await _until(func() -> bool: return shop.station is Stir and shop.station.is_running(), FLOW_FRAMES):
+				var stir := shop.station as Stir
+				await _frames(ceili(wait_loops / Stir.DEFAULT_TEMPO / FRAME))
+				var centre := stir.get_global_transform() * Stir.CENTRE
+				var screen := root.get_final_transform()
+				var touch := InputEventScreenTouch.new()
+				touch.position = screen * (centre + Vector2(Stir.RING_RADIUS, 0))
+				touch.pressed = true
+				Input.parse_input_event(touch)
+				await process_frame
+				for i in range(1, ceili((Stir.ROTATIONS + 0.3) / Stir.DEFAULT_TEMPO / FRAME) + 1):
+					if not stir.is_running():
+						break
+					var drag := InputEventScreenDrag.new()
+					drag.position = screen * (centre + Vector2.from_angle(i * FRAME * Stir.DEFAULT_TEMPO * TAU) * Stir.RING_RADIUS)
+					Input.parse_input_event(drag)
+					await process_frame
+				var release := InputEventScreenTouch.new()
+				release.position = touch.position
+				Input.parse_input_event(release)
+				await process_frame
+				_check(stir.rotation_scores().size() == Stir.ROTATIONS, label + ": 3 rotations recognised", str(stir.rotation_scores()))
+			else:
+				_check(false, label + ": stir runs", "no stir")
+		root.size = BASE_WINDOW
+		await process_frame
+		await _close_shop()
+
+
 func _open_shop() -> Shop:
 	_game.goto(GameState.Flow.SHOP)
 	await _game.transition_finished
@@ -1105,14 +1365,30 @@ func _frames(count: int) -> void:
 		await process_frame
 
 
-## The cauldron preview shows `mix`: each essence count at once, and the liquid tint after its tween.
+## The cauldron preview shows `mix`: each essence's "in pot/needed" against the
+## waiting customer's order with its need mark (only the pot amounts and no mark
+## without an order) at once, and the liquid tint after its tween.
 func _check_preview(shop: Shop, mix: Vector4i, label: String) -> void:
-	var essences := shop.get_node("Column/Stage/Essences")
+	var ordered := shop.customer != null and shop.customer.state == Customer.State.WAIT_ORDER
 	var counts := PackedStringArray()
+	var expected := PackedStringArray()
+	var expected_needs: Array[Shop.Need] = []
+	var marks_shown: Array[bool] = []
+	var expected_shown: Array[bool] = []
 	for k in Content.ESSENCES.size():
-		counts.append((essences.get_child(k * 2 + 1) as Label).text)
-	var expected := PackedStringArray([str(mix.x), str(mix.y), str(mix.z), str(mix.w)])
+		var group := shop.get_node("Column/Stage/Essences").get_child(k)
+		counts.append((group.get_child(1) as Label).text)
+		marks_shown.append((group.get_child(2) as Control).visible)
+		if ordered:
+			var needed := shop.customer.potion.target[k]
+			expected.append("%d/%d" % [mix[k], needed])
+			expected_needs.append(Shop.Need.MATCHED if mix[k] == needed else (Shop.Need.MISSING if mix[k] < needed else Shop.Need.OVER))
+		else:
+			expected.append(str(mix[k]))
+			expected_needs.append(Shop.Need.NONE)
+		expected_shown.append(expected_needs[k] != Shop.Need.NONE)
 	_check(counts == expected, label + ": essence counts", "%s, expected %s" % [counts, expected])
+	_check(shop.essence_needs == expected_needs and marks_shown == expected_shown, label + ": need marks", "%s shown %s, expected %s" % [shop.essence_needs, marks_shown, expected_needs])
 	await _frames(30)
 	var liquid := (shop.get_node("Column/Stage/Cauldron/Liquid") as Sprite2D).modulate
 	var color := shop._mix_color(mix)
@@ -1165,7 +1441,7 @@ func _collect_finished(station: Station) -> Array[float]:
 
 
 ## Drags `rotations` clockwise circles around the stir centre at `rps`, one event
-## per FRAME, the radius wobbling by up to `wobble` around the guide ring.
+## per FRAME, the radius wobbling by up to `wobble` around RING_RADIUS.
 func _stir_circles(stir: Stir, rps: float, rotations: int, wobble: float) -> void:
 	var start := Stir.CENTRE + Vector2(Stir.RING_RADIUS, 0)
 	stir.feed(_touch(start, true))

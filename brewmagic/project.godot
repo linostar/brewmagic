@@ -74,7 +74,8 @@ window/handheld/orientation=1
 [gui]
 
 theme/custom="res://theme/main_theme.tres"
-theme/custom_font="res://fonts/PixelifySans-Variable.ttf"
+theme/custom_font="res://fonts/VT323-Regular.ttf"
+timers/tooltip_delay_sec=0.0
 
 [input_devices]
 

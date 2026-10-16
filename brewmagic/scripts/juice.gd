@@ -81,7 +81,7 @@ static func arc(node: Node2D, from: Vector2, to: Vector2, height: float, duratio
 
 ## A short text that pops at `at` (in `parent`'s space, centred), floats up and
 ## fades. Frees itself when done.
-static func pop_text(parent: Node, at: Vector2, text: String, color: Color, font_size := 11) -> Label:
+static func pop_text(parent: Node, at: Vector2, text: String, color: Color, font_size := 25) -> Label:
 	var label := Label.new()
 	label.text = text
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE

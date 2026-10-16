@@ -22,7 +22,8 @@ Every string marked **bubble** must fit a speech bubble of **3 lines x 26 charac
 - greedy word wrap at 26 characters (words joined by one space, a word moves to the next line if it would
   push the line past 26) produces at most 3 lines.
 `Content.wrap_bubble()` implements this wrap and is the only layout: the Godot speech bubble shows exactly the lines it
-returns and never uses Label autowrap (the pixel font is not monospace, so a glyph-width wrap would break differently).
+returns and never uses Label autowrap (the rule is a character count, and the inline hint-word icons would make a
+width-based wrap break differently).
 
 Other strings: `name`/`title`/`word` <= 26 chars; `description` <= 120 chars; `speech_style` <= 200 chars
 (dev note, never shown).

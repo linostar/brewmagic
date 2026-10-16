@@ -1,6 +1,21 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/stations/stir.gd" id="1_stir"]
+
+[sub_resource type="Shader" id="Shader_ghost"]
+code = "shader_type canvas_item;
+// The ghost ladle: the ladle's pixels washed towards a pale blue, keeping the
+// sprite's alpha times the node's modulate alpha (the demo fades through it).
+uniform vec3 tint : source_color = vec3(0.78, 0.91, 0.97);
+uniform float wash = 0.75;
+
+void fragment() {
+	COLOR.rgb = mix(COLOR.rgb, tint, wash);
+}
+"
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_ghost"]
+shader = SubResource("Shader_ghost")
 
 [node name="Stir" type="Control"]
 layout_mode = 3
@@ -24,7 +39,7 @@ offset_bottom = 40.0
 grow_horizontal = 2
 theme_override_colors/font_outline_color = Color(0.11, 0.078, 0.125, 1)
 theme_override_constants/outline_size = 4
-text = "Stir in circles with the spark"
+text = "Follow the ghost ladle: stir in circles"
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 3
@@ -41,6 +56,13 @@ scale = Vector2(2, 2)
 
 [node name="Liquid" type="Sprite2D" parent="Rig"]
 scale = Vector2(2, 2)
+
+[node name="Ghost" type="Sprite2D" parent="."]
+material = SubResource("ShaderMaterial_ghost")
+position = Vector2(135, 128)
+scale = Vector2(2, 2)
+centered = false
+offset = Vector2(-6, -33)
 
 [node name="Ladle" type="Sprite2D" parent="."]
 position = Vector2(175, 121)

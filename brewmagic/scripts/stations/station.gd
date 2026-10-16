@@ -15,7 +15,8 @@ extends Control
 ## Subclasses override _station_begin, _station_input, _station_advance and
 ## _station_finished, call _finish(quality) once, and contain no Assist code:
 ## with `assist` on, begin() lays out the station's visuals and shows one big
-## "Brew!" Button; a tap, click or ui_accept on it finishes with ASSIST_QUALITY.
+## Button captioned by _assist_caption() ("Auto Stir", "Auto Pour"); a tap, click
+## or ui_accept on it finishes with ASSIST_QUALITY.
 
 ## Emitted once per begin() with the gesture quality, 0..1.
 signal finished(quality: float)
@@ -30,8 +31,6 @@ const PERFECT_QUALITY := Brew.PERFECT_QUALITY
 const ASSIST_QUALITY := Brew.GOOD_QUALITY
 ## A score falls from 1 at the edge of its window to 0 at FALLOFF windows beyond it.
 const FALLOFF := 2.0
-const ASSIST_TEXT := "Brew!"
-const ASSIST_ACCESSIBILITY_NAME := "Brew (Assist mode)"
 ## Assist button rect, anchored to the bottom centre of the station.
 const ASSIST_BUTTON_SIZE := Vector2(160, 56)
 const ASSIST_BUTTON_BOTTOM_MARGIN := 48.0
@@ -52,6 +51,10 @@ func begin(params: Dictionary) -> void:
 	_running = true
 	print("[Station] %s begin %s (assist %s, tolerance x%.2f)" % [name, params, assist, tolerance_scale])
 	_station_begin(params)
+	# The gesture's instruction ("Follow the ghost ladle...") does not apply to the Assist button.
+	var prompt := get_node_or_null("Prompt") as CanvasItem
+	if prompt != null:
+		prompt.visible = not assist
 	if assist:
 		_show_assist_prompt()
 	elif _assist_button != null:
@@ -81,7 +84,7 @@ func is_running() -> bool:
 	return _running
 
 
-## The Assist "Brew!" button while the Assist prompt shows, else null.
+## The Assist button while the Assist prompt shows, else null.
 func assist_button() -> Button:
 	return _assist_button
 
@@ -135,8 +138,8 @@ func _show_assist_prompt() -> void:
 		_assist_button.queue_free()
 	_assist_button = Button.new()
 	_assist_button.name = "AssistButton"
-	_assist_button.text = ASSIST_TEXT
-	_assist_button.accessibility_name = ASSIST_ACCESSIBILITY_NAME
+	_assist_button.text = _assist_caption()
+	_assist_button.accessibility_name = _assist_button.text
 	_assist_button.focus_mode = Control.FOCUS_ALL
 	_assist_button.anchor_left = 0.5
 	_assist_button.anchor_right = 0.5
@@ -153,6 +156,11 @@ func _show_assist_prompt() -> void:
 	# whoever unpauses hands focus to assist_button().
 	if can_process():
 		_assist_button.grab_focus(true)
+
+
+## The Assist button's caption and accessibility name, naming what it does for the player.
+func _assist_caption() -> String:
+	return "Auto Brew"
 
 
 ## Lays out the visuals and resets the gesture for `params`.

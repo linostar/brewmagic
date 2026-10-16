@@ -8,6 +8,7 @@ extends SceneTree
 ## and append it to the list in _tests(). Every test leaves Content loaded from the real data.
 
 const TITLE_SCENE := preload("res://scenes/title.tscn")
+const SPEECH_BUBBLE_SCENE := preload("res://scenes/speech_bubble.tscn")
 ## Customer part sprites (SCHEMA.md archetypes.parts).
 const CUSTOMER_ATLAS := Art.ART_DIR + "customer.json"
 const BASE_WINDOW := Vector2i(270, 480)
@@ -46,6 +47,7 @@ func _tests() -> Array[Callable]:
 		_test_bubble_wrap,
 		_test_lookup_api,
 		_test_i2_lines_fit_bubble,
+		_test_bubble_lines_fit_font,
 		_test_i4_hint_tagging,
 		_test_i5_hints_fair,
 		_test_i6_no_potion_names,
@@ -134,6 +136,40 @@ func _test_i2_lines_fit_bubble() -> void:
 	for spec in Content.days():
 		_collect_bubble_problem(problems, spec.id, spec.morning_note)
 	_check(problems.is_empty(), "I2 every line fits its bubble", "\n".join(problems))
+
+
+## Every request, reaction and misbrew line, wrapped by Content.wrap_bubble and measured
+## with the speech bubble's real theme font, fits inside the bubble on screen.
+func _test_bubble_lines_fit_font() -> void:
+	var bubble: SpeechBubble = SPEECH_BUBBLE_SCENE.instantiate()
+	root.add_child(bubble)
+	var font := bubble.text_font()
+	var font_size := bubble.text_font_size()
+	var max_width := bubble.size.x - 2.0 * (SpeechBubble.SIDE_MARGIN + SpeechBubble.PADDING.x)
+	var max_lines := int((SpeechBubble.BOTTOM_Y - 2.0 * SpeechBubble.PADDING.y + SpeechBubble.LINE_SPACING) / (font.get_height(font_size) + SpeechBubble.LINE_SPACING))
+	var texts: Dictionary[String, String] = {}
+	for archetype in Content.archetypes():
+		for grade in Archetype.GRADES:
+			var reactions: PackedStringArray = archetype.reactions.get(grade, PackedStringArray())
+			for i in reactions.size():
+				texts["%s.%s[%d]" % [archetype.id, grade, i]] = reactions[i]
+	for line in Content.requests():
+		texts[line.id] = line.text
+	for line in Content.misbrews():
+		texts[line.id] = line.text
+	var overflows: Array[String] = []
+	var widest := 0.0
+	for key in texts:
+		var lines := Content.wrap_bubble(texts[key])
+		if lines.size() > max_lines:
+			overflows.append("%s: %d lines, at most %d fit above y %d" % [key, lines.size(), max_lines, SpeechBubble.BOTTOM_Y])
+		for each in lines:
+			var width := bubble.line_width(each)
+			widest = maxf(widest, width)
+			if width > max_width:
+				overflows.append("%s: '%s' is %.0f px wide, the bubble fits %.0f" % [key, each, width, max_width])
+	bubble.free()
+	_check(texts.size() > 0 and overflows.is_empty(), "every bubble line fits at font size %d (widest %.0f of %.0f px, %d lines)" % [font_size, widest, max_width, texts.size()], "\n".join(overflows))
 
 
 func _test_i4_hint_tagging() -> void:

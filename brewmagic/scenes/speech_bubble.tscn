@@ -20,11 +20,15 @@ patch_margin_top = 4
 patch_margin_right = 4
 patch_margin_bottom = 4
 
-[node name="Text" type="Label" parent="Box"]
+[node name="Text" type="RichTextLabel" parent="Box"]
+clip_contents = false
 layout_mode = 0
 offset_right = 26.0
 offset_bottom = 14.0
-theme_type_variation = &"DarkLabel"
+mouse_filter = 2
+theme_override_colors/default_color = Color(0.11, 0.078, 0.125, 1)
+scroll_active = false
+autowrap_mode = 0
 
 [node name="Tail" type="TextureRect" parent="."]
 layout_mode = 0

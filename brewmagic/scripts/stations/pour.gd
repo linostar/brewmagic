@@ -8,7 +8,8 @@ extends Station
 ##
 ## params: "color" (Color), "bottle" (one of BOTTLES), "line" (optional float,
 ## target fill 0..1, default DEFAULT_LINE; snapped to a whole pixel row of the
-## liquid mask so the marker and a perfect fill line up exactly).
+## liquid mask so the marker and a perfect fill line up exactly). The shop passes
+## a fresh line per brew (Shop.pour_line); tests pass fixed ones.
 ##
 ## Quality = window_score(|fill - line|, LINE_WINDOW). Idle: without a touch the
 ## station never finishes. Feedback: "pour_start" on touch, "pour_spill" when the
@@ -79,7 +80,7 @@ func _station_begin(params: Dictionary) -> void:
 	var liquid := Art.texture("brewing", "bottle_%s_liquid" % shape)
 	_liquid.texture = liquid.atlas
 	_liquid_region = liquid.region
-	var mask_rows := _mask_rows("bottle_%s_liquid" % shape, liquid)
+	var mask_rows := bottle_rows(shape)
 	_top_row = mask_rows.x
 	_bottom_row = mask_rows.y
 	_liquid.modulate = color
@@ -96,6 +97,10 @@ func _station_begin(params: Dictionary) -> void:
 	_spilling = false
 	_spill_clock = 0.0
 	_show_fill()
+
+
+func _assist_caption() -> String:
+	return "Auto Pour"
 
 
 func _station_input(event: InputEvent) -> void:
@@ -168,6 +173,14 @@ func _draw_stream() -> void:
 	var surface := _bottom_row - clampf(fill, 0.0, 1.0) * rows
 	var x := BOTTLE_SIZE.x / 2.0 - STREAM_WIDTH / 2.0
 	_stream.draw_rect(Rect2(x, STREAM_TOP, STREAM_WIDTH, surface - STREAM_TOP), _liquid.modulate)
+
+
+## The rows of bottle `shape`'s liquid mask that hold liquid pixels: x = top row,
+## y = one past the bottom row (what liquid_rows() returns after begin with that
+## bottle). The shop uses it to pick a line on a whole row before the station starts.
+static func bottle_rows(shape: String) -> Vector2i:
+	var sprite_name := "bottle_%s_liquid" % shape
+	return _mask_rows(sprite_name, Art.texture("brewing", sprite_name))
 
 
 ## The rows of `mask` (sprite `sprite_name`) that hold liquid pixels: x = top row,

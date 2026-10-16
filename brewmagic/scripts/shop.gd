@@ -57,9 +57,30 @@ const STORMED_HOLD := 2.2
 const LIQUID_FRAME_TIME := 0.25
 const FIRE_FRAME_TIME := 0.12
 const COIN_FLIGHTS_MAX := 8
+## Each pour's fill line lies in this range of the bottle's liquid height.
+const POUR_LINE_MIN := 0.45
+const POUR_LINE_MAX := 0.85
+## What each mode does, always shown under its toggle in the pause panel and as its tooltip.
+const ASSIST_INFO := "Auto stir & pour; scores Good, never Perfect"
+const GENTLE_INFO := "Stir & pour timing is %sx more forgiving" % GameState.GENTLE_TOLERANCE_SCALE
 const GOLD := Color("#ffc95c")
 const CREAM := Color("#fbedcd")
 const RED := Color("#c43c2c")
+const GREEN := Color("#7cc44c")
+const OUTLINE := Color("#1c1420")
+## The pot preview's mark after "in pot/needed" for each essence of the current order.
+## Its shape carries the result as well as its colour: a check (MATCHED), a plus
+## (MISSING: add more) or a minus (OVER: take some out). NONE: no order, no mark.
+enum Need { NONE, MATCHED, MISSING, OVER }
+const MARK_SIZE := Vector2(7, 7)
+const NEED_COLORS: Array[Color] = [Color.TRANSPARENT, GREEN, GOLD, RED]
+## Each mark as 7x7 pixel rows ("#" = lit), drawn with a 1-pixel OUTLINE around it.
+const NEED_PIXELS: Array[Array] = [
+	[],
+	["......#", ".....##", "#...##.", "##.##..", ".###...", "..#....", "......."],
+	["..###..", "..###..", "#######", "#######", "#######", "..###..", "..###.."],
+	[".......", ".......", "#######", "#######", "#######", ".......", "......."],
+]
 ## Stage-relative bands stretched sideways into extra width: [atlas, sprite, stage y].
 ## A row of shop_backdrop's left edge that is plain wall (art_src/shop.px), used for the fill above the stage
 ## beside the ceiling copies (only seen on a screen with extra width and extra height).
@@ -101,7 +122,10 @@ var _clock := 0.0
 var _fills: Array[TextureRect] = []
 ## shop_ceiling copies above the stage, the first one right on the backdrop's top edge.
 var _ceilings: Array[TextureRect] = []
+## Per essence: the pot preview's need mark, and what it shows.
+var essence_needs: Array[Need] = []
 var _essence_counts: Array[Label] = []
+var _essence_marks: Array[Control] = []
 ## The control that had focus when the pause panel opened.
 var _focus_before_pause: Control
 
@@ -153,6 +177,10 @@ func _ready() -> void:
 	_assist_button.toggled.connect(_on_assist_toggled)
 	_gentle_button.toggled.connect(_on_gentle_toggled)
 	$Modal/PausePanel/List/QuitButton.pressed.connect(_on_quit_pressed)
+	_assist_button.tooltip_text = ASSIST_INFO
+	_gentle_button.tooltip_text = GENTLE_INFO
+	($Modal/PausePanel/List/AssistInfo as Label).text = ASSIST_INFO
+	($Modal/PausePanel/List/GentleInfo as Label).text = GENTLE_INFO
 	$Modal/SummaryPanel/List/BackButton.pressed.connect(_on_quit_pressed)
 	var number := int(_game.flow_args.get("day", Content.FIRST_DAY))
 	day = Content.day(number)
@@ -268,18 +296,29 @@ func _setup_art() -> void:
 	_fire.texture = Art.texture("brewing", "fire_0")
 	_coin_icon.texture = Art.texture("ui", "coin_0")
 	for k in Content.ESSENCES.size():
+		var group := HBoxContainer.new()
+		group.add_theme_constant_override(&"separation", 2)
+		group.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var icon := TextureRect.new()
 		icon.texture = Art.texture("ui", ESSENCE_ICONS[k])
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var count := Label.new()
-		count.add_theme_color_override(&"font_outline_color", Color("#1c1420"))
+		count.add_theme_color_override(&"font_outline_color", OUTLINE)
 		count.add_theme_constant_override(&"outline_size", 4)
 		count.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		count.accessibility_name = Content.ESSENCES[k]
-		_essences.add_child(icon)
-		_essences.add_child(count)
+		var mark := Control.new()
+		mark.custom_minimum_size = MARK_SIZE
+		mark.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		mark.draw.connect(_draw_need_mark.bind(mark, k))
+		group.add_child(icon)
+		group.add_child(count)
+		group.add_child(mark)
+		_essences.add_child(group)
 		_essence_counts.append(count)
+		_essence_marks.append(mark)
+		essence_needs.append(Need.NONE)
 	# Left and right fills per band, then the fills above and below the stage.
 	for band in BANDS:
 		var region := Art.texture(band[0], band[1]).region
@@ -416,7 +455,7 @@ func _pick(key: String, options: PackedStringArray) -> String:
 
 func _on_customer_arrived() -> void:
 	print("[Shop] Customer %d is waiting: \"%s\"" % [_next_customer, customer.request.text])
-	_say(customer.request.text, -1.0, Callable())
+	_say(customer.request.text, -1.0, Callable(), customer.request.hints)
 	_update_pot()
 	_focus_play()
 
@@ -435,9 +474,10 @@ func _focus_play() -> void:
 			return
 
 
-func _say(text: String, hold: float, then: Callable) -> void:
+## Shows `text` in the bubble; `hints` (a request's hint word ids) marks those words.
+func _say(text: String, hold: float, then: Callable, hints := PackedStringArray()) -> void:
 	_after_line = then
-	_bubble.say(text, Customer.COUNTER_X + Customer.CENTER_X, hold)
+	_bubble.say(text, Customer.COUNTER_X + Customer.CENTER_X, hold, hints)
 
 
 func _on_bubble_advanced() -> void:
@@ -472,9 +512,18 @@ func _update_pot() -> void:
 		_slots[i].focus_mode = Control.FOCUS_ALL if filled else Control.FOCUS_NONE
 		_slots[i].accessibility_name = ("Take %s out of the pot" % pot[i].name) if filled else "Empty pot slot"
 	var mix := _pot_essence()
+	var ordered := customer != null and customer.state == Customer.State.WAIT_ORDER
 	for k in _essence_counts.size():
-		_essence_counts[k].text = str(mix[k])
-		_essence_counts[k].modulate.a = 1.0 if mix[k] > 0 else 0.4
+		var needed: int = customer.potion.target[k] if ordered else 0
+		var need := Need.NONE
+		if ordered:
+			need = Need.MATCHED if mix[k] == needed else (Need.MISSING if mix[k] < needed else Need.OVER)
+		essence_needs[k] = need
+		_essence_counts[k].text = ("%d/%d" % [mix[k], needed]) if ordered else str(mix[k])
+		_essence_counts[k].accessibility_name = "%s: %s" % [Content.ESSENCES[k], ("%d in the pot, %d needed, %s" % [mix[k], needed, Need.keys()[need].to_lower()]) if ordered else "%d in the pot" % mix[k]]
+		_essence_counts[k].get_parent().modulate.a = 1.0 if mix[k] > 0 or needed > 0 else 0.4
+		_essence_marks[k].visible = need != Need.NONE
+		_essence_marks[k].queue_redraw()
 	var color := _mix_color(mix)
 	create_tween().tween_property(_liquid, "modulate", color, 0.3)
 	_bubbles.color = color.lightened(0.3)
@@ -503,6 +552,18 @@ func _mix_color(mix: Vector4i) -> Color:
 		color += ESSENCE_COLORS[k] * (float(mix[k]) / total)
 	color.a = 1.0
 	return color
+
+
+## Draws essence `k`'s need mark (NEED_PIXELS) into `mark`, outline first.
+func _draw_need_mark(mark: Control, k: int) -> void:
+	var rows: Array = NEED_PIXELS[essence_needs[k]]
+	for pass_color: Color in [OUTLINE, NEED_COLORS[essence_needs[k]]]:
+		var grow := 1.0 if pass_color == OUTLINE else 0.0
+		for y in rows.size():
+			var row: String = rows[y]
+			for x in row.length():
+				if row[x] == "#":
+					mark.draw_rect(Rect2(x - grow, y - grow, 1.0 + grow * 2.0, 1.0 + grow * 2.0), pass_color)
 
 
 func _fly_ingredient(item: Ingredient, from_canvas: Vector2) -> void:
@@ -581,8 +642,16 @@ func _station_params(step: String) -> Dictionary:
 		"stir":
 			return {"color": _mix_color(_brew), "tempo": Stir.DEFAULT_TEMPO}
 		"pour":
-			return {"color": _potion_color(), "bottle": wants.bottle}
+			return {"color": _potion_color(), "bottle": wants.bottle, "line": pour_line(wants.bottle)}
 	return {}
+
+
+## A fresh fill line for a pour into bottle `shape`: a whole liquid row of its mask
+## (Pour.bottle_rows) between POUR_LINE_MIN and POUR_LINE_MAX of the liquid height.
+func pour_line(shape: String) -> float:
+	var rows := Pour.bottle_rows(shape)
+	var height := rows.y - rows.x
+	return float(_rng.randi_range(ceili(POUR_LINE_MIN * height), floori(POUR_LINE_MAX * height))) / height
 
 
 ## The delivered potion's colour: the requested potion's unless the brew is a Misbrew, then the mix's.
@@ -614,10 +683,10 @@ func _on_station_feedback(kind: StringName) -> void:
 		&"pour_spill":
 			Juice.shake(_stage, 2.0, 0.2)
 		&"station_success":
-			Juice.pop_text(_fx, station.get_global_rect().position + Vector2(135, 70), "Nice!", GOLD, 22)
+			Juice.pop_text(_fx, station.get_global_rect().position + Vector2(135, 70), "Nice!", GOLD)
 		&"station_sloppy":
 			Juice.shake(_stage, 2.0, 0.2)
-			Juice.pop_text(_fx, station.get_global_rect().position + Vector2(135, 70), "Sloppy...", RED, 22)
+			Juice.pop_text(_fx, station.get_global_rect().position + Vector2(135, 70), "Sloppy...", RED)
 
 
 func _finish_brew() -> void:
@@ -674,7 +743,7 @@ func _deliver(grade: Brew.Grade, quality: float) -> void:
 	customer.react(grade)
 	_coin_burst(pay)
 	var label := "+%d" % pay
-	Juice.pop_text(_fx, customer.get_global_transform() * Vector2(68, 4), label, GOLD, 22)
+	Juice.pop_text(_fx, customer.get_global_transform() * Vector2(68, 4), label, GOLD)
 	_say(reaction, REACTION_HOLD, customer.leave)
 
 
