@@ -39,11 +39,6 @@ const SWIRL_STEP := PI / 3.0
 const FIRE_FRAME_TIME := 0.12
 const PIP_Y := 236.0
 const PIP_SPACING := 20.0
-const PIP_RADIUS := 5.0
-## The pip's shape carries its result too (never colour alone): a four-point star
-## for perfect, a round dot for good, a cross for sloppy.
-const PIP_STAR_INNER := 1.5
-const PIP_CROSS_WIDTH := 2.0
 ## The ghost ladle starts at the front of the surface (the real ladle rests on the right).
 const GHOST_START_ANGLE := PI / 2.0
 const GHOST_ALPHA := 0.7
@@ -55,10 +50,6 @@ const ARROW_ARC := PI / 4.0
 const ARROW_HEAD := 5.0
 const ARROW_WIDTH := 2.0
 const ARROW_COLOR := Color("#ffc95c")
-const PIP_PERFECT := Color("#ffc95c")
-const PIP_GOOD := Color("#fbedcd")
-const PIP_SLOPPY := Color("#c43c2c")
-const PIP_EMPTY := Color("#5c5668")
 
 var _tempo := DEFAULT_TEMPO
 var _clock := 0.0
@@ -203,7 +194,7 @@ func _complete_rotation() -> void:
 	_radii.clear()
 	feedback.emit(&"stir_rotation")
 	Juice.squash(_rig, 0.06, 0.18)
-	Juice.burst(self, _ladle_target, _pip_color(score), 6)
+	Juice.burst(self, _ladle_target, pip_color(score), 6)
 	_guide.queue_redraw()
 	if _scores.size() >= ROTATIONS:
 		var total := 0.0
@@ -227,24 +218,10 @@ func _roundness_error() -> float:
 	return sqrt(variance) / mean
 
 
-func _pip_color(score: float) -> Color:
-	if score >= PERFECT_QUALITY:
-		return PIP_PERFECT
-	if score >= ASSIST_QUALITY:
-		return PIP_GOOD
-	return PIP_SLOPPY
-
-
 func _draw_guide() -> void:
 	if _running and _ghost.visible and _ghost.modulate.a > 0.0:
 		_draw_arrows(_ghost.modulate.a / GHOST_ALPHA)
-	var first_x := CENTRE.x - PIP_SPACING * (ROTATIONS - 1) / 2.0
-	for i in ROTATIONS:
-		var pip := Vector2(first_x + PIP_SPACING * i, PIP_Y)
-		if i < _scores.size():
-			_draw_pip(pip, _scores[i])
-		else:
-			_guide.draw_circle(pip, PIP_RADIUS, PIP_EMPTY, false, 1.0)
+	draw_pips(_guide, Vector2(CENTRE.x, PIP_Y), PIP_SPACING, ROTATIONS, _scores)
 
 
 ## ARROWS arcs on the finger's circle, evenly spaced, the first one's head at the
@@ -258,19 +235,3 @@ func _draw_arrows(strength: float) -> void:
 		var along := Vector2.from_angle(head + PI / 2.0)
 		var out := Vector2.from_angle(head)
 		_guide.draw_colored_polygon(PackedVector2Array([tip + along * ARROW_HEAD, tip - along + out * ARROW_HEAD, tip - along - out * ARROW_HEAD]), color)
-
-
-func _draw_pip(at: Vector2, score: float) -> void:
-	var color := _pip_color(score)
-	if score >= PERFECT_QUALITY:
-		var star := PackedVector2Array()
-		for corner: int in 8:
-			var radius := PIP_RADIUS + 1.0 if corner % 2 == 0 else PIP_STAR_INNER
-			star.append(at + Vector2.from_angle(-PI / 2.0 + corner * PI / 4.0) * radius)
-		_guide.draw_colored_polygon(star, color)
-	elif score >= ASSIST_QUALITY:
-		_guide.draw_circle(at, PIP_RADIUS, color)
-	else:
-		var arm := PIP_RADIUS * 0.8
-		_guide.draw_line(at + Vector2(-arm, -arm), at + Vector2(arm, arm), color, PIP_CROSS_WIDTH)
-		_guide.draw_line(at + Vector2(-arm, arm), at + Vector2(arm, -arm), color, PIP_CROSS_WIDTH)

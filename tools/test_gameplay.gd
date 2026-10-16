@@ -10,6 +10,11 @@ const TITLE_SCENE := preload("res://scenes/title.tscn")
 const TITLE_PATH := "res://scenes/title.tscn"
 const STIR_SCENE := preload("res://scenes/stations/stir.tscn")
 const POUR_SCENE := preload("res://scenes/stations/pour.tscn")
+const MORTAR_SCENE := preload("res://scenes/stations/mortar.tscn")
+const BELLOWS_SCENE := preload("res://scenes/stations/bellows.tscn")
+const STATION_SCENES: Array[PackedScene] = [STIR_SCENE, POUR_SCENE, MORTAR_SCENE, BELLOWS_SCENE]
+## Bellows test policy: pump whenever the heat is below this (keeps it in the band).
+const BELLOWS_KEEP := 0.58
 const SPEECH_BUBBLE_SCENE := preload("res://scenes/speech_bubble.tscn")
 const POTION_COLOR := Color("#f07c2c")
 ## One synthetic input frame for the station streams.
@@ -79,6 +84,15 @@ func _tests() -> Array[Callable]:
 		_test_pour_idle,
 		_test_pour_liquid_rows_match_mask,
 		_test_pour_tolerance_scale,
+		_test_mortar_perfect,
+		_test_mortar_sloppy,
+		_test_mortar_idle_and_wiggle,
+		_test_mortar_gentle,
+		_test_mortar_ghost_demo,
+		_test_bellows_perfect,
+		_test_bellows_sloppy,
+		_test_bellows_idle,
+		_test_bellows_gentle,
 		_test_stations_assist_tap,
 		_test_stations_assist_ui_accept,
 		_test_economy_rules,
@@ -106,6 +120,7 @@ func _tests() -> Array[Callable]:
 		_test_shop_stir_real_touch,
 		_test_shop_grade_stamps,
 		_test_shop_patience_row,
+		_test_shop_mortar_and_bellows,
 	]
 
 
@@ -450,10 +465,155 @@ func _test_pour_tolerance_scale() -> void:
 	_check(qualities[1] > qualities[0] and qualities[1] >= Station.PERFECT_QUALITY, "pour tolerance scale widens", str(qualities))
 
 
+## Steady circles at exactly the target speed grind to full fineness and score
+## Perfect; feedback every turn; the brew's grind ingredients sit in the bowl.
+func _test_mortar_perfect() -> void:
+	var mortar := _add_station(MORTAR_SCENE) as Mortar
+	var results := _collect_finished(mortar)
+	var cues: Array[StringName] = []
+	mortar.feedback.connect(func(kind: StringName) -> void: cues.append(kind))
+	mortar.begin({"color": POTION_COLOR, "ingredients": ["moonmoss"]})
+	_check(mortar.get_node("Bowl/Pieces").get_child_count() == 1, "mortar shows its ingredient in the bowl", str(mortar.get_node("Bowl/Pieces").get_child_count()))
+	_circles(mortar, Mortar.CENTRE, Mortar.RING_RADIUS, Mortar.DEFAULT_SPEED, Mortar.TURNS, 0.0)
+	_check(results.size() == 1, "mortar perfect finishes once", str(results))
+	_check(not results.is_empty() and results[0] >= Station.PERFECT_QUALITY, "mortar perfect quality", str(results))
+	_check(cues.count(&"mortar_turn") == Mortar.TURNS and cues.back() == &"station_success", "mortar feedback every turn", str(cues))
+	_check(is_equal_approx(mortar.fineness, 1.0) and mortar.turn_scores().size() == Mortar.TURNS, "mortar ground to full fineness", "%.2f %s" % [mortar.fineness, mortar.turn_scores()])
+	_check(not mortar.is_running(), "mortar stops after finishing", "still running")
+	mortar.free()
+
+
+## Grinding at 2.5x the speed scores below Good.
+func _test_mortar_sloppy() -> void:
+	var mortar := _add_station(MORTAR_SCENE) as Mortar
+	var results := _collect_finished(mortar)
+	mortar.begin({"color": POTION_COLOR})
+	_circles(mortar, Mortar.CENTRE, Mortar.RING_RADIUS, Mortar.DEFAULT_SPEED * 2.5, Mortar.TURNS, 0.0)
+	_check(results.size() == 1 and results[0] < Station.ASSIST_QUALITY, "mortar too fast scores below Good", str(results))
+	mortar.free()
+
+
+## No touches never finish; wiggling back and forth grinds nothing.
+func _test_mortar_idle_and_wiggle() -> void:
+	var mortar := _add_station(MORTAR_SCENE) as Mortar
+	var results := _collect_finished(mortar)
+	mortar.begin({"color": POTION_COLOR})
+	for i in 1800:
+		mortar.advance(FRAME)
+	_check(results.is_empty() and mortar.is_running(), "mortar idle does not finish", str(results))
+	mortar.feed(_touch(Mortar.CENTRE + Vector2(Mortar.RING_RADIUS, 0), true))
+	for i in 600:
+		mortar.advance(FRAME)
+		mortar.feed(_drag(Mortar.CENTRE + Vector2.from_angle(sin(i * 0.1) * 2.5) * Mortar.RING_RADIUS))
+	_check(results.is_empty() and mortar.turn_scores().is_empty() and mortar.fineness < 0.25, "mortar wiggle completes no turn", "%s %.2f" % [mortar.turn_scores(), mortar.fineness])
+	mortar.free()
+
+
+## Grinding 35% too fast: not Perfect normally, Perfect with Gentle mode's wider window.
+func _test_mortar_gentle() -> void:
+	var qualities: Array[float] = []
+	for scale: float in [1.0, GameState.GENTLE_TOLERANCE_SCALE]:
+		var mortar := _add_station(MORTAR_SCENE) as Mortar
+		var results := _collect_finished(mortar)
+		mortar.tolerance_scale = scale
+		mortar.begin({"color": POTION_COLOR})
+		_circles(mortar, Mortar.CENTRE, Mortar.RING_RADIUS, Mortar.DEFAULT_SPEED * 1.35, Mortar.TURNS, 0.0)
+		qualities.append(results[0] if results.size() == 1 else -1.0)
+		mortar.free()
+	_check(qualities[0] >= 0.0 and qualities[0] < Station.PERFECT_QUALITY, "mortar 35% fast is not Perfect", str(qualities))
+	_check(qualities[1] > qualities[0] and qualities[1] >= Station.PERFECT_QUALITY, "mortar Gentle widens the band", str(qualities))
+
+
+## The ghost pestle circles the opening at the target speed, fades after the first
+## touch; Assist shows no ghost.
+func _test_mortar_ghost_demo() -> void:
+	var mortar := _add_station(MORTAR_SCENE) as Mortar
+	mortar.begin({"color": POTION_COLOR})
+	var ghost := mortar.ghost()
+	var start := ghost.position
+	for i in roundi(0.5 / Mortar.DEFAULT_SPEED / FRAME):
+		mortar.advance(FRAME)
+	_check(ghost.visible and is_equal_approx(ghost.modulate.a, Mortar.GHOST_ALPHA), "mortar ghost demonstrates", str(ghost.modulate.a))
+	_check(ghost.position.distance_to(start) > Mortar.SURFACE_RADII.y, "mortar ghost moves half a turn", "%s -> %s" % [start, ghost.position])
+	mortar.feed(_touch(Mortar.CENTRE + Vector2(Mortar.RING_RADIUS, 0), true))
+	for i in 30:
+		mortar.advance(FRAME)
+	_check(is_zero_approx(ghost.modulate.a), "mortar ghost fades after the first touch", str(ghost.modulate.a))
+	mortar.assist = true
+	mortar.begin({"color": POTION_COLOR})
+	_check(not ghost.visible, "mortar Assist shows no ghost", "ghost visible")
+	mortar.free()
+
+
+## Pumping whenever the heat drops below BELLOWS_KEEP keeps the needle in the band:
+## Perfect after DURATION, with a pump cue per tap.
+func _test_bellows_perfect() -> void:
+	var bellows := _add_station(BELLOWS_SCENE) as Bellows
+	var results := _collect_finished(bellows)
+	var cues: Array[StringName] = []
+	bellows.feedback.connect(func(kind: StringName) -> void: cues.append(kind))
+	bellows.begin({"color": POTION_COLOR})
+	var frames := _pump_bellows(bellows, func(_frame: int) -> bool: return bellows.heat < BELLOWS_KEEP)
+	_check(results.size() == 1 and results[0] >= Station.PERFECT_QUALITY, "bellows in the band is Perfect", str(results))
+	_check(is_zero_approx(bellows.out_time()), "bellows never left the band", str(bellows.out_time()))
+	_check(frames * FRAME < Bellows.DURATION + 1.0, "bellows finishes about DURATION after reaching the band", "%.2fs" % (frames * FRAME))
+	_check(cues.count(&"bellows_pump") > 0 and not (&"bellows_out" in cues) and cues.back() == &"station_success", "bellows feedback", str(cues))
+	bellows.free()
+
+
+## Pumping every few frames overheats: the needle sits above the band, below Good.
+func _test_bellows_sloppy() -> void:
+	var bellows := _add_station(BELLOWS_SCENE) as Bellows
+	var results := _collect_finished(bellows)
+	var cues: Array[StringName] = []
+	bellows.feedback.connect(func(kind: StringName) -> void: cues.append(kind))
+	bellows.begin({"color": POTION_COLOR})
+	_pump_bellows(bellows, func(frame: int) -> bool: return frame % 4 == 0)
+	_check(results.size() == 1 and results[0] < Station.ASSIST_QUALITY, "bellows overheating scores below Good", str(results))
+	_check(&"bellows_out" in cues, "bellows cue when the needle leaves the band", str(cues))
+	bellows.free()
+
+
+## Without a tap the heat only cools: the timer never starts and nothing finishes.
+func _test_bellows_idle() -> void:
+	var bellows := _add_station(BELLOWS_SCENE) as Bellows
+	var results := _collect_finished(bellows)
+	bellows.begin({"color": POTION_COLOR})
+	for i in 1800:
+		bellows.advance(FRAME)
+	_check(results.is_empty() and bellows.is_running() and not bellows.is_timing() and is_zero_approx(bellows.heat), "bellows idle does not finish", "%s heat %.2f" % [results, bellows.heat])
+	bellows.free()
+
+
+## About 15% of the time below the band: not Perfect normally, Perfect with Gentle mode.
+func _test_bellows_gentle() -> void:
+	var qualities: Array[float] = []
+	for scale: float in [1.0, GameState.GENTLE_TOLERANCE_SCALE]:
+		var bellows := _add_station(BELLOWS_SCENE) as Bellows
+		var results := _collect_finished(bellows)
+		bellows.tolerance_scale = scale
+		bellows.begin({"color": POTION_COLOR})
+		var dropped := [-1]
+		_pump_bellows(bellows, func(frame: int) -> bool:
+			# From 1 s into the timer, stop pumping until the needle has been below the band for 0.75 s.
+			if bellows.is_timing() and frame >= 60 and dropped[0] < 0:
+				if bellows.heat < Bellows.BAND_LOW:
+					dropped[0] = frame
+				return false
+			if dropped[0] >= 0 and frame - dropped[0] < 44:
+				return false
+			return bellows.heat < BELLOWS_KEEP)
+		qualities.append(results[0] if results.size() == 1 else -1.0)
+		print("test_gameplay: bellows gentle x%.1f out %.2fs" % [scale, bellows.out_time()])
+		bellows.free()
+	_check(qualities[0] >= 0.0 and qualities[0] < Station.PERFECT_QUALITY, "bellows 15% out is not Perfect", str(qualities))
+	_check(qualities[1] > qualities[0] and qualities[1] >= Station.PERFECT_QUALITY, "bellows Gentle widens the window", str(qualities))
+
+
 ## Assist: one focused "Brew!" button in the thumb zone; gestures do nothing;
 ## a real tap on it finishes with exactly ASSIST_QUALITY.
 func _test_stations_assist_tap() -> void:
-	for scene: PackedScene in [STIR_SCENE, POUR_SCENE]:
+	for scene in STATION_SCENES:
 		var station := _add_station(scene)
 		var results := _collect_finished(station)
 		station.assist = true
@@ -487,7 +647,7 @@ func _test_stations_assist_tap() -> void:
 
 ## Assist: ui_accept (Enter/Space on desktop) on the focused button gives exactly ASSIST_QUALITY.
 func _test_stations_assist_ui_accept() -> void:
-	for scene: PackedScene in [STIR_SCENE, POUR_SCENE]:
+	for scene in STATION_SCENES:
 		var station := _add_station(scene)
 		var results := _collect_finished(station)
 		station.assist = true
@@ -1051,10 +1211,11 @@ func _test_shop_menu_and_mode_info() -> void:
 	await _close_shop()
 
 
-## Criterion 4: with Assist on, the station's single button reads "Auto Stir" or
-## "Auto Pour" (accessibility name the same); with Assist off there is none.
+## Criterion 4: with Assist on, the station's single button reads "Auto Stir",
+## "Auto Pour", "Auto Grind" or "Auto Pump" (accessibility name the same); with
+## Assist off there is none.
 func _test_stations_assist_caption() -> void:
-	for entry: Array in [[STIR_SCENE, "Auto Stir"], [POUR_SCENE, "Auto Pour"]]:
+	for entry: Array in [[STIR_SCENE, "Auto Stir"], [POUR_SCENE, "Auto Pour"], [MORTAR_SCENE, "Auto Grind"], [BELLOWS_SCENE, "Auto Pump"]]:
 		var station := _add_station(entry[0] as PackedScene)
 		station.begin({"color": POTION_COLOR, "bottle": "round"})
 		_check(station.assist_button() == null and station.get_node_or_null("AssistButton") == null, "%s without Assist has no button" % station.name, str(station.assist_button()))
@@ -1318,6 +1479,60 @@ func _test_shop_patience_row() -> void:
 		shop.customer.patience_left = 0.2
 		_check(await _until(func() -> bool: return shop.stormed_off == 1, FLOW_FRAMES), "patience row storm: storms off", str(shop.stormed_off))
 		_check(not row.is_visible_in_tree(), "patience row hides when the customer storms off", "visible")
+	await _close_shop()
+
+
+## Day 2's first customer wants a Mortar potion (shipped content); the test adds a
+## Bellows step to it (Bellows ships in step 7). The shop runs Mortar (with the
+## brew's grind ingredient in the bowl), Bellows, Stir and Pour in order, each
+## driven by touches at the right speed, and the customer gets a Perfect potion.
+func _test_shop_mortar_and_bellows() -> void:
+	_game.goto(GameState.Flow.SHOP, {"day": 2})
+	await _game.transition_finished
+	var shop := current_scene as Shop
+	if await _wait_for_order(shop, "day 2 mortar"):
+		var wants := shop.customer.potion
+		_check("mortar" in wants.steps, "day 2 customer 1 needs the mortar", str(wants.steps))
+		var shipped := wants.steps
+		wants.steps = PackedStringArray(["mortar", "bellows", "stir", "pour"])
+		shop.customer.patience_left = 999.0
+		for item in Content.ingredients_unlocked_by(2):
+			shop.stock[item.id] = 2
+			shop.shelf_item(item.id).set_stock(2)
+		var recipe := _exact_recipe(wants, shop.stock)
+		for id in recipe:
+			await _tap(shop.shelf_item(id))
+		await _tap(shop.brew_button())
+		var order: Array[String] = []
+		for step in wants.steps:
+			if not await _until(func() -> bool: return shop.station != null and shop.station.is_running() and not (str(shop.station.name) in order), FLOW_FRAMES):
+				_check(false, "day 2 %s station runs" % step, "no station")
+				break
+			var station := shop.station
+			order.append(str(station.name))
+			if station is Mortar:
+				var pieces := station.get_node("Bowl/Pieces").get_children()
+				_check(pieces.size() == recipe.filter(func(id: String) -> bool: return Content.ingredient(id).grind).size() and pieces.size() > 0, "mortar shows the brew's grind ingredients", str(pieces.size()))
+				await _drive_circles(station, Mortar.CENTRE, Mortar.RING_RADIUS, Mortar.DEFAULT_SPEED)
+			elif station is Bellows:
+				var bellows := station as Bellows
+				while bellows.is_running():
+					if bellows.heat < BELLOWS_KEEP:
+						bellows.feed(_touch(POUR_HOLD_POINT, true))
+						bellows.feed(_touch(POUR_HOLD_POINT, false))
+					await process_frame
+			elif station is Stir:
+				await _drive_circles(station, Stir.CENTRE, Stir.RING_RADIUS, Stir.DEFAULT_TEMPO)
+			elif station is Pour:
+				var pour := station as Pour
+				pour.feed(_touch(POUR_HOLD_POINT, true))
+				while pour.is_running() and pour.fill + FRAME / Pour.FILL_TIME / 2.0 < pour.target_line():
+					await process_frame
+				pour.feed(_touch(POUR_HOLD_POINT, false))
+		_check(order == ["Mortar", "Bellows", "Stir", "Pour"], "day 2 runs the potion's steps in order", str(order))
+		_check(await _until(func() -> bool: return shop.served == 1, FLOW_FRAMES), "day 2 customer served", str(shop.served))
+		_check(shop.grades == ([Brew.Grade.PERFECT] as Array[Brew.Grade]), "mortar and bellows by touch give a Perfect potion", str(shop.grades))
+		wants.steps = shipped
 	await _close_shop()
 
 
@@ -1595,6 +1810,44 @@ func _stir_circles(stir: Stir, rps: float, rotations: int, wobble: float) -> voi
 		var radius := Stir.RING_RADIUS + wobble * sin(i * 0.9)
 		stir.feed(_drag(Stir.CENTRE + Vector2.from_angle(i * FRAME * rps * TAU) * radius))
 	stir.feed(_touch(start, false))
+
+
+## Drags `turns` clockwise circles around `centre` at `tps` turns per second, one
+## event per FRAME, the radius wobbling by up to `wobble` around `radius`.
+func _circles(station: Station, centre: Vector2, radius: float, tps: float, turns: int, wobble: float) -> void:
+	var start := centre + Vector2(radius, 0)
+	station.feed(_touch(start, true))
+	var frames := ceili(turns / tps / FRAME) + 2
+	for i in range(1, frames + 1):
+		station.advance(FRAME)
+		station.feed(_drag(centre + Vector2.from_angle(i * FRAME * tps * TAU) * (radius + wobble * sin(i * 0.9))))
+	station.feed(_touch(start, false))
+
+
+## Drags circles around `centre` at `tps` through the running game loop (one drag
+## per rendered frame; the station's _process moves its clock) until it finishes.
+func _drive_circles(station: Station, centre: Vector2, radius: float, tps: float) -> void:
+	var start := centre + Vector2(radius, 0)
+	station.feed(_touch(start, true))
+	var i := 0
+	while station.is_running() and i < FLOW_FRAMES:
+		await process_frame
+		i += 1
+		station.feed(_drag(centre + Vector2.from_angle(i * FRAME * tps * TAU) * radius))
+	station.feed(_touch(start, false))
+
+
+## Runs `bellows` frame by frame, tapping whenever `pump(frame)` says so, until it
+## finishes (or 20 s pass). Returns the frames run.
+func _pump_bellows(bellows: Bellows, pump: Callable) -> int:
+	var frame := 0
+	while bellows.is_running() and frame < 1200:
+		if pump.call(frame):
+			bellows.feed(_touch(POUR_HOLD_POINT, true))
+			bellows.feed(_touch(POUR_HOLD_POINT, false))
+		bellows.advance(FRAME)
+		frame += 1
+	return frame
 
 
 ## Holds until the fill is within half a frame of `level`, then releases.

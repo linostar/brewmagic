@@ -1,6 +1,6 @@
 extends SceneTree
 ## Headless content tests: loads brewmagic/data/*.json through Content and checks every
-## invariant I1..I10 of brewmagic/data/SCHEMA.md, the bubble wrap, the lookup API, that
+## invariant I1..I11 of brewmagic/data/SCHEMA.md, the bubble wrap, the lookup API, that
 ## malformed data produces exactly the expected errors, and the title's content-error banner.
 ##   "$GODOT" --headless --path brewmagic --script "$PWD/tools/test_content.gd"
 ## Prints "test_content: OK" when every test passes; exits 1 otherwise.
@@ -56,6 +56,7 @@ func _tests() -> Array[Callable]:
 		_test_i8_market_serves_later_days,
 		_test_i9_misbrews_overshoot,
 		_test_i10_coverage,
+		_test_i11_mortar_consistency,
 		_test_part_values_have_sprites,
 		_test_malformed_data_errors,
 		_test_title_shows_content_errors,
@@ -282,8 +283,10 @@ func _test_i10_coverage() -> void:
 			var count := Content.requests_for(item.id, archetype.id).size()
 			if count < MIN_REQUESTS_PER_PAIR:
 				problems.append("%s/%s has %d requests" % [item.id, archetype.id, count])
-		if item.unlock_day <= 2 and item.steps != PackedStringArray(["stir", "pour"]):
-			problems.append("%s steps %s (days 1-2 use stir, pour)" % [item.id, item.steps])
+		if item.unlock_day == 1 and item.steps != PackedStringArray(["stir", "pour"]):
+			problems.append("%s steps %s (day 1 uses stir, pour)" % [item.id, item.steps])
+	if not Content.potions().any(func(item: PotionType) -> bool: return item.unlock_day == 2 and "mortar" in item.steps):
+		problems.append("no day-2 potion uses the mortar")
 	for k in Content.ESSENCES.size():
 		var lines := Content.misbrews_for(k)
 		if lines.size() < MIN_MISBREWS_PER_ESSENCE:
@@ -297,9 +300,21 @@ func _test_i10_coverage() -> void:
 			if count < Content.MIN_REACTION_LINES:
 				problems.append("%s has %d %s lines" % [archetype.id, count, grade])
 	for item in Content.ingredients():
-		if item.unlock_day <= 2 and item.grind:
-			problems.append("%s needs grinding before day 3" % item.id)
+		if item.unlock_day == 1 and item.grind:
+			problems.append("%s needs grinding on day 1" % item.id)
 	_check(problems.is_empty(), "I10 coverage", "\n".join(problems))
+
+
+## I11: a potion lists "mortar" exactly when every exact recipe of it needs a grind ingredient.
+func _test_i11_mortar_consistency() -> void:
+	var problems: Array[String] = []
+	for item in Content.potions():
+		var recipes := _exact_recipes(item.target, Content.ingredients_unlocked_by(item.unlock_day))
+		var all_grind := not recipes.is_empty() and recipes.all(func(brew: PackedStringArray) -> bool:
+			return Array(brew).any(func(id: String) -> bool: return Content.ingredient(id).grind))
+		if ("mortar" in item.steps) != all_grind:
+			problems.append("%s steps %s but recipes %s" % [item.id, item.steps, recipes])
+	_check(problems.is_empty(), "I11 mortar steps match the grind ingredients", "\n".join(problems))
 
 
 ## Every part value the schema allows has both idle frames in the customer atlas, so the

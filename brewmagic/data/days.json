@@ -17,7 +17,7 @@
     "id": "day_2",
     "day": 2,
     "title": "Word Gets Around",
-    "morning_note": "New stock: honeycomb and moonmoss. Each one holds two essences.",
+    "morning_note": "Honeycomb and moonmoss in stock. Moonmoss must be ground in the mortar.",
     "patience_scale": 1.0,
     "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4 },
     "customers": [
