@@ -138,6 +138,19 @@ Selection: a random customer with archetype A who wants potion P says a random r
 
 Stock carries over between days. The stock on day N >= 2 is what is left from day N-1 plus what the player bought.
 
+## upgrades.json
+One upgrade per station: exactly one entry for each of `"stir"`, `"pour"`, `"mortar"`, `"bellows"`.
+| field | type | range / enum | notes |
+|---|---|---|---|
+| `id` | string | snake_case | |
+| `station` | string | `"stir" \| "pour" \| "mortar" \| "bellows"` | The station step it improves; unique across the file. |
+| `name` | string | 1..26 chars | Market card title. |
+| `description` | string | 1..120 chars | Market info line. |
+| `unlock_day` | int | 1..7 | On sale in every market held the evening before a day `>= unlock_day`. |
+| `levels` | array of object | non-empty | Level 1, 2, ... in order. Owning none is level 0 (tolerance x1). |
+| `levels[].tolerance` | float | (1.0, 3.0], strictly increasing | The station's tolerance multiplier at this level (`Station.tolerance_scale`, times 1.5 in Gentle mode). |
+| `levels[].cost` | int | 1..9999 | Coins for this level, bought after the level before it. |
+
 ---
 
 ## Invariants (`tools/test_content.gd` must check all of these)
@@ -153,8 +166,11 @@ Stock carries over between days. The stock on day N >= 2 is what is left from da
 - **I7** Every potion has at least one exact (distance 0) brew of 2-3 ingredients with `unlock_day <= potion.unlock_day`.
   Every customer on day N is exactly solvable with ingredients unlocked by day N.
 - **I8** Day 1: `starting_stock` alone can brew every day-1 customer Perfect, all on the same day.
-  Day N >= 2: the Perfect pay of day N-1's customers alone (`Economy.pay(price, PERFECT)` summed; no tips, no coins or
-  stock carried over) buys, at day N's `market` prices, an exact recipe for every day-N customer, all on the same day.
+  Day N >= 2 (economy-aware, simulated from day 1's `starting_stock`): a day starts with the stock that any Perfect
+  run of the day before can leave (every exact recipe per customer is a possible run; the worst leftover counts), and
+  the Perfect pay of day N-1's customers alone (`Economy.pay(price, PERFECT)` summed; no tips, no other coins, since
+  the player may spend those on upgrades) buys, at day N's market prices (`Economy.market_price`), whatever that
+  stock lacks for an exact recipe for every day-N customer, all on the same day.
 - **I9** For every potion and every 2-3 ingredient brew (all ingredients), distance >= 3 implies some essence overshoots.
   (With the current data, all brews total >= 4 and all targets total <= 5. A brew without an overshoot would be at most 1 away.)
 - **I10** Coverage. Every (potion, archetype) pair has >= 3 requests. Every essence has >= 5 misbrews, each with its fixed effect.

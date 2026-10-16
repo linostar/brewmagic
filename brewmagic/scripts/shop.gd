@@ -1,8 +1,8 @@
 class_name Shop
 extends Control
-## The shop shift (flow SHOP): runs one story day from Content.day(n) (n from
-## Game.flow_args["day"], default day 1): its starting coins and stock, its
-## customers in order, its patience scale. Layout per CLAUDE.md "Shop scene
+## The shop shift (flow SHOP): runs the ShiftConfig of story day n (Shift.story(n),
+## n from Game.flow_args["day"], default Game.day): its customers in order, its
+## shelf, its patience scale, starting from the saved coins and stock (Game). Layout per CLAUDE.md "Shop scene
 ## layout": the 270x480 Stage sits at the bottom of the ScreenFit column (extra
 ## height on tall phones goes above it, covered by shop_ceiling copies stacked up
 ## from the backdrop's top edge), and its edge rows and columns are stretched
@@ -25,9 +25,9 @@ extends Control
 ## ingredients in the pot (tap or Enter on a shelf item, or drag it into the
 ## cauldron; tap a pot slot to take one back) -> Brew runs the requested potion's
 ## station steps -> the bottle flies over, the customer reacts, pays
-## (Economy.pay) and leaves. Patience running out ends the visit (Economy
+## (Economy.pay plus Economy.tip) and leaves. Patience running out ends the visit (Economy
 ## STORMED_OFF_REPUTATION, no pay), also mid-brew (the ingredients are lost).
-## After the last customer the summary panel shows the day's results.
+## After the last customer Game.finish_day() commits the day and shows the summary.
 ##
 ## Station colours: Mortar grinds the mix's colour (with the brew's `grind`
 ## ingredients in the bowl), Stir and Bellows show the colour of the mix; Pour pours the requested
@@ -37,8 +37,8 @@ extends Control
 ## Taps on the workspace (SkipButton) complete or advance the speech bubble; the
 ## bubble itself sits in the reading zone and takes no input.
 ##
-## Keyboard focus: the pause and summary panels keep focus inside them (the
-## Column takes no focus while one is open); the shelf and Brew take no focus
+## Keyboard focus: the pause panel keeps focus inside it (the
+## Column takes no focus while it is open); the shelf and Brew take no focus
 ## while a station runs under its dim. Resume returns focus to the running
 ## station's Assist button, else to the control focused before pausing.
 ##
@@ -111,6 +111,9 @@ const STAMP_HOLD := 1.2
 ## patience row was, right of the customer's head).
 const PAY_FROM := Vector2(186, 116)
 const PAY_HOLD := 0.35
+## A tip pops "tip +N" this far under "+pay" and flies this much later.
+const TIP_OFFSET := Vector2(0, 16)
+const TIP_DELAY := 0.25
 ## The pot preview's mark after "in pot/needed" for each essence of the current order.
 ## Its shape carries the result as well as its colour: a check (MATCHED), a plus
 ## (MISSING: add more) or a minus (OVER: take some out). NONE: no order, no mark.
@@ -130,8 +133,10 @@ const NEED_PIXELS: Array[Array] = [
 const WALL_ROW := 20.0
 const BANDS: Array[Array] =[["shop", "shop_backdrop", 0.0], ["workspace", "workspace_bg", 192.0], ["workspace", "shelf_panel", 360.0]]
 
-var day: DaySpec
+var shift: ShiftConfig
 var coins := 0
+## Tips received today (included in coins).
+var tips := 0
 var reputation := 0
 ## Ingredient id -> count on the shelf (not counting what is in the pot).
 var stock: Dictionary[String, int] = {}
@@ -189,6 +194,8 @@ var _focus_before_pause: Control
 ## The "?" button whose mode help is open.
 var _help_opener: Button
 var _stamp_tween: Tween
+## Set once the last customer has left and the day is handed to Game.finish_day().
+var _day_over := false
 
 @onready var _fill: Control = $Fill
 @onready var _column: Control = $Column
@@ -228,9 +235,6 @@ var _stamp_tween: Tween
 @onready var _stamp: PanelContainer = $Column/Stage/Stamp
 @onready var _stamp_icon: TextureRect = $Column/Stage/Stamp/Row/Icon
 @onready var _stamp_text: Label = $Column/Stage/Stamp/Row/Text
-@onready var _summary_panel: PanelContainer = $Modal/SummaryPanel
-@onready var _summary_title: Label = $Modal/SummaryPanel/List/Title
-@onready var _summary_stats: Label = $Modal/SummaryPanel/List/Stats
 
 
 func _ready() -> void:
@@ -255,29 +259,28 @@ func _ready() -> void:
 	_gentle_help.pressed.connect(open_mode_help.bind(_gentle_help))
 	_mode_help.pressed.connect(close_mode_help)
 	_modal_dim.gui_input.connect(_on_modal_dim_input)
-	$Modal/SummaryPanel/List/BackButton.pressed.connect(_on_quit_pressed)
-	var number := int(_game.flow_args.get("day", Content.FIRST_DAY))
-	day = Content.day(number)
-	if day == null:
+	var number := int(_game.flow_args.get("day", _game.day))
+	shift = Shift.story(number)
+	if shift == null:
 		# The title screen is the only safe place to go; the player sees why there.
 		_game.abort_to(GameState.Flow.TITLE, "Day %d is missing from data/days.json; the shop cannot open." % number)
 		return
 	_rng.randomize()
-	coins = day.starting_coins
+	coins = _game.coins
 	_starting_coins = coins
 	_shown_coins = coins
-	for item in Content.ingredients_unlocked_by(day.day):
-		stock[item.id] = day.starting_stock.get(item.id, 0)
+	for item in shift.ingredients:
+		stock[item.id] = _game.stock.get(item.id, 0)
 	_build_shelf()
 	_update_pot()
 	_update_hud()
 	_sync_setting_buttons()
 	var parts: Array[Array] = []
-	for spec in day.customers:
+	for spec in shift.customers:
 		var who := Content.archetype(spec.archetype)
 		parts.append(Customer.parts_of(who) if who != null else [])
 	_looks = Look.distinct_for(parts, _rng.randi())
-	print("[Shop] Day %d '%s': %d customers, %d coins, stock %s, patience x%.2f" % [day.day, day.title, day.customers.size(), coins, stock, day.patience_scale])
+	print("[Shop] Day %d '%s': %d customers, %d coins, stock %s, patience x%.2f" % [shift.day, shift.title, shift.customers.size(), coins, stock, shift.patience_scale])
 
 
 func _process(delta: float) -> void:
@@ -338,7 +341,7 @@ func remove_from_pot(index: int) -> void:
 
 
 func open_pause() -> void:
-	if _summary_panel.visible:
+	if _day_over:
 		return
 	get_tree().paused = true
 	_focus_before_pause = get_viewport().gui_get_focus_owner()
@@ -537,7 +540,7 @@ func _build_shelf() -> void:
 ## Lets the next customer in when the line has room: right away (after
 ## NEXT_CUSTOMER_DELAY) when it is empty, else ARRIVAL_GAP after the last arrival.
 func _tick_arrivals(delta: float) -> void:
-	if day == null or _next_customer >= day.customers.size() or _line_size() >= Customer.SLOT_X.size():
+	if shift == null or _next_customer >= shift.customers.size() or _line_size() >= Customer.SLOT_X.size():
 		return
 	if _line_size() == 0:
 		_until_arrival = minf(_until_arrival, NEXT_CUSTOMER_DELAY)
@@ -554,10 +557,10 @@ func _line_size() -> int:
 
 ## Sends in the day's next customer to the first free place in line.
 func _spawn_next_customer() -> void:
-	if _next_customer >= day.customers.size():
+	if _next_customer >= shift.customers.size():
 		_check_day_done()
 		return
-	var spec := day.customers[_next_customer]
+	var spec := shift.customers[_next_customer]
 	var look := _looks[_next_customer]
 	_next_customer += 1
 	var who := Content.archetype(spec.archetype)
@@ -566,11 +569,11 @@ func _spawn_next_customer() -> void:
 	if who != null and wants != null:
 		says = Content.request(spec.request) if spec.request != "" else _pick_request(wants.id, who.id)
 	if who == null or wants == null or says == null:
-		push_error("[Shop] Day %d customer %d (%s wants %s) cannot be set up; skipping" % [day.day, _next_customer, spec.archetype, spec.potion])
+		push_error("[Shop] Day %d customer %d (%s wants %s) cannot be set up; skipping" % [shift.day, _next_customer, spec.archetype, spec.potion])
 		_spawn_next_customer()
 		return
 	var visitor := CUSTOMER_SCENE.instantiate() as Customer
-	visitor.setup(who, wants, says, who.patience_seconds * day.patience_scale, look)
+	visitor.setup(who, wants, says, who.patience_seconds * shift.patience_scale, look)
 	visitor.number = _next_customer
 	visitor.arrived.connect(_on_customer_arrived)
 	visitor.patience_ran_out.connect(_on_patience_ran_out.bind(visitor))
@@ -585,7 +588,7 @@ func _spawn_next_customer() -> void:
 	_customers.move_child(visitor, 0)
 	_present += 1
 	visitor.enter(place)
-	print("[Shop] Customer %d/%d: %s wants %s (request %s, patience %.0fs, %s), place %d in line" % [visitor.number, day.customers.size(), who.id, wants.id, says.id, visitor.patience_total, look.describe(), place])
+	print("[Shop] Customer %d/%d: %s wants %s (request %s, patience %.0fs, %s), place %d in line" % [visitor.number, shift.customers.size(), who.id, wants.id, says.id, visitor.patience_total, look.describe(), place])
 
 
 func _pick_request(potion_id: String, archetype_id: String) -> RequestLine:
@@ -813,7 +816,7 @@ func _start_step() -> void:
 		return
 	station = STATION_SCENES[step].instantiate() as Station
 	station.assist = _game.assist_mode
-	station.tolerance_scale = _game.tolerance_scale()
+	station.tolerance_scale = _game.tolerance_scale(step)
 	station.finished.connect(_on_station_finished)
 	station.feedback.connect(_on_station_feedback)
 	_show_station_layer(true)
@@ -922,14 +925,16 @@ func _finish_brew() -> void:
 func _deliver(grade: Brew.Grade, quality: float) -> void:
 	var wants := customer.potion
 	var pay := Economy.pay(wants.price, grade)
+	var tip := Economy.tip(wants.price, grade, customer.archetype.tip_tendency)
 	var reputation_change := Economy.reputation_delta(grade)
-	coins += pay
+	coins += pay + tip
+	tips += tip
 	reputation += reputation_change
 	served += 1
 	grades.append(grade)
 	if grade == Brew.Grade.PERFECT:
 		perfect += 1
-	print("[Shop] Served customer %d/%d (%s): %s, quality %.2f, paid %d, reputation %+d, coins %d" % [customer.number, day.customers.size(), customer.archetype.id, Brew.Grade.keys()[grade], quality, pay, reputation_change, coins])
+	print("[Shop] Served customer %d/%d (%s): %s, quality %.2f, paid %d, tip %d, reputation %+d, coins %d" % [customer.number, shift.customers.size(), customer.archetype.id, Brew.Grade.keys()[grade], quality, pay, tip, reputation_change, coins])
 	_update_hud()
 	_show_stamp(grade)
 	var grade_key: String = Archetype.GRADES[grade]
@@ -946,10 +951,12 @@ func _deliver(grade: Brew.Grade, quality: float) -> void:
 		_say(_pick("misbrew/%d" % essence, narration), MISBREW_HOLD, _say.bind(reaction, REACTION_HOLD, _send_off.bind(customer)), PackedStringArray(), false)
 		return
 	customer.react(grade)
-	_coin_burst(pay)
+	_coin_burst(pay + tip)
+	var stage := _stage.get_global_transform()
 	if pay > 0:
-		var stage := _stage.get_global_transform()
 		Juice.fly_text(_fx, stage * PAY_FROM, _coin_icon.get_global_rect().get_center(), "+%d" % pay, GOLD, PAY_HOLD)
+	if tip > 0:
+		Juice.fly_text(_fx, stage * (PAY_FROM + TIP_OFFSET), _coin_icon.get_global_rect().get_center(), "tip +%d" % tip, GOLD, PAY_HOLD + TIP_DELAY)
 	_say(reaction, REACTION_HOLD, _send_off.bind(customer))
 
 
@@ -1026,7 +1033,7 @@ func _on_patience_ran_out(who: Customer) -> void:
 	_update_pot()
 	if dropped_station:
 		_focus_play()
-	print("[Shop] Customer %d/%d (%s) stormed off: reputation %+d" % [customer.number, day.customers.size(), customer.archetype.id, Economy.STORMED_OFF_REPUTATION])
+	print("[Shop] Customer %d/%d (%s) stormed off: reputation %+d" % [customer.number, shift.customers.size(), customer.archetype.id, Economy.STORMED_OFF_REPUTATION])
 	Juice.shake(_stage, 2.0, 0.3)
 	var lines := customer.archetype.reactions["stormed_off"]
 	_say(_pick("reaction/%s/stormed_off" % customer.archetype.id, lines), STORMED_HOLD, _send_off.bind(customer))
@@ -1038,7 +1045,7 @@ func _storm_off_queue(who: Customer) -> void:
 	stormed_off += 1
 	reputation += Economy.STORMED_OFF_REPUTATION
 	queue.erase(who)
-	print("[Shop] Customer %d/%d (%s) stormed off from the queue: reputation %+d" % [who.number, day.customers.size(), who.archetype.id, Economy.STORMED_OFF_REPUTATION])
+	print("[Shop] Customer %d/%d (%s) stormed off from the queue: reputation %+d" % [who.number, shift.customers.size(), who.archetype.id, Economy.STORMED_OFF_REPUTATION])
 	_say_aside(_pick("reaction/%s/stormed_off" % who.archetype.id, who.archetype.reactions["stormed_off"]), who)
 	who.leave()
 	_close_up_line()
@@ -1076,29 +1083,38 @@ func _on_customer_left(who: Customer) -> void:
 
 ## Ends the day once every customer has come in and gone.
 func _check_day_done() -> void:
-	if _next_customer >= day.customers.size() and _present == 0:
+	if _next_customer >= shift.customers.size() and _present == 0:
 		get_tree().create_timer(NEXT_CUSTOMER_DELAY, false).timeout.connect(_end_day)
 
 
+## The day's results as the summary scene reads them (Game.flow_args): day, title,
+## customers, served, stormed_off, grades (a count per Brew.Grade), earned (pay
+## without tips), tips, reputation (today's change) and coins (now).
+func day_result() -> Dictionary:
+	var counts: Array[int] = [0, 0, 0, 0]
+	for grade in grades:
+		counts[grade] += 1
+	return {
+		"day": shift.day, "title": shift.title, "customers": shift.customers.size(), "served": served,
+		"stormed_off": stormed_off, "grades": counts, "earned": coins - _starting_coins - tips, "tips": tips,
+		"reputation": reputation, "coins": coins,
+	}
+
+
 func _end_day() -> void:
-	var earned := coins - _starting_coins
-	_summary_title.text = "Day %d done!" % day.day
-	_summary_stats.text = "Served %d of %d\nPerfect brews: %d\nCoins earned: %+d\nReputation: %+d" % [served, day.customers.size(), perfect, earned, reputation]
-	_column.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_DISABLED
-	_modal_dim.show()
-	_summary_panel.show()
-	Juice.squash(_summary_panel, 0.1)
-	($Modal/SummaryPanel/List/BackButton as Button).grab_focus(true)
-	print("[Shop] Day %d done: served %d/%d, perfect %d, stormed off %d, coins %d (%+d), reputation %+d" % [day.day, served, day.customers.size(), perfect, stormed_off, coins, earned, reputation])
+	_day_over = true
+	var result := day_result()
+	print("[Shop] Day %d done: %s" % [shift.day, result])
+	_game.finish_day(result, coins, stock, reputation)
 
 
 func _update_hud() -> void:
-	if day == null:
+	if shift == null:
 		return
 	if _shown_coins > coins:
 		_shown_coins = coins
 	_coins_label.text = str(_shown_coins)
-	_served_label.text = "Served %d/%d" % [served, day.customers.size()]
+	_served_label.text = "Served %d/%d" % [served, shift.customers.size()]
 	_assist_tag.visible = _game.assist_mode
 
 
@@ -1115,6 +1131,7 @@ func _sync_setting_buttons() -> void:
 ## Assist changes restart a running station in the new mode (its progress is lost).
 func _on_assist_toggled(on: bool) -> void:
 	_game.assist_mode = on
+	_game.save_game()
 	print("[Shop] Assist mode %s" % ("on" if on else "off"))
 	_sync_setting_buttons()
 	if station != null and station.is_running():
@@ -1125,10 +1142,11 @@ func _on_assist_toggled(on: bool) -> void:
 ## Gentle changes apply to the running station's scoring from now on.
 func _on_gentle_toggled(on: bool) -> void:
 	_game.gentle_mode = on
+	_game.save_game()
 	print("[Shop] Gentle mode %s" % ("on" if on else "off"))
 	_sync_setting_buttons()
 	if station != null:
-		station.tolerance_scale = _game.tolerance_scale()
+		station.tolerance_scale = _game.tolerance_scale(customer.potion.steps[_step])
 
 
 func _on_quit_pressed() -> void:
