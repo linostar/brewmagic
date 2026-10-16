@@ -50,7 +50,7 @@ Other strings: `name`/`title`/`word` <= 26 chars; `description` <= 120 chars; `s
 | `essence` | essence vector | each 0..3, not all 0 | |
 | `unlock_day` | int | 1..7 | First day it is on the shelf or in the market. |
 | `base_price` | int | 1..999 | Default market price in coins. A day's `market` overrides it. |
-| `grind` | bool | | `true` means the brew needs the Mortar station. All day 1-2 ingredients are `false`. |
+| `grind` | bool | | `true` means the ingredient is ground in the Mortar: potions whose recipes need it list `"mortar"` (I11), and the Mortar shows the brew's `grind` ingredients in its bowl. All day-1 ingredients are `false` (I10). |
 | `description` | string | 1..120 chars | Codex line. |
 
 ## potions.json
@@ -62,7 +62,7 @@ Other strings: `name`/`title`/`word` <= 26 chars; `description` <= 120 chars; `s
 | `color` | string | `^#[0-9a-f]{6}$` | Liquid colour, picked from `art_src/palette.hex`. It tints the neutral liquid sprite in code. |
 | `bottle` | string | `"round" \| "tall" \| "flask" \| "teardrop"` | Bottle sprite shape. |
 | `unlock_day` | int | 1..7 | |
-| `steps` | array of string | non-empty, unique, each `"stir" \| "pour" \| "mortar" \| "bellows"` | Station order for brewing. Potions with `unlock_day <= 2` use exactly `["stir", "pour"]`. |
+| `steps` | array of string | non-empty, unique, each `"stir" \| "pour" \| "mortar" \| "bellows"` | Station order for brewing; the shop runs them in this order. Potions with `unlock_day == 1` use exactly `["stir", "pour"]` (I10); `"mortar"` follows I11. |
 | `price` | int | 1..999 | Base sale price in coins before grade and tip. |
 | `description` | string | 1..120 chars | Codex line. |
 
@@ -158,7 +158,12 @@ Stock carries over between days. The stock on day N >= 2 is what is left from da
 - **I9** For every potion and every 2-3 ingredient brew (all ingredients), distance >= 3 implies some essence overshoots.
   (With the current data, all brews total >= 4 and all targets total <= 5. A brew without an overshoot would be at most 1 away.)
 - **I10** Coverage. Every (potion, archetype) pair has >= 3 requests. Every essence has >= 5 misbrews, each with its fixed effect.
-  Every archetype has >= 3 lines for every grade. Potions with `unlock_day <= 2` have `steps == ["stir", "pour"]`.
+  Every archetype has >= 3 lines for every grade. Potions with `unlock_day == 1` have `steps == ["stir", "pour"]`
+  and day-1 ingredients have `grind == false` (day 1 teaches only Stir and Pour). At least one potion with
+  `unlock_day == 2` lists `"mortar"` (the Mortar is introduced on day 2).
+- **I11** Mortar consistency. A potion lists `"mortar"` in `steps` exactly when every exact recipe of it (2-3
+  ingredients with `unlock_day <= potion.unlock_day`, as in I7) contains an ingredient with `grind == true`. So a
+  potion that needs a hard ingredient always grinds it, and no potion asks for the Mortar when there is nothing to grind.
 
 ## Current content (days 1-2)
 | ingredient | essence | day | | potion | target | day | exact recipe |
@@ -168,7 +173,11 @@ Stock carries over between days. The stock on day N >= 2 is what is left from da
 | sunpetal | 0,0,2,0 | 1 | | valour_cordial | 2,1,0,2 | 2 | ember_pepper + moonmoss |
 | nightshade_cap | 0,0,0,2 | 1 | | moonbloom_draught | 0,1,2,2 | 2 | sunpetal + moonmoss |
 | honeycomb | 1,0,2,0 | 2 | | | | | |
-| moonmoss | 0,1,0,2 | 2 | | | | | |
+| moonmoss (grind) | 0,1,0,2 | 2 | | | | | |
+
+Moonmoss is the only `grind` ingredient and the only one with frost 1, so every exact recipe of Valour Cordial and
+Moonbloom Draught uses it and both potions brew `["mortar", "stir", "pour"]` (I11). Bellows first appears in content in
+step 7.
 
 The day-1 ingredients each sum to 2, so on day 1 every distance is even: a wrong pick gives Meh or Misbrew,
 never Good. The day-2 ingredients sum to 3, so near misses become possible. For example, for Valour Cordial,

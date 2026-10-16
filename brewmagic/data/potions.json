@@ -28,7 +28,7 @@
     "color": "#c43c2c",
     "bottle": "flask",
     "unlock_day": 2,
-    "steps": ["stir", "pour"],
+    "steps": ["mortar", "stir", "pour"],
     "price": 18,
     "description": "Courage with a cool head, for anything spooky. Side effect: heroic posing."
   },
@@ -39,7 +39,7 @@
     "color": "#7cc44c",
     "bottle": "teardrop",
     "unlock_day": 2,
-    "steps": ["stir", "pour"],
+    "steps": ["mortar", "stir", "pour"],
     "price": 18,
     "description": "Makes things grow in cold, cursed or night-time places. Turnips may get chatty."
   }

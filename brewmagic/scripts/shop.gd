@@ -29,7 +29,8 @@ extends Control
 ## STORMED_OFF_REPUTATION, no pay), also mid-brew (the ingredients are lost).
 ## After the last customer the summary panel shows the day's results.
 ##
-## Station colours: Stir shows the colour of the mix; Pour pours the requested
+## Station colours: Mortar grinds the mix's colour (with the brew's `grind`
+## ingredients in the bowl), Stir and Bellows show the colour of the mix; Pour pours the requested
 ## potion's colour when the brew is not a Misbrew, else the mix colour, always
 ## in the requested potion's bottle.
 ##
@@ -55,6 +56,8 @@ const SHELF_ITEM_SCENE := preload("res://scenes/shelf_item.tscn")
 const STATION_SCENES: Dictionary[String, PackedScene] = {
 	"stir": preload("res://scenes/stations/stir.tscn"),
 	"pour": preload("res://scenes/stations/pour.tscn"),
+	"mortar": preload("res://scenes/stations/mortar.tscn"),
+	"bellows": preload("res://scenes/stations/bellows.tscn"),
 }
 const STAGE_SIZE := Vector2(270, 480)
 const POT_CAPACITY := 3
@@ -88,8 +91,8 @@ const COIN_FLIGHTS_MAX := 8
 const POUR_LINE_MIN := 0.45
 const POUR_LINE_MAX := 0.85
 ## What each mode does: its toggle's tooltip, and the callout its "?" button opens.
-const ASSIST_INFO := "Auto stir & pour; scores Good, never Perfect"
-const GENTLE_INFO := "Stir & pour timing is %sx more forgiving" % GameState.GENTLE_TOLERANCE_SCALE
+const ASSIST_INFO := "Auto stir, grind, pour & pump; scores Good, never Perfect"
+const GENTLE_INFO := "Stir, grind, pour & pump timing is %sx more forgiving" % GameState.GENTLE_TOLERANCE_SCALE
 const GOLD := Color("#ffc95c")
 const CREAM := Color("#fbedcd")
 const RED := Color("#c43c2c")
@@ -169,6 +172,8 @@ var _brew := Vector4i.ZERO
 var _tier := Brew.Grade.MISBREW
 var _step := 0
 var _qualities: Array[float] = []
+## Ids of the brew's ingredients flagged `grind` (what the Mortar grinds), in pot order.
+var _ground: Array[String] = []
 ## Called once when the bubble's current line advances.
 var _after_line := Callable()
 var _clock := 0.0
@@ -779,8 +784,11 @@ func _on_brew_pressed() -> void:
 	var distance := Brew.distance(_brew, wants.target)
 	_tier = Brew.match_tier(distance)
 	var used := PackedStringArray()
+	_ground.clear()
 	for item in pot:
 		used.append(item.id)
+		if item.grind:
+			_ground.append(item.id)
 	print("[Shop] Brewing %s for %s: essence %s, target %s, distance %d, tier %s" % [used, wants.id, _brew, wants.target, distance, Brew.Grade.keys()[_tier]])
 	pot.clear()
 	_update_pot()
@@ -833,6 +841,10 @@ func _station_params(step: String) -> Dictionary:
 			return {"color": _mix_color(_brew), "tempo": Stir.DEFAULT_TEMPO}
 		"pour":
 			return {"color": _potion_color(), "bottle": wants.bottle, "line": pour_line(wants.bottle)}
+		"mortar":
+			return {"color": _mix_color(_brew), "ingredients": _ground.duplicate(), "speed": Mortar.DEFAULT_SPEED}
+		"bellows":
+			return {"color": _mix_color(_brew)}
 	return {}
 
 
@@ -868,8 +880,10 @@ func _end_step(finished_station: Station) -> void:
 ## stations already animate their own part (the stream, the swirl, the pips).
 func _on_station_feedback(kind: StringName) -> void:
 	match kind:
-		&"stir_rotation":
+		&"stir_rotation", &"mortar_turn":
 			Juice.shake(_stage, 1.0, 0.08)
+		&"bellows_out":
+			Juice.shake(_stage, 1.0, 0.12)
 		&"pour_spill":
 			Juice.shake(_stage, 2.0, 0.2)
 		&"station_success":
