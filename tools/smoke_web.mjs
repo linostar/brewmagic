@@ -7,9 +7,8 @@
 // serves the first day-1 customer, requiring the game's "[Shop] Served customer 1/N"
 // log line. Pointer runs (CDP touch events on the phone, the mouse on desktop) tap
 // "Open the shop", the recipe's ingredients and Brew, stir real circles at the target
-// tempo and hold the pour to the line. The page's frame interval is measured during each
-// gesture (requestAnimationFrame) and the game's own logs must land within the station's
-// full-score window plus two frames (see FRAME_SLOP), so a broken gesture path fails
+// tempo and hold the pour to the line; the game's logs must show that each gesture reached
+// the game and was recognised (see checkStir/checkPour), so a broken input path fails
 // however slow the renderer is. The keyboard run uses only
 // Tab/Shift+Tab/arrows/Enter: it switches Assist on in the pause panel, and each
 // station must finish with exactly Station.ASSIST_QUALITY.
@@ -56,22 +55,19 @@ const STIR_STEPS_PER_TURN = 24;
 // so holding line x FILL_TIME releases on the line (the snapped line is logged at begin).
 const POUR_POINT = { x: 135, y: 440 };
 const POUR_FILL_MS = 1500;
-// The scripted gestures aim exactly at the targets, but the stations integrate time once
-// per rendered frame and only see an input on the frame after it arrives. Headless
-// SwiftShader renders the 3x phone canvas (1170x2532) at a few frames per second, so the
-// error depends on the frame interval, not on the input path: the press can be seen up to
-// one frame late (less fill) and the release up to one frame late (more fill). FRAME_SLOP
-// frames of the slowest interval measured during the gesture are therefore added to each
-// station's full-score window:
-//   pour: |released - line| <= Pour.LINE_WINDOW + FRAME_SLOP x maxFrame / FILL_TIME, and the
-//         release must land below the brim (a lost release only ends at overflow, 1.25);
-//   stir: every rotation's duration within Stir.TEMPO_WINDOW of 1 / tempo, plus FRAME_SLOP x
-//         maxFrame (a stir that never registers never logs a rotation and times out).
-// The logged qualities are printed but not asserted; exact scoring is covered by the
-// headless station tests in tools/test_gameplay.gd.
-const POUR_LINE_WINDOW = 0.04;
-const STIR_TEMPO_WINDOW = 0.12;
-const FRAME_SLOP = 2;
+// The pointer runs prove the input path, not scoring accuracy. The scripted gestures are
+// timed by the wall clock, while the stations integrate game time once per rendered frame;
+// headless SwiftShader renders the 3x phone canvas (1170x2532) at a few frames per second
+// (frames of 50-70 ms locally, over 300 ms on a CI runner), so game time does not keep pace
+// with the wall clock and no accuracy bound on a timed gesture is deterministic. The checks
+// therefore require recognition:
+//   stir: exactly Stir.ROTATIONS (3) rotations logged, i.e. the drag moves reached the game
+//         and were recognised as circles (lost moves log none and time out);
+//   pour: a logged release with 0 < fill < 1 (fill only grows while the press is held), i.e.
+//         both the touch start and the touch end reached the game (a lost release only ends at overflow, 1.25).
+// Accuracy (tempo, line, qualities) is printed for information; exact scoring is covered by
+// the deterministic headless station tests (fixed fps) in tools/test_gameplay.gd.
+const STIR_ROTATIONS = 3;
 // Station.ASSIST_QUALITY: an Assist press always finishes a station with exactly this.
 const ASSIST_QUALITY = 0.6;
 // The first day-1 customer asks for hearthglow_tonic (data/days.json): ember_pepper + sunpetal.
@@ -121,29 +117,6 @@ function mapper(box) {
     visible,
     page: (x, y) => ({ x: box.x + x * scale, y: box.y + y * scale }),
   };
-}
-
-// Records the longest interval between rendered frames from now until stopFrameProbe().
-function startFrameProbe(page) {
-  return page.evaluate(() => {
-    const probe = { last: performance.now(), max: 0, id: 0 };
-    const tick = (now) => {
-      probe.max = Math.max(probe.max, now - probe.last);
-      probe.last = now;
-      probe.id = requestAnimationFrame(tick);
-    };
-    probe.id = requestAnimationFrame(tick);
-    window.smokeFrameProbe = probe;
-  });
-}
-
-// Stops the probe; returns the longest frame interval in ms.
-function stopFrameProbe(page) {
-  return page.evaluate(() => {
-    const probe = window.smokeFrameProbe;
-    cancelAnimationFrame(probe.id);
-    return Math.max(probe.max, performance.now() - probe.last);
-  });
 }
 
 // The quality a station logged when it finished ("[Station] <name> finished, quality q").
@@ -245,7 +218,6 @@ async function serveFirstCustomer(page, context, run, logs) {
   // The angle follows the wall clock, so the tempo stays right however long each
   // input dispatch takes (CDP touch events wait for a rendered frame).
   const stepMs = 1000 / (STIR_TEMPO * STIR_STEPS_PER_TURN);
-  await startFrameProbe(page);
   const start = Date.now();
   await pointer.down(onRing(0));
   for (let angle = 0; angle < STIR_TURNS * 2 * Math.PI;) {
@@ -256,49 +228,42 @@ async function serveFirstCustomer(page, context, run, logs) {
   }
   await pointer.up();
   const stir = await stationQuality(page, logs, 'Stir');
-  const stirFrameMs = await stopFrameProbe(page);
   await waitForLog(page, logs, /^\[Station\] Pour begin/, 'the pour station');
   const line = Number((await waitForLog(page, logs, /^\[Pour\] \w+ bottle, .*line ([\d.]+)$/, 'the pour line'))[1]);
   const pour = map.page(stage.x + POUR_POINT.x, stage.y + POUR_POINT.y);
   // Timed from the press dispatch: press and release then wait for the same frame latency.
-  await startFrameProbe(page);
   const pressed = Date.now();
   await pointer.down(pour);
   await page.waitForTimeout(line * POUR_FILL_MS - (Date.now() - pressed));
   await pointer.up();
   const pourQuality = await stationQuality(page, logs, 'Pour');
-  const pourFrameMs = await stopFrameProbe(page);
   await shot('pour');
   const served = await waitForLog(page, logs, /^\[Shop\] Served customer 1\/\d+ .*$/, 'the first customer to be served');
   await page.waitForTimeout(600);
   await shot('served');
   checkQualities(run, logs, { stir, pour: pourQuality }, served[0], () => true, '');
-  return [...checkStir(run, logs, stirFrameMs), ...checkPour(run, logs, pourFrameMs)];
+  return [...checkStir(run, logs), ...checkPour(run, logs)];
 }
 
-// Every logged stir rotation must take 1 / tempo within the tempo window plus FRAME_SLOP frames.
-function checkStir(run, logs, frameMs) {
-  const target = 1 / STIR_TEMPO;
-  const allowed = target * STIR_TEMPO_WINDOW + (FRAME_SLOP * frameMs) / 1000;
+// The drag must be recognised as exactly Stir.ROTATIONS circles (durations printed for information).
+function checkStir(run, logs) {
   const durations = logs.map((l) => l.match(/^\[Stir\] rotation \d+: ([\d.]+)s/)).filter(Boolean).map((m) => Number(m[1]));
-  console.log(`[${run.name}] stir: rotations ${durations.map((d) => d.toFixed(2)).join(', ')} s, target ${target.toFixed(2)} +- ${allowed.toFixed(3)} s (max frame ${frameMs.toFixed(0)} ms)`);
-  const failures = durations.filter((d) => Math.abs(d - target) > allowed)
-    .map((d) => `stir rotation took ${d.toFixed(2)} s, expected ${target.toFixed(2)} +- ${allowed.toFixed(3)} s (max frame ${frameMs.toFixed(0)} ms)`);
-  if (durations.length !== 3) failures.push(`stir logged ${durations.length} rotations, expected 3 (Stir.ROTATIONS)`);
-  return failures;
+  console.log(`[${run.name}] stir: ${durations.length} rotations recognised (${durations.map((d) => d.toFixed(2)).join(', ')} s, target ${(1 / STIR_TEMPO).toFixed(2)} s)`);
+  if (durations.length !== STIR_ROTATIONS) return [`stir recognised ${durations.length} rotations, expected ${STIR_ROTATIONS} (Stir.ROTATIONS)`];
+  return [];
 }
 
-// The pour must be released below the brim and on the line within the window plus FRAME_SLOP frames.
-function checkPour(run, logs, frameMs) {
+// The press and the release must both reach the game: the logged release has 0 < fill < 1
+// (fill only grows while the press is held; a lost release only ends at overflow). The
+// distance to the line is printed.
+function checkPour(run, logs) {
   const match = logs.map((l) => l.match(/^\[Pour\] released at ([\d.]+), line ([\d.]+)/)).find(Boolean);
   if (!match) return ['pour logged no release'];
   const [released, line] = [Number(match[1]), Number(match[2])];
-  const allowed = POUR_LINE_WINDOW + (FRAME_SLOP * frameMs) / POUR_FILL_MS;
-  console.log(`[${run.name}] pour: released ${released.toFixed(3)}, line ${line.toFixed(3)}, error ${Math.abs(released - line).toFixed(3)} <= ${allowed.toFixed(3)} (max frame ${frameMs.toFixed(0)} ms)`);
-  const failures = [];
-  if (released >= 1) failures.push(`pour released at ${released.toFixed(3)}, at or past the brim (the release was not seen)`);
-  if (Math.abs(released - line) > allowed) failures.push(`pour released at ${released.toFixed(3)}, line ${line.toFixed(3)}: error over ${allowed.toFixed(3)} (max frame ${frameMs.toFixed(0)} ms)`);
-  return failures;
+  console.log(`[${run.name}] pour: press and release recognised, released at ${released.toFixed(3)}, line ${line.toFixed(3)} (error ${Math.abs(released - line).toFixed(3)})`);
+  if (released <= 0) return [`pour released at ${released.toFixed(3)}: no fill between press and release`];
+  if (released >= 1) return [`pour released at ${released.toFixed(3)}, at or past the brim (the release was not seen)`];
+  return [];
 }
 
 async function smoke(browser, url, run) {
