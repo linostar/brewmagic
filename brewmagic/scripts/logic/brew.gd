@@ -8,6 +8,9 @@ class_name Brew
 ## Match tier and final grade, best first.
 enum Grade { PERFECT, GOOD, MEH, MISBREW }
 
+## A brew is 2 or 3 ingredients (data/SCHEMA.md "Brew").
+const MIN_INGREDIENTS := 2
+const MAX_INGREDIENTS := 3
 ## Gesture quality (0..1) a station result needs to keep a Perfect match Perfect.
 const PERFECT_QUALITY := 0.9
 ## Gesture quality a station result needs to keep a Good match Good. Assist mode

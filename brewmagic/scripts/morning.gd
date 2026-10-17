@@ -1,8 +1,10 @@
 class_name Morning
 extends Control
 ## Morning screen (flow MORNING): the story day Game.day, its title, its morning
-## note from data/days.json on a parchment card, the coins and stock the day
-## starts with, and "Open the shop" (thumb zone), which starts the shift.
+## note from data/days.json on a parchment card (the first conditioned note that
+## matches Game.flags, Story.morning_note), the coins and stock the day
+## starts with, and "Open the shop" (thumb zone), which starts the shift; "Codex"
+## under it opens the Codex over the morning.
 ## A day missing from the data sends the player back to the title with the reason.
 
 var _game: GameState
@@ -10,6 +12,7 @@ var _game: GameState
 @onready var _column: Control = $Column
 @onready var _card: PanelContainer = $Column/Card
 @onready var _open_button: Button = $Column/OpenShopButton
+@onready var _codex_button: Button = $Column/CodexButton
 
 
 func _ready() -> void:
@@ -23,12 +26,13 @@ func _ready() -> void:
 		return
 	($Column/DayLabel as Label).text = "Day %d" % spec.day
 	($Column/TitleLabel as Label).text = spec.title
-	($Column/Card/Note as Label).text = "\n".join(Content.wrap_bubble(spec.morning_note))
+	($Column/Card/Note as Label).text = "\n".join(Content.wrap_bubble(Story.morning_note(spec, _game.flags)))
 	var in_stock := 0
 	for id in _game.stock:
 		in_stock += _game.stock[id]
-	($Column/Status as Label).text = "Coins: %d\nIngredients in stock: %d\nCustomers expected: %d" % [_game.coins, in_stock, spec.customers.size()]
+	($Column/Status as Label).text = "Coins: %d\nIngredients in stock: %d\nCustomers expected: %d" % [_game.coins, in_stock, Story.customers_of(spec, _game.flags).size()]
 	_open_button.pressed.connect(_on_open_pressed)
+	_codex_button.pressed.connect(_on_codex_pressed)
 	Juice.squash(_card, 0.12)
 	_open_button.grab_focus(true)
 	print("[Morning] Day %d '%s': %d coins, stock %s" % [spec.day, spec.title, _game.coins, _game.stock])
@@ -38,6 +42,12 @@ func _fit_column() -> void:
 	var column := _game.column_rect()
 	_column.position = column.position
 	_column.size = column.size
+
+
+## Opens the Codex over the morning; focus comes back to this button when it closes.
+func _on_codex_pressed() -> void:
+	Juice.squash(_codex_button, 0.2)
+	Codex.open(self, _column).closed.connect(_codex_button.grab_focus.bind(true))
 
 
 func _on_open_pressed() -> void:

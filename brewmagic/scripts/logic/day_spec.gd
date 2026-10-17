@@ -13,5 +13,8 @@ var starting_coins := 0
 var starting_stock: Dictionary[String, int] = {}
 ## Days >= 2 only: ingredient id -> price, for every ingredient unlocked by this day.
 var market: Dictionary[String, int] = {}
-## In arrival order.
+## In arrival order; Shift.story() keeps those whose `when` matches the flags.
 var customers: Array[DayCustomer] = []
+## Conditioned morning cards in data order: each {"when": Dictionary[String, PackedStringArray],
+## "text": String}; the first that matches replaces morning_note (Story.morning_note).
+var morning_notes: Array[Dictionary] = []

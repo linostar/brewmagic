@@ -49,8 +49,9 @@ const CLOTH_B_ART: Array[String] = ["#1c4632", "#38883e", "#7cc44c"]
 const HAIR_ART: Array[String] = ["#3a2830", "#5c3c30", "#8a5a3c"]
 ## The hands on every body are drawn in the light pair (palette r s).
 const HAND_ART := "light"
-## Each head's own skin pair (art_src/customer.px header).
-const HEAD_SKIN_ART: Dictionary[String, String] = {"round": "light", "long": "medium", "square": "deep"}
+## Each head's own skin pair (art_src/customer.px header). The dragon snout has none of
+## them (scales), so its "light" entry swaps nothing.
+const HEAD_SKIN_ART: Dictionary[String, String] = {"round": "light", "long": "medium", "square": "deep", "snout": "light"}
 ## Rolls distinct_for() tries per visitor before it gives up on a fresh look.
 const MAX_TRIES := 200
 

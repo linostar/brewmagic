@@ -3,8 +3,8 @@ extends Control
 ## Evening summary (flow SUMMARY): the results of the day just played, from
 ## Game.flow_args (Shop.day_result(): served, a count per grade, coins earned, tips,
 ## reputation change, stormed-off count), then "To the market" (the next day's
-## market) or, after the last story day, "Back to title". The button sits in the
-## thumb zone.
+## market) or, after the last story day, "The ending" (the ending scene). The button
+## sits in the thumb zone.
 
 ## Every key Shop.day_result() provides.
 const RESULT_KEYS: Array[String] = ["day", "title", "customers", "served", "stormed_off", "refused", "grades", "earned", "tips", "reputation", "coins"]
@@ -23,8 +23,8 @@ func _ready() -> void:
 	_fit_column()
 	_continue_button.pressed.connect(_on_continue_pressed)
 	var to_market := _game.at_market
-	_continue_button.text = "To the market" if to_market else "Back to title"
-	_continue_button.accessibility_name = ("Go to the market for day %d" % _game.day) if to_market else "Back to title"
+	_continue_button.text = "To the market" if to_market else ("The ending" if _game.story_over() else "Back to title")
+	_continue_button.accessibility_name = ("Go to the market for day %d" % _game.day) if to_market else ("See how the story ends" if _game.story_over() else "Back to title")
 	_continue_button.grab_focus(true)
 	var result := _game.flow_args
 	if not result.has_all(RESULT_KEYS):
@@ -67,4 +67,7 @@ func _fit_column() -> void:
 
 func _on_continue_pressed() -> void:
 	Juice.squash(_continue_button, 0.2)
-	_game.goto(GameState.Flow.MARKET if _game.at_market else GameState.Flow.TITLE)
+	if _game.at_market:
+		_game.goto(GameState.Flow.MARKET)
+	else:
+		_game.goto(GameState.Flow.ENDING if _game.story_over() else GameState.Flow.TITLE)

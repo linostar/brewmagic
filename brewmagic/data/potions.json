@@ -42,5 +42,148 @@
     "steps": ["mortar", "stir", "pour"],
     "price": 18,
     "description": "Makes things grow in cold, cursed or night-time places. Turnips may get chatty."
+  },
+  {
+    "id": "stillwater_draught",
+    "name": "Stillwater Draught",
+    "target": [0, 4, 0, 0],
+    "color": "#68bede",
+    "bottle": "tall",
+    "unlock_day": 3,
+    "steps": ["stir", "pour"],
+    "price": 14,
+    "description": "Calm in a bottle. One sip and even a thunderstorm says sorry."
+  },
+  {
+    "id": "dewdrop_balm",
+    "name": "Dewdrop Balm",
+    "target": [0, 2, 2, 0],
+    "color": "#c8f0f0",
+    "bottle": "round",
+    "unlock_day": 3,
+    "steps": ["stir", "pour"],
+    "price": 14,
+    "description": "Cools, soothes, mends. Gargle twice, then compose a short poem about mornings."
+  },
+  {
+    "id": "nightfire_punch",
+    "name": "Nightfire Punch",
+    "target": [2, 0, 0, 2],
+    "color": "#c43c2c",
+    "bottle": "flask",
+    "unlock_day": 3,
+    "steps": ["stir", "pour"],
+    "price": 14,
+    "description": "Courage for things that go bump. Bump back, politely."
+  },
+  {
+    "id": "greenthumb_syrup",
+    "name": "Greenthumb Syrup",
+    "target": [0, 0, 4, 0],
+    "color": "#7cc44c",
+    "bottle": "teardrop",
+    "unlock_day": 3,
+    "steps": ["stir", "pour"],
+    "price": 14,
+    "description": "Pure growth. Keep away from moustaches unless a hedge is the goal."
+  },
+  {
+    "id": "nocturne_syrup",
+    "name": "Nocturne Syrup",
+    "target": [0, 0, 0, 4],
+    "color": "#2a1a48",
+    "bottle": "tall",
+    "unlock_day": 3,
+    "steps": ["stir", "pour"],
+    "price": 15,
+    "description": "Sleep so deep that dreams send a postcard instead of visiting."
+  },
+  {
+    "id": "steamwhistle_tonic",
+    "name": "Steamwhistle Tonic",
+    "target": [3, 2, 0, 0],
+    "color": "#e6b46e",
+    "bottle": "flask",
+    "unlock_day": 4,
+    "steps": ["bellows", "stir", "pour"],
+    "price": 20,
+    "description": "Fire and frost argue in the bottle until they agree on steam. Clears the head, whistles."
+  },
+  {
+    "id": "bonfire_tonic",
+    "name": "Bonfire Tonic",
+    "target": [5, 0, 0, 0],
+    "color": "#f07c2c",
+    "bottle": "round",
+    "unlock_day": 4,
+    "steps": ["bellows", "stir", "pour"],
+    "price": 20,
+    "description": "Pure blazing courage. Toasts marshmallows held near the drinker's ears."
+  },
+  {
+    "id": "smoulder_syrup",
+    "name": "Smoulder Syrup",
+    "target": [3, 0, 0, 2],
+    "color": "#6e2028",
+    "bottle": "teardrop",
+    "unlock_day": 4,
+    "steps": ["bellows", "stir", "pour"],
+    "price": 20,
+    "description": "Warmth for long, spooky nights. Keeps a ghost-hunter cosy and slightly dramatic."
+  },
+  {
+    "id": "embermoss_elixir",
+    "name": "Embermoss Elixir",
+    "target": [3, 1, 0, 2],
+    "color": "#b8804c",
+    "bottle": "tall",
+    "unlock_day": 4,
+    "steps": ["mortar", "bellows", "stir", "pour"],
+    "price": 24,
+    "description": "Ground moss, roaring fire, one cool thought. For heroes who face curses before breakfast."
+  },
+  {
+    "id": "panacea",
+    "name": "Panacea",
+    "target": [1, 1, 1, 1],
+    "color": "#fbedcd",
+    "bottle": "teardrop",
+    "unlock_day": 6,
+    "steps": ["stir", "pour"],
+    "price": 30,
+    "description": "A little of everything, in perfect balance. The Guild calls it the true test of a brewer."
+  },
+  {
+    "id": "hushfire_tonic",
+    "name": "Hushfire Tonic",
+    "target": [1, 3, 0, 0],
+    "color": "#c8c0c8",
+    "bottle": "round",
+    "unlock_day": 6,
+    "steps": ["stir", "pour"],
+    "price": 26,
+    "description": "Keeps an inner fire warm but very, very quiet. Popular with dragons, who deny it."
+  },
+  {
+    "id": "duskbloom_syrup",
+    "name": "Duskbloom Syrup",
+    "target": [0, 0, 1, 3],
+    "color": "#9058c0",
+    "bottle": "flask",
+    "unlock_day": 6,
+    "steps": ["stir", "pour"],
+    "price": 26,
+    "description": "Heals while you sleep and lifts small curses by morning. Tastes of lavender and secrets."
+  },
+  {
+    "id": "starfire_elixir",
+    "name": "Starfire Elixir",
+    "target": [2, 1, 1, 1],
+    "color": "#ffc95c",
+    "bottle": "tall",
+    "unlock_day": 6,
+    "steps": ["mortar", "stir", "pour"],
+    "price": 28,
+    "description": "Ground starlight with a brave spark. Makes the drinker glow at parties, literally."
   }
 ]

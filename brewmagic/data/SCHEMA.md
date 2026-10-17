@@ -25,6 +25,9 @@ Every string marked **bubble** must fit a speech bubble of **3 lines x 26 charac
 returns and never uses Label autowrap (the rule is a character count, and the inline hint-word icons would make a
 width-based wrap break differently).
 
+A string marked **page** (ending pages) follows the same rules with up to **6** wrapped lines (156 characters):
+`Content.page_problem()`.
+
 Other strings: `name`/`title`/`word` <= 26 chars; `description` <= 120 chars; `speech_style` <= 200 chars
 (dev note, never shown).
 
@@ -51,6 +54,7 @@ Other strings: `name`/`title`/`word` <= 26 chars; `description` <= 120 chars; `s
 | `unlock_day` | int | 1..7 | First day it is on the shelf or in the market. |
 | `base_price` | int | 1..999 | Default market price in coins. A day's `market` overrides it. |
 | `grind` | bool | | `true` means the ingredient is ground in the Mortar: potions whose recipes need it list `"mortar"` (I11), and the Mortar shows the brew's `grind` ingredients in its bowl. All day-1 ingredients are `false` (I10). |
+| `heat` | bool | | `true` means the ingredient only gives up its essence over a roaring fire: potions whose recipes need it list `"bellows"` (I12). All ingredients unlocked before day 4 are `false` (I10). |
 | `description` | string | 1..120 chars | Codex line. |
 
 ## potions.json
@@ -62,7 +66,7 @@ Other strings: `name`/`title`/`word` <= 26 chars; `description` <= 120 chars; `s
 | `color` | string | `^#[0-9a-f]{6}$` | Liquid colour, picked from `art_src/palette.hex`. It tints the neutral liquid sprite in code. |
 | `bottle` | string | `"round" \| "tall" \| "flask" \| "teardrop"` | Bottle sprite shape. |
 | `unlock_day` | int | 1..7 | |
-| `steps` | array of string | non-empty, unique, each `"stir" \| "pour" \| "mortar" \| "bellows"` | Station order for brewing; the shop runs them in this order. Potions with `unlock_day == 1` use exactly `["stir", "pour"]` (I10); `"mortar"` follows I11. |
+| `steps` | array of string | non-empty, unique, each `"stir" \| "pour" \| "mortar" \| "bellows"` | Station order for brewing; the shop runs them in this order (mortar, bellows, stir, pour). Potions with `unlock_day == 1` use exactly `["stir", "pour"]` (I10); `"mortar"` follows I11, `"bellows"` follows I12. |
 | `price` | int | 1..999 | Base sale price in coins before grade and tip. |
 | `description` | string | 1..120 chars | Codex line. |
 
@@ -93,10 +97,11 @@ freshness (`fresh`). gloom: sleep (`sleep`, `slept`), curses (`curse`), spooky (
 | `voice.timbre` | string | `"reed" \| "bell" \| "growl" \| "chirp"` | Voice-blip synth: nasal pulse, bell with an inharmonic partial, buzzy saw, upward sine sweep. |
 | `speech_style` | string | 1..200 chars | Writer's note, not shown in game. |
 | `parts` | object | keys exactly `body`, `head`, `hair`, `accessory` | A part value `<v>` is drawn from the customer atlas (`art/customer.json`) frames `<prefix>_<v>_0` and `<prefix>_<v>_1` (idle bob), with prefix `body`, `head`, `hair`, `acc` for `body`, `head`, `hair`, `accessory`. Accessory `"none"` draws nothing. Both frames must exist (checked by `tools/test_content.gd`). The parts are the archetype's silhouette; each visitor's colours come from a palette swap (`Look`, CLAUDE.md "Customers"). |
-| `parts.body` | string | `"robe" \| "apron" \| "armour"` | |
-| `parts.head` | string | `"round" \| "long" \| "square"` | |
-| `parts.hair` | string | `"witch_hat" \| "straw_hat" \| "curly" \| "bald_beard"` | |
-| `parts.accessory` | string | `"none" \| "goat" \| "lantern"` | |
+| `parts.body` | string | `"robe" \| "apron" \| "armour" \| "cloak"` | |
+| `parts.head` | string | `"round" \| "long" \| "square" \| "snout"` | |
+| `parts.hair` | string | `"witch_hat" \| "straw_hat" \| "curly" \| "bald_beard" \| "beehive" \| "top_hat" \| "hood"` | |
+| `parts.accessory` | string | `"none" \| "goat" \| "lantern" \| "flask" \| "scroll" \| "smoke"` | |
+| `look` | object | *optional*, keys exactly `cloth_a`, `cloth_b`, `hair`, `skin` | Present only on a **story character**: its one fixed look (no palette shuffle, the same on every visit). Each value names a ramp of `scripts/logic/look.gd` (`Look.CLOTHS` for both cloths, which must differ, `Look.HAIRS`, `Look.SKINS`). A story character visits only as a story beat (`days.customers[].beat`, I13), never as a random visitor. |
 | `reactions` | object | keys exactly `perfect`, `good`, `meh`, `misbrew`, `stormed_off`, `refused` | |
 | `reactions.<grade>` | array of string | >= 3 entries, each **bubble** | One line is picked at random, avoiding the one used last for that archetype and grade. `misbrew` is the customer's own reaction; the absurd effect line comes from `misbrews.json`. `stormed_off` is said when patience runs out; `refused` when the shop refuses the customer (the Refuse button). |
 
@@ -110,7 +115,8 @@ freshness (`fresh`). gloom: sleep (`sleep`, `slept`), curses (`curse`), spooky (
 | `text` | string | **bubble** | Never names a potion (I6). |
 
 Selection: a random customer with archetype A who wants potion P says a random request with
-`(potion, archetype) == (P, A)`, avoiding recent repeats. A day can pin one with `customers[].request`.
+`(potion, archetype) == (P, A)`, avoiding recent repeats. A day can pin one with `customers[].request`;
+a story beat always pins its request (I13), so a story character's requests need not come in threes.
 
 ## misbrews.json
 | field | type | range / enum | notes |
@@ -134,9 +140,29 @@ Selection: a random customer with archetype A who wants potion P says a random r
 | `customers` | array of object | non-empty | In arrival order. |
 | `customers[].archetype` | string | archetype id | |
 | `customers[].potion` | string | potion id with `unlock_day <= day` | |
-| `customers[].request` | string | *optional*, request id | Pins the line. Its `potion` and `archetype` must equal the customer's. Absent: random, as above. |
+| `customers[].request` | string | *optional*, request id | Pins the line. Its `potion` and `archetype` must equal the customer's. Absent: random, as above. Required on a story beat. |
+| `customers[].beat` | string | *optional*, snake_case | Makes this visit a **story beat** of its archetype, which must be a story character (one with a `look`); a story character's visits must all have one. The beat's flag is `<archetype id>.<beat>` (I13). |
+| `customers[].lines` | object | keys exactly `great`, `poor`, `refused`, `stormed_off`, each **bubble** | Required on a story beat, an error elsewhere. The beat's own reaction: `great` (served Perfect or Good), `poor` (Meh or Misbrew; a Misbrew still shows its misbrew narration first), `refused` (the Refuse button), `stormed_off` (patience ran out). It replaces the archetype's reaction line for that visit. |
+| `customers[].when` | object `{flag: array of outcome}` | *optional* | The customer only comes when every listed flag's recorded outcome is one of its listed outcomes (outcomes: `great`, `poor`, `refused`, `stormed_off`; each list non-empty and without repeats). A flag is `<story character>.<beat>` of a beat on an earlier day. Absent: always comes. |
+| `morning_notes` | array of object | *optional*, each keys exactly `when`, `text` | Conditioned morning cards, tried in order: the first whose `when` (as for customers, non-empty) matches replaces `morning_note`. `text` is **bubble**. |
 
 Stock carries over between days. The stock on day N >= 2 is what is left from day N-1 plus what the player bought.
+
+**Flag paths.** A *flag path* is one recorded outcome for every beat. The customers of day N on a path are the
+customers whose `when` matches it; the shop runs exactly that list (`Shift.story(n, flags)`). Only the beats some
+`when` names, and only whether each outcome is in the named lists, can change a day, so the tests enumerate one path
+per combination of those outcome classes.
+
+## endings.json
+The three endings of the story, chosen by `Story.ending(flags, reputation)` (rule under "Story" below). Exactly the
+ids `guild_master`, `cosy_corner` and `charming_chaos`, once each.
+| field | type | range / enum | notes |
+|---|---|---|---|
+| `id` | string | `guild_master \| cosy_corner \| charming_chaos` | |
+| `title` | string | 1..26 chars | Heading of every page. |
+| `pages` | array of object | 2..5 entries, each keys exactly `text`, `cast` | Shown in order; tap or Enter turns the page. |
+| `pages[].text` | string | **page** | The page's text: like a bubble, but up to 6 wrapped lines (156 characters). |
+| `pages[].cast` | array of string | 0..3 archetype ids, unique | Who stands in the page's picture, left to right (their fixed look for story characters). |
 
 ## upgrades.json
 One upgrade per station: exactly one entry for each of `"stir"`, `"pour"`, `"mortar"`, `"bellows"`.
@@ -157,14 +183,15 @@ One upgrade per station: exactly one entry for each of `"stir"`, `"pour"`, `"mor
 - **I1** Every file parses, is a non-empty array of objects, ids are snake_case and unique per file, and no entry has a missing or unknown key.
 - **I2** Every field is in its type, range and enum above, every bubble string fits, every length limit holds.
 - **I3** Cross-references resolve: `requests.potion/archetype`, `requests.hints[]`, `vocabulary.request_ids[]`,
-  `days.customers[].archetype/potion/request`, and the keys of `days.starting_stock` and `days.market`.
+  `days.customers[].archetype/potion/request/when`, `days.morning_notes[].when`, the keys of `days.starting_stock` and
+  `days.market`, and `endings.pages[].cast`.
 - **I4** Hint tagging is exact. The set of vocabulary ids whose `forms` match a request's `text` (rule above) equals its `hints`.
   `vocabulary.request_ids` equals the derived list.
 - **I5** Hints are fair. The set of essences of a request's `hints` equals the set of essences where its potion's
   `target > 0`. Every needed essence is hinted, and no essence is hinted that the potion does not need.
 - **I6** No request text contains any potion's `name`, or the first word of a name as a whole word (case-insensitive).
 - **I7** Every potion has at least one exact (distance 0) brew of 2-3 ingredients with `unlock_day <= potion.unlock_day`.
-  Every customer on day N is exactly solvable with ingredients unlocked by day N.
+  Every customer on day N is exactly solvable with ingredients unlocked by day N (on every flag path, I13).
 - **I8** Day 1: `starting_stock` alone can brew every day-1 customer Perfect, all on the same day.
   Day N >= 2 (economy-aware, simulated from day 1's `starting_stock`): a day starts with the stock that any Perfect
   run of the day before can leave (every exact recipe per customer is a possible run; the worst leftover counts), and
@@ -172,30 +199,96 @@ One upgrade per station: exactly one entry for each of `"stir"`, `"pour"`, `"mor
   the player may spend those on upgrades) buys, at day N's market prices (`Economy.market_price`), whatever that
   stock lacks for an exact recipe for every day-N customer, all on the same day.
 - **I9** For every potion and every 2-3 ingredient brew (all ingredients), distance >= 3 implies some essence overshoots.
-  (With the current data, all brews total >= 4 and all targets total <= 5. A brew without an overshoot would be at most 1 away.)
-- **I10** Coverage. Every (potion, archetype) pair has >= 3 requests. Every essence has >= 5 misbrews, each with its fixed effect.
+  (With the current data, all brews total >= 4 and all targets total <= 6. A brew without an overshoot would be at most 2 away.)
+- **I10** Coverage. Every (potion, archetype) pair that a day customer without a pinned `request` can ask for has
+  >= 3 requests. Every essence has >= 5 misbrews, each with its fixed effect.
   Every archetype has >= 3 lines for every grade. Potions with `unlock_day == 1` have `steps == ["stir", "pour"]`
   and day-1 ingredients have `grind == false` (day 1 teaches only Stir and Pour). At least one potion with
-  `unlock_day == 2` lists `"mortar"` (the Mortar is introduced on day 2).
+  `unlock_day == 2` lists `"mortar"` (the Mortar is introduced on day 2). The Bellows first appears on day 4: at least
+  one potion with `unlock_day == 4` lists `"bellows"`, none unlocked earlier does, and no ingredient unlocked before
+  day 4 has `heat == true`.
 - **I11** Mortar consistency. A potion lists `"mortar"` in `steps` exactly when every exact recipe of it (2-3
   ingredients with `unlock_day <= potion.unlock_day`, as in I7) contains an ingredient with `grind == true`. So a
   potion that needs a hard ingredient always grinds it, and no potion asks for the Mortar when there is nothing to grind.
+- **I12** Bellows consistency, as I11 with `heat`: a potion lists `"bellows"` in `steps` exactly when every exact recipe of it
+  contains an ingredient with `heat == true`.
+- **I13** Story. Every story character (an archetype with a `look`) has >= 3 beats, its last one on day 7, and no
+  potions-and-archetype pair rule (I10) applies to it. Every beat's visits (variants) are on one day; every `when` names only
+  beats of earlier days; on every flag path every beat comes exactly once on its day, every day has at least one
+  customer, and I7 and I8 hold for that path's customers (in I8, story beats count with no pay, since they can be
+  refused, but their ingredients are used). Every beat has its `lines`, every beat visit pins a `request`, and no two
+  potions share a `target`.
+- **I14** Endings: exactly the three ids above, every page fits, every `cast` id is a known archetype. The texts
+  match the rule under "Story": only `charming_chaos` refuses the licence, and `cosy_corner` claims nothing about
+  which arcs went well (it covers every granted licence short of Guild Master).
 
-## Current content (days 1-2)
-| ingredient | essence | day | | potion | target | day | exact recipe |
-|---|---|---|---|---|---|---|---|
-| ember_pepper | 2,0,0,0 | 1 | | hearthglow_tonic | 2,0,2,0 | 1 | ember_pepper + sunpetal |
-| frost_mint | 0,2,0,0 | 1 | | slumber_syrup | 0,2,0,2 | 1 | frost_mint + nightshade_cap |
-| sunpetal | 0,0,2,0 | 1 | | valour_cordial | 2,1,0,2 | 2 | ember_pepper + moonmoss |
-| nightshade_cap | 0,0,0,2 | 1 | | moonbloom_draught | 0,1,2,2 | 2 | sunpetal + moonmoss |
-| honeycomb | 1,0,2,0 | 2 | | | | | |
-| moonmoss (grind) | 0,1,0,2 | 2 | | | | | |
+## Current content (days 1-7)
+| ingredient | essence | day | flags | price |
+|---|---|---|---|---|
+| ember_pepper | 2,0,0,0 | 1 | | 2 |
+| frost_mint | 0,2,0,0 | 1 | | 2 |
+| sunpetal | 0,0,2,0 | 1 | | 2 |
+| nightshade_cap | 0,0,0,2 | 1 | | 3 |
+| honeycomb | 1,0,2,0 | 2 | | 4 |
+| moonmoss | 0,1,0,2 | 2 | grind | 4 |
+| cinderroot | 3,0,0,0 | 4 | heat | 5 |
+| snowfire_pearl | 1,1,0,0 | 6 | | 5 |
+| twilight_bloom | 0,0,1,1 | 6 | | 5 |
+| starlight_dew | 0,1,1,1 | 6 | grind | 6 |
 
-Moonmoss is the only `grind` ingredient and the only one with frost 1, so every exact recipe of Valour Cordial and
-Moonbloom Draught uses it and both potions brew `["mortar", "stir", "pour"]` (I11). Bellows first appears in content in
-step 7.
+| potion | target | day | steps | exact recipe (its only one) |
+|---|---|---|---|---|
+| hearthglow_tonic | 2,0,2,0 | 1 | stir, pour | ember_pepper + sunpetal |
+| slumber_syrup | 0,2,0,2 | 1 | stir, pour | frost_mint + nightshade_cap |
+| valour_cordial | 2,1,0,2 | 2 | mortar, stir, pour | ember_pepper + moonmoss |
+| moonbloom_draught | 0,1,2,2 | 2 | mortar, stir, pour | sunpetal + moonmoss |
+| stillwater_draught | 0,4,0,0 | 3 | stir, pour | frost_mint + frost_mint |
+| dewdrop_balm | 0,2,2,0 | 3 | stir, pour | frost_mint + sunpetal |
+| nightfire_punch | 2,0,0,2 | 3 | stir, pour | ember_pepper + nightshade_cap |
+| greenthumb_syrup | 0,0,4,0 | 3 | stir, pour | sunpetal + sunpetal |
+| nocturne_syrup | 0,0,0,4 | 3 | stir, pour | nightshade_cap + nightshade_cap |
+| steamwhistle_tonic | 3,2,0,0 | 4 | bellows, stir, pour | cinderroot + frost_mint |
+| bonfire_tonic | 5,0,0,0 | 4 | bellows, stir, pour | cinderroot + ember_pepper |
+| smoulder_syrup | 3,0,0,2 | 4 | bellows, stir, pour | cinderroot + nightshade_cap |
+| embermoss_elixir | 3,1,0,2 | 4 | mortar, bellows, stir, pour | cinderroot + moonmoss |
+| panacea | 1,1,1,1 | 6 | stir, pour | snowfire_pearl + twilight_bloom |
+| hushfire_tonic | 1,3,0,0 | 6 | stir, pour | snowfire_pearl + frost_mint |
+| duskbloom_syrup | 0,0,1,3 | 6 | stir, pour | twilight_bloom + nightshade_cap |
+| starfire_elixir | 2,1,1,1 | 6 | mortar, stir, pour | starlight_dew + ember_pepper |
 
-The day-1 ingredients each sum to 2, so on day 1 every distance is even: a wrong pick gives Meh or Misbrew,
-never Good. The day-2 ingredients sum to 3, so near misses become possible. For example, for Valour Cordial,
-ember_pepper + nightshade_cap or ember_pepper + frost_mint + nightshade_cap are Good. For Hearthglow Tonic,
-ember_pepper + honeycomb is Good.
+Every potion has exactly one exact recipe from the ingredients of its unlock day, so its `steps` follow from that
+recipe: moonmoss and starlight dew are the `grind` ingredients (I11), cinderroot the only `heat` one (I12). Day-6
+ingredients can make further exact brews of older potions on later days (moonbloom: twilight bloom + starlight dew);
+the steps stay those of the potion. The day-1 ingredients each sum to 2, so on day 1 every distance is even: a wrong
+pick gives Meh or Misbrew, never Good. Later ingredients sum to 2 or 3, so near misses become possible (for Valour
+Cordial, ember_pepper + nightshade_cap is Good).
+
+## Story: the Guild Fair
+The shop has one week before the Alchemists' Guild Fair, where the Guild decides whether it gets a licence. Days
+3-7 each add one element: day 3 the Guild and its story (Inspector Quill's inspection, the first story visitors, among them the Hooded Stranger, and five new potions), day 4 the Bellows,
+cinderroot and Madame Vexley's rival shop across the street, day 5 a rush (more customers, `patience_scale` 0.75),
+day 6 three rare ingredients and four rare potions, day 7 the Guild Fair finale.
+
+Three story characters (archetypes with a fixed `look`), each with 3 beats. A beat's outcome is stored as the flag
+`<character>.<beat>` = `great` (Perfect or Good), `poor` (Meh or Misbrew), `refused` or `stormed_off`
+(`Game.flags`, saved). Below, "great" and "not great" are the two outcome classes the `when` conditions use.
+
+| character | day 3 | day 4 | day 5 | day 6 | day 7 (Guild Fair) |
+|---|---|---|---|---|---|
+| `quill` Inspector Quill, the Guild's inspector | `inspection`: stillwater draught | | `audit`: great inspection -> steamwhistle tonic (a harder test); else stillwater draught again (a retest) | | `fair`: great audit -> panacea (the grand test); else starfire elixir. Great here grants the licence |
+| `vexley` Madame Vexley, the rival alchemist | | `opening`: steamwhistle tonic, testing the new shop on her opening day | | `truce`: great opening -> panacea (her cauldron exploded; she asks for help); else embermoss elixir (a gloating challenge) | `fair`: great truce -> starfire elixir for the stall you share; else duskbloom syrup for her rival stall |
+| `stranger` the Hooded Stranger, a shy dragon who sneezes fire | `first_sneeze`: dewdrop balm for a sore throat | | | `confession`: great first sneeze -> hushfire tonic (it trusts the shop and owns up to being a dragon); else dewdrop balm again (still hiding) | `fair`: great confession -> panacea, to light the Fair lanterns without burning the tent; else hushfire tonic, in a panic |
+
+Flag effects beyond lines: a great `stranger.first_sneeze` sends an extra customer on day 4 (the stranger told the
+goat farmer about the shop); a great `vexley.opening` sends
+Vexley's overflow customer on day 5. Morning notes change with the flags on days 4-7.
+
+**Endings** (`Story.ending(flags, reputation)`, `scripts/logic/story.gd`): the licence is granted when `quill.fair` is
+`great`; an arc is resolved when the character's day-7 beat is `great` (so Quill's counts with the licence).
+- `guild_master`: licence, all three arcs resolved and reputation >= `Story.GUILD_MASTER_REPUTATION` (30).
+- `cosy_corner`: any other granted licence (some arcs unresolved, or reputation under 30); its pages fit every such case.
+- `charming_chaos`: exactly the licence refused (its first page says so): the village loves the shop anyway.
+
+When the last day ends, `Game.finish_story()` adds the ending to `Game.endings` (each ending once) and sets
+`Game.rush_hour_unlocked` (both saved, so quitting on the last summary keeps them, and kept by a new game, like the
+Codex); the ending scene then shows it. `Game.flags` holds beat outcomes only.

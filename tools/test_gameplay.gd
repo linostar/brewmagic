@@ -32,7 +32,10 @@ const DESKTOP_16_9 := Vector2i(1920, 1080)
 const MIN_TARGET := 32.0
 const THUMB_ZONE_TOP := 0.4
 ## Real-time limit for the whole run; a test stuck on an await fails instead of hanging.
-const WATCHDOG_MSEC := 120000
+const WATCHDOG_MSEC := 240000
+## Game time runs this much faster during the story playthroughs (timers, tweens and
+## walks; Assist stations do not depend on it), so seven days fit the watchdog.
+const PLAYTHROUGH_TIME_SCALE := 4.0
 ## Frames a shop test waits for one step of the flow (a walk, a line, a station) before failing.
 const FLOW_FRAMES := 900
 
@@ -147,6 +150,16 @@ func _tests() -> Array[Callable]:
 		_test_bubble_blips,
 		_test_audio_unlock_and_voices,
 		_test_shop_mortar_and_bellows,
+		_test_shop_shelf_scrolls,
+		_test_story_rules,
+		_test_shop_story_beats,
+		_test_codex_records,
+		_test_codex_panel,
+		_test_save_v1_without_story_loads,
+		_test_story_ending_rule,
+		_test_ending_scene,
+		_test_story_playthrough_helpful,
+		_test_story_playthrough_refusing,
 	]
 
 
@@ -823,10 +836,12 @@ func _test_shop_day1_assist() -> void:
 ## the last one storms off with an exact recipe already in the pot. The day ends
 ## with those ingredients back in stock, the summary counts the storm-off and the
 ## day's reputation (below zero when it outweighs the serves), the story is over
-## (no market, nothing to continue) and the summary goes back to the title.
+## (no market, nothing to continue) and the summary leads to the ending.
 func _test_shop_last_day_storm_off() -> void:
 	var last := Content.days().size()
 	_game.new_game()
+	_game.endings = []
+	_game.rush_hour_unlocked = false
 	_game.assist_mode = true
 	_game.day = last
 	for item in Content.ingredients_unlocked_by(last):
@@ -856,7 +871,7 @@ func _test_shop_last_day_storm_off() -> void:
 		await _close_shop()
 		return
 	for id in _exact_recipe(shop.customer.potion, shop.stock):
-		await _tap(shop.shelf_item(id))
+		await _tap_item(shop, id)
 	_check(shop.pot.size() == 2, "last day: the last order's ingredients are in the pot", str(shop.pot.size()))
 	shop.customer.patience_left = 0.1
 	_check(await _until(func() -> bool: return _game.state == GameState.Flow.SUMMARY and not _game.is_transitioning(), FLOW_FRAMES * 2), "last day: the day ends with the summary", str(_game.state))
@@ -869,9 +884,13 @@ func _test_shop_last_day_storm_off() -> void:
 	var money := (summary.get_node("Column/Card/List/Money") as Label).text
 	_check(("Reputation: %+d" % reputation) in money and "Stormed off: 1" in money, "last day: the summary shows the storm-off and the reputation change", money)
 	var button := summary.get_node("Column/ContinueButton") as Button
-	_check(button.text == "Back to title", "last day: the summary offers the title", button.text)
+	_check(button.text == "The ending", "last day: the summary leads to the ending", button.text)
+	var recorded := _read_save()
+	var reached := Story.ending(_game.flags, _game.reputation)
+	_check(recorded.get("endings") == [reached] and recorded.get("rush_hour_unlocked") == true, "last day: the ending and the Rush Hour unlock are saved before the ending scene", str(recorded))
 	await _tap(button)
-	_check(await _until(func() -> bool: return _game.state == GameState.Flow.TITLE and not _game.is_transitioning(), FLOW_FRAMES), "last day: Back to title opens the title", str(_game.state))
+	_check(await _until(func() -> bool: return _game.state == GameState.Flow.ENDING and not _game.is_transitioning(), FLOW_FRAMES), "last day: The ending opens the ending", str(_game.state))
+	_check(_game.endings == ([reached] as Array[String]) and _game.rush_hour_unlocked, "last day: the ending is recorded once and Rush Hour unlocked", "%s %s" % [_game.endings, _game.rush_hour_unlocked])
 	_game.assist_mode = false
 	_game.new_game()
 
@@ -920,7 +939,7 @@ func _test_shop_patience_timeout() -> void:
 		var recipe := _exact_recipe(shop.customer.potion, shop.stock)
 		var before := shop.stock.duplicate()
 		for id in recipe:
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 		await _tap(shop.brew_button())
 		_check(await _until(func() -> bool: return shop.station != null and shop.station.is_running(), FLOW_FRAMES), "brew starts a station", "no station")
 		shop.customer.patience_left = 0.2
@@ -945,7 +964,7 @@ func _test_shop_pot_add_remove() -> void:
 		ids.assign(shop.stock.keys())
 		var first := ids[0]
 		var count := shop.stock[first]
-		await _tap(shop.shelf_item(first))
+		await _tap_item(shop, first)
 		_check(shop.pot.size() == 1 and shop.stock[first] == count - 1 and shop.shelf_item(first).stock == count - 1, "tap adds to the pot", "%d %d" % [shop.pot.size(), shop.stock[first]])
 		_check(shop.brew_button().disabled and not shop.slot_button(0).disabled, "one ingredient: slot filled, Brew disabled", "brew disabled %s" % shop.brew_button().disabled)
 		await _check_preview(shop, Content.ingredient(first).essence, "preview after adding")
@@ -953,7 +972,7 @@ func _test_shop_pot_add_remove() -> void:
 		_check(shop.pot.is_empty() and shop.stock[first] == count, "slot tap restores the stock", "%d %d" % [shop.pot.size(), shop.stock[first]])
 		await _check_preview(shop, Vector4i.ZERO, "preview after removing")
 		for i in 4:
-			await _tap(shop.shelf_item(ids[i]))
+			await _tap_item(shop, ids[i])
 		_check(shop.pot.size() == Shop.POT_CAPACITY and shop.stock[ids[3]] == shop.shelf_item(ids[3]).stock and shop.stock[ids[3]] == Content.day(1).starting_stock[ids[3]], "pot holds at most 3", "%d" % shop.pot.size())
 		_check(not shop.brew_button().disabled, "Brew enabled with 3", "disabled")
 		for i in Shop.POT_CAPACITY:
@@ -987,7 +1006,7 @@ func _test_shop_pause_toggles() -> void:
 		await _tap(shop.get_node("Modal/PausePanel/List/ResumeButton") as Button)
 		_check(not paused, "resume unpauses", "still paused")
 		for id in _exact_recipe(shop.customer.potion, shop.stock):
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 		await _tap(shop.brew_button())
 		_check(await _until(func() -> bool: return shop.station != null and shop.station.is_running(), FLOW_FRAMES), "brew starts a station", "no station")
 		_check(shop.station.assist and is_equal_approx(shop.station.tolerance_scale, GameState.GENTLE_TOLERANCE_SCALE), "station gets the toggled settings", "%s %f" % [shop.station.assist, shop.station.tolerance_scale])
@@ -1010,7 +1029,7 @@ func _test_shop_storm_off_locks_brew() -> void:
 	var day := Content.day(1)
 	if await _wait_for_order(shop, "storm-off"):
 		for id in _exact_recipe(shop.customer.potion, shop.stock):
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 		_check(not shop.brew_button().disabled, "storm-off: Brew enabled with 2", "disabled")
 		var leaving := shop.customer
 		var leaving_id := leaving.get_instance_id()
@@ -1028,7 +1047,7 @@ func _test_shop_storm_off_locks_brew() -> void:
 			await _tap(shop.slot_button(0))
 	if await _wait_for_order(shop, "storm-off mid-station"):
 		for id in _exact_recipe(shop.customer.potion, shop.stock):
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 		await _tap(shop.brew_button())
 		_check(await _until(func() -> bool: return shop.station != null and shop.station.assist_button() != null, FLOW_FRAMES), "storm-off mid-station: station runs", "no station")
 		var leaving := shop.customer
@@ -1084,7 +1103,7 @@ func _test_shop_pause_focus() -> void:
 		await _action(&"ui_accept")
 		_check(not paused and root.gui_get_focus_owner() == item, "resume restores the focused shelf item", str(root.gui_get_focus_owner()))
 		for id in _exact_recipe(shop.customer.potion, shop.stock):
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 		await _tap(shop.brew_button())
 		_check(await _until(func() -> bool: return shop.station != null and shop.station.assist_button() != null, FLOW_FRAMES), "pause focus: station runs", "no station")
 		var under_dim: Array[Control] = [shop.brew_button()]
@@ -1119,9 +1138,9 @@ func _test_shop_controls_size_and_zone() -> void:
 	var shop := await _open_shop()
 	if await _wait_for_order(shop, "layout"):
 		for id in _exact_recipe(shop.customer.potion, shop.stock):
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 		var pause := shop.get_node("Column/Hud/PauseButton") as Button
-		var play: Array[Control] = [shop.brew_button(), shop.get_node("Column/Stage/RefuseButton") as Control, shop.slot_button(0), shop.slot_button(1), shop.slot_button(2), shop.get_node("Column/Stage/SkipButton") as Control, pause]
+		var play: Array[Control] = [shop.brew_button(), shop.get_node("Column/Stage/RefuseButton") as Control, shop.get_node("Column/Stage/CodexButton") as Control, shop.slot_button(0), shop.slot_button(1), shop.slot_button(2), shop.get_node("Column/Stage/SkipButton") as Control, pause]
 		for item in shop.get_node("Column/Stage/ShelfItems").get_children():
 			play.append(item as Control)
 		var pause_buttons: Array[Control] = []
@@ -1136,6 +1155,15 @@ func _test_shop_controls_size_and_zone() -> void:
 			await _frames(30)
 			_check_targets(pause_buttons, pause, "pause panel at %s" % window)
 			shop.close_pause()
+			shop.open_codex()
+			await _frames(30)
+			var codex_buttons: Array[Control] = []
+			for button in shop.codex.find_children("*", "Button", true, false):
+				codex_buttons.append(button as Control)
+			_check(codex_buttons.size() == 5, "layout: the Codex has two tabs, two page buttons and Close", str(codex_buttons.size()))
+			_check_targets(codex_buttons, pause, "codex at %s" % window)
+			shop.codex.close()
+			await process_frame
 		root.size = BASE_WINDOW
 		await _tap(shop.brew_button())
 		if await _until(func() -> bool: return shop.station != null and shop.station.assist_button() != null, FLOW_FRAMES):
@@ -1217,7 +1245,7 @@ func _test_shop_shelf_down_reaches_brew() -> void:
 	var shop := await _open_shop()
 	if await _wait_for_order(shop, "shelf focus"):
 		for id in _exact_recipe(shop.customer.potion, shop.stock):
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 		var brew := shop.brew_button()
 		_check(not brew.disabled, "shelf focus: Brew enabled", "pot %d" % shop.pot.size())
 		for item: ShelfItem in shop.get_node("Column/Stage/ShelfItems").get_children():
@@ -1250,7 +1278,7 @@ func _test_shop_perfect_serve_reaction() -> void:
 	if await _wait_for_order(shop, "perfect"):
 		var who := shop.customer.archetype
 		for id in _exact_recipe(shop.customer.potion, shop.stock):
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 		await _tap(shop.brew_button())
 		for step in shop.customer.potion.steps:
 			if not await _until(func() -> bool: return shop.station != null and shop.station.is_running(), FLOW_FRAMES):
@@ -1311,7 +1339,9 @@ func _test_shop_keyboard_day1_assist() -> void:
 		var coins := _game.coins
 		await _action(&"ui_accept")
 		_check(_game.coins < coins, "keyboard: ui_accept on a market card buys it", "%d -> %d" % [coins, _game.coins])
-		var on_next := await _focus_by_keys(market.get_node("Column/Shop/NextDayButton") as Button)
+		# Down from the cards reaches the Codex button, right of it is Next day.
+		var on_codex := await _focus_by_keys(market.get_node("Column/Shop/CodexButton") as Button)
+		var on_next := on_codex and await _focus_by_keys(market.get_node("Column/Shop/NextDayButton") as Button)
 		await _action(&"ui_accept")
 		_check(on_next and await _until(func() -> bool: return current_scene is Morning and not _game.is_transitioning(), FLOW_FRAMES), "keyboard: Next day opens the morning", str(current_scene))
 	_game.assist_mode = false
@@ -1551,11 +1581,11 @@ func _test_shop_pot_preview_needs() -> void:
 		var recipe := _exact_recipe(shop.customer.potion, shop.stock)
 		var mix := Vector4i.ZERO
 		for id in recipe:
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 			mix += Content.ingredient(id).essence
 			await _check_preview(shop, mix, "preview after adding %s" % id)
 		var extra: String = shop.stock.keys().filter(func(id: String) -> bool: return shop.stock[id] > 0)[0]
-		await _tap(shop.shelf_item(extra))
+		await _tap_item(shop, extra)
 		await _check_preview(shop, mix + Content.ingredient(extra).essence, "preview over the order")
 		await _tap(shop.slot_button(2))
 		await _check_preview(shop, mix, "preview after removing")
@@ -1578,7 +1608,7 @@ func _test_shop_stir_real_touch() -> void:
 		await _frames(5)
 		if await _wait_for_order(shop, label):
 			for id in _exact_recipe(shop.customer.potion, shop.stock):
-				await _tap(shop.shelf_item(id))
+				await _tap_item(shop, id)
 			await _tap(shop.brew_button())
 			if await _until(func() -> bool: return shop.station is Stir and shop.station.is_running(), FLOW_FRAMES):
 				var stir := shop.station as Stir
@@ -1868,7 +1898,7 @@ func _test_shop_refuse() -> void:
 	var next := shop.queue[0]
 	var stock := shop.stock.duplicate()
 	var coins := shop.coins
-	await _tap(shop.shelf_item(_exact_recipe(counter.potion, shop.stock)[0]))
+	await _tap_item(shop, _exact_recipe(counter.potion, shop.stock)[0])
 	await _tap(refuse)
 	var bubble := shop.get_node("Column/Stage/Bubble") as SpeechBubble
 	_check(shop.refused == 1 and shop.reputation == Economy.REFUSED_REPUTATION and shop.coins == coins and shop.served == 0, "refuse: -1 reputation, no pay", "refused %d rep %d coins %d" % [shop.refused, shop.reputation, shop.coins])
@@ -1886,7 +1916,7 @@ func _test_shop_refuse() -> void:
 	if third:
 		_game.assist_mode = true
 		for id in _exact_recipe(shop.customer.potion, shop.stock):
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 		await _tap(shop.brew_button())
 		await _until(func() -> bool: return shop.station != null and shop.station.is_running(), FLOW_FRAMES)
 		_check(refuse.disabled, "refuse: disabled while brewing", "enabled")
@@ -2008,7 +2038,7 @@ func _test_shop_mortar_and_bellows() -> void:
 			shop.shelf_item(item.id).set_stock(2)
 		var recipe := _exact_recipe(wants, shop.stock)
 		for id in recipe:
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 		await _tap(shop.brew_button())
 		var order: Array[String] = []
 		for step in wants.steps:
@@ -2087,9 +2117,10 @@ func _test_shift_configs() -> void:
 		var config := Shift.story(number)
 		var label := "Shift.story(%d)" % number
 		_check(config != null and config.mode == ShiftConfig.Mode.STORY and config.day == number and config.title == spec.title and is_equal_approx(config.patience_scale, spec.patience_scale), label + " day, title, patience", str(config))
-		var same_customers := config.customers.size() == spec.customers.size()
-		for i in mini(config.customers.size(), spec.customers.size()):
-			same_customers = same_customers and config.customers[i].potion == spec.customers[i].potion and config.customers[i].archetype == spec.customers[i].archetype
+		var expected := Story.customers_of(spec, {})
+		var same_customers := config.customers == expected
+		for customer in config.customers:
+			same_customers = same_customers and Story.matches(customer.when, {})
 		_check(same_customers, label + " customers in order", str(config.customers.size()))
 		_check(config.allowed_potions == Content.potions_unlocked_by(number) and config.ingredients == Content.ingredients_unlocked_by(number), label + " allowed potions and ingredients", "%d %d" % [config.allowed_potions.size(), config.ingredients.size()])
 	Content.quiet_errors = true
@@ -2105,8 +2136,10 @@ func _test_save_round_trip() -> void:
 	_game.reputation = -4
 	_game.stock = {"ember_pepper": 2, "moonmoss": 0}
 	_game.upgrades = {"stir": 1, "pour": 2}
-	_game.codex = {"words": ["hint_warmth"]}
-	_game.flags = {"goat_trusts_you": true}
+	_game.flags = {"quill.inspection": "great", "vexley.opening": "refused"}
+	_game.codex = {"words": ["hint_warm", "hint_calm"], "recipes": {"hearthglow_tonic": ["ember_pepper", "sunpetal"]}}
+	_game.endings = ["cosy_corner", "guild_master"]
+	_game.rush_hour_unlocked = true
 	_game.rush_best = 7
 	_game.assist_mode = true
 	_game.gentle_mode = true
@@ -2118,14 +2151,22 @@ func _test_save_round_trip() -> void:
 	_game.load_game()
 	_check(_game.day == 2 and _game.at_market and _game.coins == 33 and _game.reputation == -4 and _game.rush_best == 7, "save round trip: day, market, coins, reputation, Rush best", "%d %s %d %d %d" % [_game.day, _game.at_market, _game.coins, _game.reputation, _game.rush_best])
 	_check(_game.stock == ({"ember_pepper": 2, "moonmoss": 0} as Dictionary[String, int]) and _game.upgrades == ({"stir": 1, "pour": 2} as Dictionary[String, int]), "save round trip: stock and upgrades", "%s %s" % [_game.stock, _game.upgrades])
-	_check(str(_game.codex) == str({"words": ["hint_warmth"]}) and str(_game.flags) == str({"goat_trusts_you": true}), "save round trip: codex and flags", "%s %s" % [_game.codex, _game.flags])
+	_check(_game.flags.recursive_equal({"quill.inspection": "great", "vexley.opening": "refused"}, 1), "save round trip: story flags", str(_game.flags))
+	_check(_game.endings == (["cosy_corner", "guild_master"] as Array[String]) and _game.rush_hour_unlocked, "save round trip: endings reached and the Rush Hour unlock", "%s %s" % [_game.endings, _game.rush_hour_unlocked])
+	_check(_game.codex_words() == PackedStringArray(["hint_warm", "hint_calm"]) and _game.codex_recipes() == ({"hearthglow_tonic": PackedStringArray(["ember_pepper", "sunpetal"])} as Dictionary[String, PackedStringArray]), "save round trip: codex", str(_game.codex))
 	_check(_game.assist_mode and _game.gentle_mode and _game.reported_errors.size() == errors, "save round trip: settings, no errors", "%s %s" % [_game.assist_mode, _game.gentle_mode])
 	_game.rush_best = 7
 	_game.new_game()
-	_check(_game.rush_best == 7 and _game.assist_mode and _game.day == 1 and _game.upgrades.is_empty(), "a new game keeps the settings and the Rush best only", "%d %s %d %s" % [_game.rush_best, _game.assist_mode, _game.day, _game.upgrades])
+	_check(_game.rush_best == 7 and _game.assist_mode and _game.day == 1 and _game.upgrades.is_empty() and _game.flags.is_empty() and _game.coins == Content.day(1).starting_coins, "a new game restarts the story but keeps the settings and the Rush best", "%d %s %d %s %s" % [_game.rush_best, _game.assist_mode, _game.day, _game.upgrades, _game.flags])
+	var saved_after := _read_save()
+	_check(_game.rush_hour_unlocked and _game.endings == (["cosy_corner", "guild_master"] as Array[String]) and saved_after.get("rush_hour_unlocked") == true and saved_after.get("endings") == ["cosy_corner", "guild_master"], "a new game keeps the Rush Hour unlock and the endings reached (saved)", str(saved_after))
+	_check(_game.codex_words() == PackedStringArray(["hint_warm", "hint_calm"]) and _game.codex_recipes().has("hearthglow_tonic"), "a new game keeps the Codex", str(_game.codex))
 	_game.assist_mode = false
 	_game.gentle_mode = false
 	_game.rush_best = 0
+	_game.codex = {}
+	_game.endings = []
+	_game.rush_hour_unlocked = false
 	_game.new_game()
 
 
@@ -2155,6 +2196,23 @@ func _test_save_missing_and_corrupt() -> void:
 		"version 0": JSON.stringify(_with(good, "version", 0)),
 		"huge reputation": JSON.stringify(_with(good, "reputation", 1e300)),
 		"huge rush_best": JSON.stringify(_with(good, "rush_best", GameState.SAVE_SCORE_MAX + 1)),
+		"unknown story flag": JSON.stringify(_with(good, "flags", {"goat_trusts_you": true})),
+		"bad beat outcome": JSON.stringify(_with(good, "flags", {"quill.inspection": "splendid"})),
+		"ending left in flags": JSON.stringify(_with(good, "flags", {"ending": "cosy_corner"})),
+		"unknown ending": JSON.stringify(_with(good, "endings", ["happily_ever_after"])),
+		"repeated ending": JSON.stringify(_with(good, "endings", ["cosy_corner", "cosy_corner"])),
+		"endings not a list": JSON.stringify(_with(good, "endings", "cosy_corner")),
+		"ending that is a list": JSON.stringify(_with(good, "endings", [["cosy_corner", "guild_master"]])),
+		"ending that is an empty list": JSON.stringify(_with(good, "endings", [[]])),
+		"rush unlock not a bool": JSON.stringify(_with(good, "rush_hour_unlocked", "yes")),
+		"unknown codex key": JSON.stringify(_with(good, "codex", {"spells": []})),
+		"unknown codex word": JSON.stringify(_with(good, "codex", {"words": ["hint_banana"]})),
+		"repeated codex word": JSON.stringify(_with(good, "codex", {"words": ["hint_warm", "hint_warm"]})),
+		"codex recipe of an unknown potion": JSON.stringify(_with(good, "codex", {"recipes": {"elixir_of_life": ["ember_pepper", "sunpetal"]}})),
+		"codex recipe of one ingredient": JSON.stringify(_with(good, "codex", {"recipes": {"hearthglow_tonic": ["ember_pepper"]}})),
+		"codex words not a list": JSON.stringify(_with(good, "codex", {"words": "hint_warm"})),
+		"codex recipes not an object": JSON.stringify(_with(good, "codex", {"recipes": ["hearthglow_tonic"]})),
+		"codex recipe with an unknown ingredient": JSON.stringify(_with(good, "codex", {"recipes": {"hearthglow_tonic": ["ember_pepper", "dragon_tooth"]}})),
 	}
 	var error_label := _game.get_node("Fade/ErrorLabel") as Label
 	for case in cases:
@@ -2195,6 +2253,18 @@ func _test_save_migrations() -> void:
 	_check(GameState.migrate_save(middle, steps, 3) == "" and middle == {"version": 3, "coins": 10}, "a version 2 save runs only the last step", str(middle))
 	var newer := {"version": 4}
 	_check("newer" in GameState.migrate_save(newer, steps, 3) and newer == {"version": 4}, "a save from a newer game is refused unchanged", str(newer))
+	var v1 := {"version": 1, "day": 8, "at_market": false, "flags": {"quill.fair": "great", "ending": "cosy_corner", "rush_hour_unlocked": true}}
+	var upgraded := GameState.migrate_save(v1, GameState.save_migrations(), GameState.SAVE_VERSION)
+	_check(upgraded == "" and v1 == {"version": 2, "day": 8, "at_market": false, "flags": {"quill.fair": "great"}, "endings": ["cosy_corner"], "rush_hour_unlocked": true}, "version 1 -> 2: the ending and the Rush Hour unlock move out of the flags", "%s %s" % [upgraded, v1])
+	var v1_plain := {"version": 1, "day": 2, "at_market": false, "flags": {}}
+	GameState.migrate_save(v1_plain, GameState.save_migrations(), GameState.SAVE_VERSION)
+	_check(v1_plain == {"version": 2, "day": 2, "at_market": false, "flags": {}, "endings": [], "rush_hour_unlocked": false}, "version 1 -> 2: a save without an ending gets none and no unlock", str(v1_plain))
+	var v1_two_day_end := {"version": 1, "day": 3.0, "at_market": false, "flags": {}}
+	GameState.migrate_save(v1_two_day_end, GameState.save_migrations(), GameState.SAVE_VERSION)
+	_check(v1_two_day_end.get("at_market") == true, "version 1 -> 2: the two-day build's finished save reopens the market before day 3", str(v1_two_day_end))
+	var v1_story_day_3 := {"version": 1, "day": 3, "at_market": false, "flags": {"quill.inspection": "great"}}
+	GameState.migrate_save(v1_story_day_3, GameState.save_migrations(), GameState.SAVE_VERSION)
+	_check(v1_story_day_3.get("at_market") == false, "version 1 -> 2: a day-3 save with story flags keeps its morning", str(v1_story_day_3))
 
 
 ## Save files that cannot be written: a temporary file that cannot be created (the
@@ -2272,7 +2342,7 @@ func _test_shop_passes_station_tolerance() -> void:
 	var shop := current_scene as Shop
 	if await _wait_for_order(shop, "station tolerance"):
 		for id in _exact_recipe(shop.customer.potion, shop.stock):
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 		await _tap(shop.brew_button())
 		for step in shop.customer.potion.steps:
 			var ready := await _until(func() -> bool: return shop.station != null and shop.station.is_running() and shop.station.assist_button() != null, FLOW_FRAMES)
@@ -2376,9 +2446,9 @@ func _test_morning_missing_day_returns_to_title() -> void:
 ## focusable with an accessibility name, at 9:16, 9:19.5 and 16:9.
 func _test_loop_screens_size_and_zone() -> void:
 	var screens: Array[Array] = [
-		[GameState.Flow.MORNING, {}, ["Column/OpenShopButton"]],
+		[GameState.Flow.MORNING, {}, ["Column/OpenShopButton", "Column/CodexButton"]],
 		[GameState.Flow.SUMMARY, {"day": 1, "title": "Test", "customers": 3, "served": 2, "stormed_off": 1, "refused": 1, "grades": [1, 1, 0, 0], "earned": 20, "tips": 2, "reputation": 1, "coins": 42}, ["Column/ContinueButton"]],
-		[GameState.Flow.MARKET, {}, ["Column/Shop/Tabs/StockTab", "Column/Shop/Tabs/UpgradesTab", "Column/Shop/NextDayButton"]],
+		[GameState.Flow.MARKET, {}, ["Column/Shop/Tabs/StockTab", "Column/Shop/Tabs/UpgradesTab", "Column/Shop/CodexButton", "Column/Shop/NextDayButton"]],
 		[GameState.Flow.TITLE, {}, ["Column/OpenShopButton", "Column/NewGameButton"]],
 	]
 	for screen in screens:
@@ -2502,7 +2572,7 @@ func _serve(shop: Shop, recipe: Array[String], label: String) -> bool:
 	if not await _wait_for_order(shop, label):
 		return false
 	for id in recipe:
-		await _tap(shop.shelf_item(id))
+		await _tap_item(shop, id)
 	_check(shop.pot.size() == recipe.size() and not shop.brew_button().disabled, label + ": Brew enabled", "pot %d" % shop.pot.size())
 	var served := shop.served
 	var steps := shop.customer.potion.steps
@@ -2573,6 +2643,473 @@ func _until(condition: Callable, frames: int) -> bool:
 			return true
 		await process_frame
 	return condition.call()
+
+
+## Story rules (Story): outcomes per grade, flag conditions (an unrecorded flag counts
+## as refused), conditioned customers and morning notes, the beat and final flags, and
+## the saved-flags validation.
+func _test_story_rules() -> void:
+	var outcomes: Array[String] = []
+	for grade: Brew.Grade in [Brew.Grade.PERFECT, Brew.Grade.GOOD, Brew.Grade.MEH, Brew.Grade.MISBREW]:
+		outcomes.append(Story.outcome_for(grade))
+	_check(outcomes == (["great", "great", "poor", "poor"] as Array[String]), "story: Perfect and Good are great, Meh and Misbrew poor", str(outcomes))
+	var when: Dictionary[String, PackedStringArray] = {"quill.inspection": PackedStringArray(["great"])}
+	_check(Story.matches(when, {"quill.inspection": "great"}) and not Story.matches(when, {"quill.inspection": "poor"}) and not Story.matches(when, {}), "story: a condition matches its outcomes only; unrecorded is refused", "")
+	_check(Story.matches({} as Dictionary[String, PackedStringArray], {}), "story: no condition always matches", "")
+	var day4 := Content.day(4)
+	var helped := Story.customers_of(day4, {"stranger.first_sneeze": "great"})
+	var not_helped := Story.customers_of(day4, {"stranger.first_sneeze": "poor"})
+	_check(helped.size() == not_helped.size() + 1 and helped[-1].archetype == "goat_farmer", "story: a great first sneeze sends the goat farmer on day 4", "%d vs %d" % [helped.size(), not_helped.size()])
+	var day5 := Content.day(5)
+	var audit_great := Story.customers_of(day5, {"quill.inspection": "great"}).filter(func(c: DayCustomer) -> bool: return c.flag() == "quill.audit")
+	var audit_retest := Story.customers_of(day5, {"quill.inspection": "stormed_off"}).filter(func(c: DayCustomer) -> bool: return c.flag() == "quill.audit")
+	_check(audit_great.size() == 1 and audit_retest.size() == 1 and audit_great[0].potion != audit_retest[0].potion, "story: Quill's audit asks for a different potion after a poor inspection", "%s / %s" % [audit_great.map(func(c: DayCustomer) -> String: return c.potion), audit_retest.map(func(c: DayCustomer) -> String: return c.potion)])
+	_check(Story.morning_note(day5, {"quill.inspection": "great"}) != Story.morning_note(day5, {"quill.inspection": "poor"}) and Story.morning_note(Content.day(3), {}) == Content.day(3).morning_note, "story: morning notes follow the flags, else the day's note", Story.morning_note(day5, {}))
+	_check(Story.beat_flags().size() == 9 and Story.final_flags() == PackedStringArray(["vexley.fair", "stranger.fair", "quill.fair"]), "story: nine beats, three final ones on day 7", "%s / %s" % [Story.beat_flags(), Story.final_flags()])
+	var problems := PackedStringArray()
+	for bad: Dictionary in [{"nobody.waves": "great"}, {"quill.inspection": "splendid"}, {"ending": "guild_master"}, {"rush_hour_unlocked": true}, {"quill.inspection": 3}]:
+		if Story.flags_problem(bad) == "":
+			problems.append(str(bad))
+	_check(problems.is_empty() and Story.flags_problem({"quill.inspection": "great", "quill.fair": "refused"}) == "", "story: saved flags are validated (beat outcomes only)", str(problems))
+
+
+## Story beats in the shop (day 3, Assist): a story character wears its fixed look;
+## Quill's inspection served Meh records quill.inspection = poor and he says the beat's
+## poor line; the Stranger storming off records stranger.first_sneeze = stormed_off with
+## the beat's line; the day's end commits both to Game.flags and the save.
+func _test_shop_story_beats() -> void:
+	_game.new_game()
+	_game.assist_mode = true
+	for item in Content.ingredients_unlocked_by(3):
+		_game.stock[item.id] = 9
+	_game.day = 3
+	var shop: Shop = await _goto_scene(GameState.Flow.SHOP, {"day": 3})
+	var bubble := shop.get_node("Column/Stage/Bubble") as SpeechBubble
+	var count := shop.shift.customers.size()
+	for n in count:
+		var label := "story day 3 customer %d" % (n + 1)
+		if not await _wait_for_order(shop, label):
+			break
+		_refill_patience(shop)
+		var visitor := shop.customer
+		var flag := visitor.visit.flag()
+		if flag == "quill.inspection":
+			_check(visitor.look == visitor.archetype.fixed_look and visitor.archetype.is_story(), "story: Quill wears his fixed look", visitor.look.describe())
+			_check(visitor.request.id == visitor.visit.request, "story: a beat says its pinned request", visitor.request.id)
+			if not await _serve(shop, _recipe_between(visitor.potion, shop.stock, 2, 2), label):
+				break
+			_check(shop.story_outcomes.get(flag) == "poor" and bubble.text == visitor.visit.lines["poor"], "story: a Meh brew records quill.inspection poor with the beat's line", "%s '%s'" % [shop.story_outcomes, bubble.text])
+		elif flag == "stranger.first_sneeze":
+			visitor.patience_left = 0.05
+			await _until(func() -> bool: return visitor.state == Customer.State.STORMING, FLOW_FRAMES)
+			await process_frame
+			_check(shop.story_outcomes.get(flag) == "stormed_off" and bubble.text == visitor.visit.lines["stormed_off"], "story: storming off records stranger.first_sneeze stormed_off with the beat's line", "%s '%s'" % [shop.story_outcomes, bubble.text])
+		elif not await _serve(shop, _exact_recipe(visitor.potion, shop.stock), label):
+			break
+		await _skip_lines(shop)
+	var ended := await _until(func() -> bool: return _game.state == GameState.Flow.SUMMARY and not _game.is_transitioning(), FLOW_FRAMES * 2)
+	var expected := {"quill.inspection": "poor", "stranger.first_sneeze": "stormed_off"}
+	_check(ended and _game.flags.recursive_equal(expected, 1) and expected.recursive_equal(_read_save().get("flags", {}), 1), "story: the day's beats are committed to Game.flags and saved", "%s %s" % [_game.flags, _read_save().get("flags")])
+	_game.assist_mode = false
+	_game.day = 5
+	_game.at_market = false
+	var morning: Morning = await _goto_scene(GameState.Flow.MORNING)
+	var note := (morning.get_node("Column/Card/Note") as Label).text.replace("\n", " ")
+	_check(note == Story.morning_note(Content.day(5), expected) and note != Content.day(5).morning_note, "story: the morning shows the note for the flags", note)
+	await _close_shop()
+	_game.new_game()
+
+
+## The Codex records as the player earns: a delivery notes the request's hint words
+## (any grade), a Good or better brew its recipe (a Meh one does not); an exact recipe
+## replaces an inexact one but not the other way round; everything is saved at once.
+func _test_codex_records() -> void:
+	_game.codex = {}
+	_game.new_game()
+	_check(_game.codex_words().is_empty() and _game.codex_recipes().is_empty(), "codex: an empty Codex stays empty in a new game", str(_game.codex))
+	_game.assist_mode = true
+	var shop := await _open_shop()
+	if not await _wait_for_order(shop, "codex"):
+		await _close_shop()
+		return
+	var first := shop.customer
+	if await _serve(shop, _recipe_between(first.potion, shop.stock, 2, 2), "codex Meh"):
+		_check(_game.codex_words() == first.request.hints and _game.codex_recipes().is_empty(), "codex: a Meh delivery notes its hint words but no recipe", str(_game.codex))
+		await _skip_lines(shop)
+	if await _wait_for_order(shop, "codex 2"):
+		var second := shop.customer
+		var recipe := _exact_recipe(second.potion, shop.stock)
+		if await _serve(shop, recipe, "codex Good"):
+			var held: PackedStringArray = _game.codex_recipes().get(second.potion.id, PackedStringArray())
+			var words := _game.codex_words()
+			var hints_noted := not second.request.hints.is_empty() and Array(second.request.hints).all(func(id: String) -> bool: return id in words)
+			_check(held == PackedStringArray(recipe) and hints_noted, "codex: a Good brew notes its recipe and its request's hint words", "%s hints %s" % [_game.codex, second.request.hints])
+			var saved: Dictionary = _read_save().get("codex", {})
+			_check(saved.get("recipes", {}).has(second.potion.id), "codex: the Codex is saved as it is earned", str(saved))
+			_check(not _game.learn_recipe(second.potion, PackedStringArray([recipe[0], recipe[0], recipe[1]])), "codex: an inexact recipe does not replace an exact one", str(_game.codex_recipes()))
+	await _close_shop()
+	_game.codex = {}
+	var tonic := Content.potion("hearthglow_tonic")
+	var near := PackedStringArray(["ember_pepper", "honeycomb"])
+	var exact := PackedStringArray(["ember_pepper", "sunpetal"])
+	var first_noted := _game.learn_recipe(tonic, near)
+	var replaced := _game.learn_recipe(tonic, exact)
+	var kept := not _game.learn_recipe(tonic, near)
+	_check(first_noted and replaced and kept and _game.codex_recipes()["hearthglow_tonic"] == exact, "codex: the first Good recipe is noted, an exact one replaces it, an inexact one never replaces an exact one", str(_game.codex_recipes()))
+	_game.codex = {}
+	_game.new_game()
+
+
+## The Codex panel: the shop's Codex button pauses the shift and opens the Words tab
+## (each word with its essence's name and icon); Recipes lists the potion, its stations
+## and ingredients (a page of three-ingredient recipes with the longest names still fits
+## the column, its controls in the thumb zone, at 9:16, 9:19.5 and 16:9); pages turn;
+## keyboard focus stays inside, and Escape (ui_cancel) closes it, resumes the shift and
+## gives focus back. The morning and the market open it too.
+func _test_codex_panel() -> void:
+	var shop := await _open_shop()
+	var recipes := {}
+	for potion in Content.potions():
+		var pool := Content.ingredients()
+		for a in pool:
+			for b in pool:
+				if not recipes.has(potion.id) and a.essence + b.essence == potion.target:
+					recipes[potion.id] = [a.id, b.id]
+	# The rest of the first page: the three longest ingredient names, the widest row there is.
+	var longest := Content.ingredients().map(func(item: Ingredient) -> Ingredient: return item)
+	longest.sort_custom(func(a: Ingredient, b: Ingredient) -> bool: return a.name.length() > b.name.length())
+	var long_recipe := longest.slice(0, 3).map(func(item: Ingredient) -> String: return item.id)
+	var long_names := " + ".join(PackedStringArray(longest.slice(0, 3).map(func(item: Ingredient) -> String: return item.name)))
+	for potion: PotionType in Content.potions().slice(1, Codex.RECIPES_PER_PAGE):
+		recipes[potion.id] = long_recipe
+	_game.codex = {"words": ["hint_calm", "hint_warm"], "recipes": recipes}
+	var button := shop.get_node("Column/Stage/CodexButton") as Button
+	_check(button.accessibility_name == "Codex" and button.focus_mode == Control.FOCUS_ALL, "codex: the shop's Codex button is focusable and named", button.accessibility_name)
+	await _tap(button)
+	var codex := shop.codex
+	if codex == null:
+		_check(false, "codex: the Codex button opens the Codex", "not open")
+		await _close_shop()
+		return
+	_check(paused and codex.tab == Codex.Tab.WORDS, "codex: opening it pauses the shift on the Words tab", "paused %s tab %d" % [paused, codex.tab])
+	var words := codex.entry_texts()
+	_check(words.size() == 1 and "warmth: ember" in words[0] and "calm: frost" in words[0], "codex: words show their essence by name, in vocabulary order", str(words))
+	var icons := codex.find_children("*", "TextureRect", true, false).filter(func(icon: TextureRect) -> bool: return icon.texture == Art.texture("ui", "essence_ember"))
+	_check(icons.size() == 1, "codex: each word shows its essence icon too", str(icons.size()))
+	await _tap(codex.get_node("Column/Panel/List/Tabs/RecipesTab") as Button)
+	var first_page := codex.entry_texts()
+	_check(codex.tab == Codex.Tab.RECIPES and first_page.size() == Codex.RECIPES_PER_PAGE and "Hearthglow Tonic stir, pour Ember Pepper + Sunpetal" in first_page, "codex: recipes show name, stations and ingredients", str(first_page))
+	_check(first_page.size() == Codex.RECIPES_PER_PAGE and Array(first_page).slice(1).all(func(text: String) -> bool: return long_names in text), "codex: three-ingredient recipes list every ingredient name", str(first_page))
+	var panel := codex.get_node("Column/Panel") as Control
+	var controls: Array[Control] = []
+	for path: String in ["Tabs/WordsTab", "Tabs/RecipesTab", "Footer/PrevButton", "Footer/NextButton", "Footer/CloseButton"]:
+		controls.append(codex.get_node("Column/Panel/List/" + path) as Control)
+	for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
+		root.size = window
+		await _frames(10)
+		var column := _game.column_rect()
+		var rows := codex.get_node("Column/Panel/List/Entries").get_children().all(func(row: Control) -> bool: return panel.get_global_rect().encloses(row.get_global_rect()))
+		_check(column.encloses(panel.get_global_rect()) and rows, "codex at %s: the panel of three-ingredient recipes stays inside the column" % window, "panel %s column %s" % [panel.get_global_rect(), column])
+		_check_targets(controls, null, "codex at %s" % window)
+	root.size = BASE_WINDOW
+	await _frames(10)
+	var pages := codex.page_count()
+	await _tap(codex.get_node("Column/Panel/List/Footer/NextButton") as Button)
+	_check(pages == ceili(recipes.size() / float(Codex.RECIPES_PER_PAGE)) and codex.page == 1 and codex.entry_texts() != first_page, "codex: Next turns the page", "%d pages, page %d" % [pages, codex.page])
+	(codex.get_node("Column/Panel/List/Tabs/WordsTab") as Button).grab_focus()
+	_check(await _focus_stays_in(codex), "codex: keyboard focus stays in the Codex", str(root.gui_get_focus_owner()))
+	await _key(KEY_ESCAPE)
+	await process_frame
+	_check(shop.codex == null and not paused and root.gui_get_focus_owner() == button, "codex: Escape closes it, resumes the shift and refocuses its button", "codex %s paused %s focus %s" % [shop.codex, paused, root.gui_get_focus_owner()])
+	await _close_shop()
+	for flow: GameState.Flow in [GameState.Flow.MORNING, GameState.Flow.MARKET]:
+		_game.day = 2
+		_game.at_market = flow == GameState.Flow.MARKET
+		var scene := await _goto_scene(flow)
+		var opener := scene.get_node("Column/CodexButton" if flow == GameState.Flow.MORNING else "Column/Shop/CodexButton") as Button
+		await _tap(opener)
+		var opened := scene.get_children().filter(func(child: Node) -> bool: return child is Codex)
+		_check(opened.size() == 1, "codex: the %s opens the Codex" % GameState.Flow.keys()[flow], str(opened))
+		if opened.size() == 1:
+			await _tap((opened[0] as Codex).get_node("Column/Panel/List/Footer/CloseButton") as Button)
+			await process_frame
+			_check(scene.get_children().all(func(child: Node) -> bool: return not (child is Codex) or child.is_queued_for_deletion()) and root.gui_get_focus_owner() == opener, "codex: Close returns to the %s" % GameState.Flow.keys()[flow], str(root.gui_get_focus_owner()))
+	_game.new_game()
+	await _goto_scene(GameState.Flow.TITLE)
+
+
+## Story.ending on every path of the three final beats (4^3 outcomes) at reputations
+## just under and at the Guild Master threshold, against the rule written out here:
+## licence = quill.fair great; Guild Master needs the licence, all three arcs and the
+## reputation; any other granted licence is Cosy Corner; a refused one Charming Chaos.
+func _test_story_ending_rule() -> void:
+	var finals := Story.final_flags()
+	var wrong := PackedStringArray()
+	var reached := {}
+	var paths := 0
+	for a in Story.OUTCOMES:
+		for b in Story.OUTCOMES:
+			for c in Story.OUTCOMES:
+				var flags := {finals[0]: a, finals[1]: b, finals[2]: c}
+				var resolved := [a, b, c].count(Story.GREAT)
+				var licence: bool = flags[Story.LICENCE_FLAG] == Story.GREAT
+				for reputation: int in [Story.GUILD_MASTER_REPUTATION - 1, Story.GUILD_MASTER_REPUTATION]:
+					paths += 1
+					var expected := Story.CHARMING_CHAOS
+					if licence and resolved == 3 and reputation >= Story.GUILD_MASTER_REPUTATION:
+						expected = Story.GUILD_MASTER
+					elif licence:
+						expected = Story.COSY_CORNER
+					var got := Story.ending(flags, reputation)
+					reached[got] = true
+					if got != expected:
+						wrong.append("%s rep %d: %s, expected %s" % [flags, reputation, got, expected])
+	_check(paths == 128 and wrong.is_empty() and reached.size() == 3, "story: the ending rule on all 128 final paths reaches all three endings", "\n".join(wrong))
+	_check(Story.ending({}, 99) == Story.CHARMING_CHAOS and Story.LICENCE_FLAG in finals, "story: no recorded final beats is Charming Chaos; the licence is a final beat", str(finals))
+	var licence_only := {finals[0]: Story.REFUSED, finals[1]: Story.POOR, Story.LICENCE_FLAG: Story.GREAT}
+	_check(Story.ending(licence_only, 0) == Story.COSY_CORNER, "story: a granted licence with no other arc resolved is Cosy Corner, never Charming Chaos", str(licence_only))
+	var chaos_refuses := "declines your licence" in Content.ending(Story.CHARMING_CHAOS).pages[0]
+	var others_grant := [Story.GUILD_MASTER, Story.COSY_CORNER].all(func(id: String) -> bool: return Array(Content.ending(id).pages).all(func(text: String) -> bool: return not "declines" in text))
+	_check(chaos_refuses and others_grant, "story: only Charming Chaos's pages refuse the licence", "")
+
+
+## The ending scene after the story: it records the ending and the Rush Hour unlock
+## (saved), shows each page's title, text and cast in the shop, turns pages by tap and
+## by Enter (focused Next, in the thumb zone), and "The end" goes back to the title.
+func _test_ending_scene() -> void:
+	_game.new_game()
+	_game.endings = []
+	_game.rush_hour_unlocked = false
+	_game.day = Content.days().size() + 1
+	_game.reputation = Story.GUILD_MASTER_REPUTATION
+	for flag in Story.final_flags():
+		_game.flags[flag] = Story.GREAT
+	var screen: EndingScreen = await _goto_scene(GameState.Flow.ENDING)
+	var ending := Content.ending(Story.GUILD_MASTER)
+	_check(screen != null and screen.ending == ending and (screen.get_node("Column/Title") as Label).text == ending.title, "ending: the Guild Master ending shows its title", str(screen))
+	if screen == null:
+		return
+	var saved := _read_save()
+	_check(_game.endings == ([Story.GUILD_MASTER] as Array[String]) and _game.rush_hour_unlocked and saved.get("endings") == [Story.GUILD_MASTER] and saved.get("rush_hour_unlocked") == true, "ending: the ending and the Rush Hour unlock are saved", str(saved))
+	var next := screen.get_node("Column/NextButton") as Button
+	_check(root.gui_get_focus_owner() == next and next.accessibility_name != "", "ending: Next has focus and a name", str(root.gui_get_focus_owner()))
+	for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
+		root.size = window
+		await _frames(10)
+		_check_targets([next] as Array[Control], null, "ending at %s" % window)
+	root.size = BASE_WINDOW
+	await process_frame
+	for i in ending.pages.size():
+		var text := (screen.get_node("Column/Body/Card/Text") as Label).text
+		var cast := screen.get_node("Column/Picture/Cast").get_children().filter(func(child: Node) -> bool: return not child.is_queued_for_deletion())
+		var names := cast.map(func(figure: Customer) -> String: return figure.archetype.id)
+		_check(screen.page == i and text == "\n".join(Content.wrap_bubble(ending.pages[i])) and names == Array(ending.casts[i]), "ending: page %d shows its text and cast" % (i + 1), "%s %s" % [text, names])
+		var story_looks := cast.all(func(figure: Customer) -> bool: return not figure.archetype.is_story() or figure.look == figure.archetype.fixed_look)
+		_check(story_looks, "ending: story characters wear their fixed look", str(names))
+		if i == ending.pages.size() - 1:
+			_check(next.text == "The end", "ending: the last page's button reads The end", next.text)
+			await _action(&"ui_accept")
+		else:
+			await _tap(next)
+	_check(await _until(func() -> bool: return _game.state == GameState.Flow.TITLE and not _game.is_transitioning(), FLOW_FRAMES), "ending: The end goes back to the title", str(_game.state))
+	_game.new_game()
+	_check(_game.rush_hour_unlocked and _game.endings == ([Story.GUILD_MASTER] as Array[String]) and _game.flags.is_empty(), "ending: the next new game keeps the unlock and the ending reached", "%s %s" % [_game.rush_hour_unlocked, _game.endings])
+	_game.endings = []
+	_game.rush_hour_unlocked = false
+	_game.new_game()
+
+
+## The whole story, headless, through the real screens (taps on Open the shop, To the
+## market, Next day, The ending, Next) with Assist on, on two paths:
+## - "helpful": every customer served (Good), so every beat is great: each day's
+##   conditioned customers come, the licence is granted and with reputation >= 30 the
+##   ending is Guild Master;
+## - "refusing": every story beat refused: the beats' "not great" variants come (Quill's
+##   retest, the Stranger still hiding, Vexley's challenge), the conditioned extra
+##   customers stay away, no licence: Charming Chaos.
+## Ingredients are bought at each market with the coins earned (Game.buy_stock at the
+## day's prices), so the run also checks that the pay covers the next day.
+## Each day's beats are checked against the request each path must bring (written out
+## here from data/SCHEMA.md "Story"), and the conditioned extra customers (the goat
+## farmer on day 4, Vexley's overflow on day 5) against whether the path sends them.
+func _test_story_playthrough_helpful() -> void:
+	var beats: Dictionary[int, Dictionary] = {
+		3: {"quill.inspection": "stillwater_quill_1", "stranger.first_sneeze": "dewdrop_stranger_1"},
+		4: {"vexley.opening": "steamwhistle_vexley_1"},
+		5: {"quill.audit": "steamwhistle_quill_1"},
+		6: {"stranger.confession": "hushfire_stranger_1", "vexley.truce": "panacea_vexley_1"},
+		7: {"vexley.fair": "starfire_vexley_1", "stranger.fair": "panacea_stranger_1", "quill.fair": "panacea_quill_1"},
+	}
+	await _play_story(false, Story.GUILD_MASTER, beats, {4: 1, 5: 1})
+
+
+func _test_story_playthrough_refusing() -> void:
+	var beats: Dictionary[int, Dictionary] = {
+		3: {"quill.inspection": "stillwater_quill_1", "stranger.first_sneeze": "dewdrop_stranger_1"},
+		4: {"vexley.opening": "steamwhistle_vexley_1"},
+		5: {"quill.audit": "stillwater_quill_2"},
+		6: {"stranger.confession": "dewdrop_stranger_2", "vexley.truce": "embermoss_vexley_1"},
+		7: {"vexley.fair": "duskbloom_vexley_1", "stranger.fair": "hushfire_stranger_2", "quill.fair": "starfire_quill_1"},
+	}
+	await _play_story(true, Story.CHARMING_CHAOS, beats, {4: 0, 5: 0})
+
+
+## `beats`: day -> {beat flag: the request id its visit must pin} for every beat of that
+## day (a day not listed has none); `extras`: day -> how many conditioned customers
+## without a beat come (days not listed: none).
+func _play_story(refuse_beats: bool, expected_ending: String, beats: Dictionary[int, Dictionary], extras: Dictionary[int, int]) -> void:
+	var label := "playthrough (%s)" % ("refusing" if refuse_beats else "helpful")
+	_delete_saves()
+	_game.load_game()
+	_game.assist_mode = true
+	Engine.time_scale = PLAYTHROUGH_TIME_SCALE
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+	await _tap(current_scene.get_node("Column/OpenShopButton") as Button)
+	var finished := true
+	for number in range(1, Content.days().size() + 1):
+		if not await _until(func() -> bool: return current_scene is Morning and not _game.is_transitioning(), FLOW_FRAMES):
+			_check(false, "%s: day %d morning" % [label, number], str(current_scene))
+			finished = false
+			break
+		var expected := Shift.story(number, _game.flags).customers
+		await _tap(current_scene.get_node("Column/OpenShopButton") as Button)
+		await _until(func() -> bool: return current_scene is Shop and not _game.is_transitioning(), FLOW_FRAMES)
+		var shop := current_scene as Shop
+		var seen: Array[DayCustomer] = []
+		for n in expected.size():
+			var who := "%s day %d customer %d" % [label, number, n + 1]
+			if not await _wait_for_order(shop, who):
+				finished = false
+				break
+			_refill_patience(shop)
+			seen.append(shop.customer.visit)
+			if refuse_beats and shop.customer.visit.beat != "":
+				await _tap(shop.get_node("Column/Stage/RefuseButton") as Button)
+			elif not await _serve(shop, _exact_recipe(shop.customer.potion, shop.stock), who):
+				finished = false
+				break
+			await _skip_lines(shop)
+		if not finished:
+			break
+		_check(seen == expected, "%s: day %d brings its %d customers for the flags" % [label, number, expected.size()], "%d of %d" % [seen.size(), expected.size()])
+		var seen_beats := {}
+		for visit in seen:
+			if visit.beat != "":
+				seen_beats[visit.flag()] = visit.request
+		var extra_count := seen.filter(func(visit: DayCustomer) -> bool: return visit.beat == "" and not visit.when.is_empty()).size()
+		_check(seen_beats.recursive_equal(beats.get(number, {}), 1) and extra_count == extras.get(number, 0), "%s: day %d brings the path's beat variants and conditioned extras" % [label, number], "beats %s (expected %s), extras %d (expected %d)" % [seen_beats, beats.get(number, {}), extra_count, extras.get(number, 0)])
+		if not await _until(func() -> bool: return current_scene is Summary and not _game.is_transitioning(), FLOW_FRAMES * 2):
+			_check(false, "%s: day %d summary" % [label, number], str(current_scene))
+			finished = false
+			break
+		await _tap(current_scene.get_node("Column/ContinueButton") as Button)
+		if number == Content.days().size():
+			break
+		await _until(func() -> bool: return current_scene is Market and not _game.is_transitioning(), FLOW_FRAMES)
+		_check(_buy_for_day(number + 1), "%s: day %d pay buys day %d's ingredients" % [label, number, number + 1], "%d coins, stock %s" % [_game.coins, _game.stock])
+		await _tap(current_scene.get_node("Column/Shop/NextDayButton") as Button)
+	if finished:
+		_check(await _until(func() -> bool: return current_scene is EndingScreen and not _game.is_transitioning(), FLOW_FRAMES), "%s: the last summary leads to the ending" % label, str(current_scene))
+		var screen := current_scene as EndingScreen
+		_check(screen != null and screen.ending.id == expected_ending and _game.endings == ([expected_ending] as Array[String]) and _game.rush_hour_unlocked, "%s: reaches %s (reputation %d)" % [label, expected_ending, _game.reputation], "%s %s" % [screen.ending.id if screen != null else "-", _game.flags])
+		var beat_outcome := Story.REFUSED if refuse_beats else Story.GREAT
+		var beats_ok := Array(Story.beat_flags()).all(func(flag: String) -> bool: return _game.flags.get(flag) == beat_outcome)
+		_check(beats_ok, "%s: every beat recorded %s" % [label, beat_outcome], str(_game.flags))
+		if screen != null:
+			for i in screen.ending.pages.size():
+				await _tap(screen.get_node("Column/NextButton") as Button)
+			_check(await _until(func() -> bool: return current_scene is Title and not _game.is_transitioning(), FLOW_FRAMES), "%s: the ending returns to the title" % label, str(current_scene))
+	Engine.time_scale = 1.0
+	_game.assist_mode = false
+	_game.new_game()
+
+
+## In the market before day `number`: buys, at the day's prices, whatever the stock
+## lacks for an exact recipe for each of the day's customers on the current flags.
+## False when the coins fall short.
+func _buy_for_day(number: int) -> bool:
+	var spec := Content.day(number)
+	var pool := Content.ingredients_unlocked_by(number)
+	var needed: Dictionary[String, int] = {}
+	for customer in Shift.story(number, _game.flags).customers:
+		var target := Content.potion(customer.potion).target
+		var recipe: Array[String] = []
+		for a in pool:
+			for b in pool:
+				if recipe.is_empty() and a.essence + b.essence == target:
+					recipe = [a.id, b.id]
+		for id in recipe:
+			needed[id] = needed.get(id, 0) + 1
+	for id in needed:
+		var item := Content.ingredient(id)
+		while _game.stock.get(id, 0) < needed[id]:
+			if not _game.buy_stock(item, Economy.market_price(spec, item)):
+				return false
+	return true
+
+
+## Version-1 saves load through the version 2 upgrade: one from before the story (empty
+## codex and flags) loads unchanged; the two-day build's finished save (day 3, market
+## closed, no flags) reopens the day-3 market; a finished story's ending and Rush Hour
+## unlock move out of the flags and survive a new game.
+func _test_save_v1_without_story_loads() -> void:
+	var v1 := {"version": 1, "day": 4, "at_market": true, "coins": 60, "reputation": 9, "stock": {"moonmoss": 2},
+		"upgrades": {}, "codex": {}, "flags": {}, "rush_best": 0, "settings": {"assist": false, "gentle": false}}
+	_write_save(JSON.stringify(v1))
+	var errors := _game.reported_errors.size()
+	_game.load_game()
+	_check(_game.reported_errors.size() == errors and _game.day == 4 and _game.at_market and _game.coins == 60 and _game.codex.is_empty() and _game.flags.is_empty() and _game.endings.is_empty() and not _game.rush_hour_unlocked, "a v1 save with empty codex and flags loads", "%s day %d" % [_game.reported_errors.slice(errors), _game.day])
+	_write_save(JSON.stringify(_with(_with(v1, "day", 3), "at_market", false)))
+	_game.load_game()
+	_check(_game.reported_errors.size() == errors and _game.day == 3 and _game.at_market and _game.can_continue(), "a v1 save that finished the two-day story reopens the day-3 market", "%s day %d market %s" % [_game.reported_errors.slice(errors), _game.day, _game.at_market])
+	_write_save(JSON.stringify(_with(_with(v1, "day", Content.days().size() + 1), "flags", {"quill.fair": "great", "ending": "cosy_corner", "rush_hour_unlocked": true})))
+	_game.load_game()
+	_check(_game.reported_errors.size() == errors and _game.flags == {"quill.fair": "great"} and _game.endings == (["cosy_corner"] as Array[String]) and _game.rush_hour_unlocked, "a v1 finished story's ending and unlock load outside the flags", "%s %s %s" % [_game.flags, _game.endings, _game.rush_hour_unlocked])
+	_game.new_game()
+	_check(_game.rush_hour_unlocked and _game.endings == (["cosy_corner"] as Array[String]) and _read_save().get("version") == GameState.SAVE_VERSION, "a v1 save's Rush Hour unlock survives a new game", "%s %s" % [_game.rush_hour_unlocked, _game.endings])
+	_delete_saves()
+	_game.load_game()
+
+
+## A shelf wider than the row (day 6, ten ingredients) clips at the row's ends and
+## scrolls: a sideways drag on an item scrolls it (and puts nothing in the pot), a
+## hidden item cannot be tapped, keyboard focus scrolls the focused item into view,
+## and an upward drag still carries an ingredient into the cauldron.
+func _test_shop_shelf_scrolls() -> void:
+	_game.new_game()
+	for item in Content.ingredients_unlocked_by(6):
+		_game.stock[item.id] = 3
+	var shop: Shop = await _goto_scene(GameState.Flow.SHOP, {"day": 6})
+	if shop == null:
+		_check(false, "shelf scroll: the day-6 shop opens", str(current_scene))
+		return
+	var ids := shop.stock.keys()
+	var row := shop.get_node("Column/Stage/ShelfItems") as Control
+	var last := shop.shelf_item(ids[-1])
+	_check(ids.size() == 10 and row.clip_contents and shop.shelf_scroll == 0.0 and last.get_global_rect().end.x > row.get_global_rect().end.x, "shelf scroll: ten items overflow a clipped row", "%d %s %s" % [ids.size(), row.clip_contents, last.get_global_rect()])
+	await _tap_at(Vector2(row.get_global_rect().end.x + 10.0, last.get_global_rect().get_center().y))
+	_check(shop.pot.is_empty(), "shelf scroll: a hidden item takes no tap", str(shop.pot.size()))
+	var first := shop.shelf_item(ids[0]).get_global_rect().get_center()
+	await _drag_touch(first, first + Vector2(-150, 0))
+	_check(shop.shelf_scroll > 100.0 and shop.pot.is_empty(), "shelf scroll: a sideways drag scrolls the shelf, not into the pot", "%.0f %d" % [shop.shelf_scroll, shop.pot.size()])
+	shop.shelf_item(ids[0]).grab_focus()
+	_check(shop.shelf_scroll == 0.0 and shop.shelf_item(ids[0]).get_global_rect().position.x >= row.get_global_rect().position.x, "shelf scroll: keyboard focus reveals the focused item", "%.0f" % shop.shelf_scroll)
+	shop.shelf_item(ids[-1]).grab_focus()
+	_check(last.get_global_rect().end.x <= row.get_global_rect().end.x, "shelf scroll: focusing the last item scrolls to it", str(last.get_global_rect()))
+	await _wait_for_order(shop, "shelf scroll")
+	var from := last.get_global_rect().get_center()
+	await _drag_touch(from, shop.get_node("Column/Stage").get_global_transform() * Shop.POT_MOUTH)
+	_check(shop.pot.size() == 1 and shop.pot[0].id == ids[-1], "shelf scroll: an upward drag still drops into the cauldron", str(shop.pot.size()))
+	await _close_shop()
+	_game.new_game()
+
+
+## A real tap on the shelf item of ingredient `id`, scrolled into view first (a shelf
+## wider than the row hides the items past its ends).
+func _tap_item(shop: Shop, id: String) -> void:
+	shop.reveal_shelf_item(shop.shelf_item(id))
+	await _tap(shop.shelf_item(id))
 
 
 ## A real touch (press and release) at the centre of `control`.

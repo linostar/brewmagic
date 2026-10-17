@@ -10,4 +10,6 @@ var unlock_day := 1
 var base_price := 1
 ## True when the brew needs the Mortar station.
 var grind := false
+## True when the brew needs the Bellows station.
+var heat := false
 var description := ""

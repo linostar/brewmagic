@@ -10,9 +10,10 @@ extends Control
 ## Layout: the reading zone shows the coins and an info card about the last
 ## focused or bought item (its name, essences or effect, price); the thumb zone
 ## (Shop panel, bottom of the column) holds the Stock / Upgrades tabs, the cards
-## of the open tab and Next day. A card is a Button: tap, click or Enter buys one.
+## of the open tab, the Codex button and Next day. A card is a Button: tap, click or
+## Enter buys one.
 
-const CARD_SIZE := Vector2(62, 64)
+const CARD_SIZE := Vector2(48, 64)
 const UPGRADE_SIZE := Vector2(258, 44)
 const GOLD := Color("#ffc95c")
 const RED := Color("#c43c2c")
@@ -37,6 +38,7 @@ var _upgrade_cards: Dictionary[String, Button] = {}
 @onready var _stock_grid: GridContainer = $Column/Shop/StockGrid
 @onready var _upgrade_list: VBoxContainer = $Column/Shop/UpgradeList
 @onready var _next_button: Button = $Column/Shop/NextDayButton
+@onready var _codex_button: Button = $Column/Shop/CodexButton
 
 
 func _ready() -> void:
@@ -52,6 +54,7 @@ func _ready() -> void:
 	($Column/Heading as Label).text = "Stocking up for day %d" % spec.day
 	_stock_tab.toggled.connect(_on_tab_toggled)
 	_next_button.pressed.connect(_on_next_pressed)
+	_codex_button.pressed.connect(_on_codex_pressed)
 	for item in Content.ingredients_unlocked_by(spec.day):
 		var card := _stock_card(item)
 		_stock_grid.add_child(card)
@@ -267,6 +270,12 @@ func _fit_column() -> void:
 	var column := _game.column_rect()
 	_column.position = column.position
 	_column.size = column.size
+
+
+## Opens the Codex over the market; focus comes back to this button when it closes.
+func _on_codex_pressed() -> void:
+	Juice.squash(_codex_button, 0.2)
+	Codex.open(self, _column).closed.connect(_codex_button.grab_focus.bind(true))
 
 
 func _on_next_pressed() -> void:

@@ -18,5 +18,13 @@ var part_body := ""
 var part_head := ""
 var part_hair := ""
 var part_accessory := ""
+## A story character's one fixed look (data `look`), or null for a visitor whose
+## colours come from a palette shuffle (Look.distinct_for).
+var fixed_look: Look
 ## Grade (one of GRADES) -> bubble lines.
 var reactions: Dictionary[String, PackedStringArray] = {}
+
+
+## True for a story character: it has a fixed look and visits only as story beats.
+func is_story() -> bool:
+	return fixed_look != null

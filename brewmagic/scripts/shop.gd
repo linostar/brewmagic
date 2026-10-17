@@ -1,7 +1,8 @@
 class_name Shop
 extends Control
-## The shop shift (flow SHOP): runs the ShiftConfig of story day n (Shift.story(n),
-## n from Game.flow_args["day"], default Game.day): its customers in order, its
+## The shop shift (flow SHOP): runs the ShiftConfig of story day n on the story path
+## of Game.flags (Shift.story(n, flags), n from Game.flow_args["day"], default
+## Game.day): its customers in order, its
 ## shelf, its patience scale, starting from the saved coins and stock (Game). Layout per CLAUDE.md "Shop scene
 ## layout": the 270x480 Stage sits at the bottom of the ScreenFit column (extra
 ## height on tall phones goes above it, covered by shop_ceiling copies stacked up
@@ -13,7 +14,8 @@ extends Control
 ## at once when it is empty. Only the one at the counter is served; the queue waits
 ## in front of the window (patience draining at Customer.QUEUE_PATIENCE_RATE) and
 ## steps forward when the served one leaves. Every visitor gets a Look from
-## Look.distinct_for at the start of the day, so no two look alike. A queued
+## Look.distinct_for at the start of the day, so no two look alike; a story
+## character wears its fixed look (Archetype.fixed_look) instead. A queued
 ## customer whose patience runs out storms off from the queue (reputation as for
 ## any storm-off, its line said aside, no stamp) and the ones behind step up.
 ##
@@ -47,6 +49,15 @@ extends Control
 ## Any tap (on the panel or the dim around it), Enter or ui_cancel (its shortcut)
 ## closes it and focus goes back to the "?".
 ##
+## Codex: the Codex button (right of Brew) opens the Codex overlay and pauses the
+## shift until it closes. Every delivery notes its request's hint words in the Codex,
+## and a Good or better brew its recipe (Game.learn_words, Game.learn_recipe).
+##
+## Story beats: a visitor whose day entry is a story beat (Customer.visit) records its
+## outcome (Story: great, poor, refused or stormed_off) in story_outcomes and says the
+## beat's own line for it instead of an archetype reaction; the day's end commits the
+## outcomes to Game.flags (Game.finish_day), so a quit mid-shift records none.
+##
 ## Grade stamp: a served customer gets a stamp on the counter front (the grade in
 ## words, its colour and its own icon) while "+pay" flies to the coin counter with
 ## the coins; a customer storming off gets none.
@@ -60,9 +71,11 @@ const STATION_SCENES: Dictionary[String, PackedScene] = {
 	"bellows": preload("res://scenes/stations/bellows.tscn"),
 }
 const STAGE_SIZE := Vector2(270, 480)
-const POT_CAPACITY := 3
-const MIN_BREW := 2
+const POT_CAPACITY := Brew.MAX_INGREDIENTS
+const MIN_BREW := Brew.MIN_INGREDIENTS
 const SHELF_SPACING := 42.0
+## Gap at each end of a shelf too wide for the row (it scrolls).
+const SHELF_MARGIN := 4.0
 ## Stage-space point where flying ingredients land (the liquid surface).
 const POT_MOUTH := Vector2(135, 288)
 ## Stage-space rect where a dragged ingredient counts as dropped into the cauldron.
@@ -149,6 +162,8 @@ var stormed_off := 0
 var refused := 0
 ## The grade of every served customer, in order.
 var grades: Array[Brew.Grade] = []
+## Today's story beat outcomes: flag -> Story outcome (Game.finish_day records them in Game.flags).
+var story_outcomes: Dictionary[String, String] = {}
 ## The customer at the counter (or walking up to it), or null when the line is empty.
 var customer: Customer
 ## The customers queued behind it, in line order (place 1, 2, ...).
@@ -175,11 +190,20 @@ var _rng := RandomNumberGenerator.new()
 ## "<kind>/<key>" -> the line picked last time, so the next pick avoids it.
 var _last_lines: Dictionary[String, String] = {}
 var _shelf_items: Dictionary[String, ShelfItem] = {}
+## Each shelf item's x with the shelf unscrolled.
+var _shelf_x: Dictionary[String, float] = {}
+## How far the shelf is scrolled (0 = its left end shows) and the most it can be.
+var shelf_scroll := 0.0
+var _shelf_scroll_max := 0.0
 var _brewing := false
 var _brew := Vector4i.ZERO
 var _tier := Brew.Grade.MISBREW
 var _step := 0
 var _qualities: Array[float] = []
+## Ids of the brew's ingredients, in pot order (the Codex notes a good brew's recipe).
+var _brew_ids := PackedStringArray()
+## The open Codex overlay, or null.
+var codex: Codex
 ## Ids of the brew's ingredients flagged `grind` (what the Mortar grinds), in pot order.
 var _ground: Array[String] = []
 ## Called once when the bubble's current line advances.
@@ -216,6 +240,7 @@ var _day_over := false
 @onready var _shelf_row: Control = $Column/Stage/ShelfItems
 @onready var _brew_button: Button = $Column/Stage/BrewButton
 @onready var _refuse_button: Button = $Column/Stage/RefuseButton
+@onready var _codex_button: Button = $Column/Stage/CodexButton
 @onready var _station_host: Control = $Column/Stage/StationHost
 @onready var _station_dim: ColorRect = $Column/Stage/StationHost/Dim
 @onready var _coin_icon: TextureRect = $Column/Hud/CoinIcon
@@ -251,6 +276,7 @@ func _ready() -> void:
 	_skip_button.pressed.connect(_bubble.skip)
 	_brew_button.pressed.connect(_on_brew_pressed)
 	_refuse_button.pressed.connect(refuse_customer)
+	_codex_button.pressed.connect(open_codex)
 	_narrow_margins(_refuse_button)
 	for i in _slots.size():
 		_slots[i].pressed.connect(_on_slot_pressed.bind(i))
@@ -266,7 +292,7 @@ func _ready() -> void:
 	_mode_help.pressed.connect(close_mode_help)
 	_modal_dim.gui_input.connect(_on_modal_dim_input)
 	var number := int(_game.flow_args.get("day", _game.day))
-	shift = Shift.story(number)
+	shift = Shift.story(number, _game.flags)
 	if shift == null:
 		# The title screen is the only safe place to go; the player sees why there.
 		_game.abort_to(GameState.Flow.TITLE, "Day %d is missing from data/days.json; the shop cannot open." % number)
@@ -365,6 +391,34 @@ func close_pause() -> void:
 		close_mode_help()
 	_pause_panel.hide()
 	_modal_dim.hide()
+	_resume()
+	print("[Shop] Resumed")
+
+
+## Opens the Codex over the shop; the shift pauses until it closes.
+func open_codex() -> void:
+	if _day_over or codex != null or get_tree().paused:
+		return
+	get_tree().paused = true
+	_update_pot()
+	# Closing the Codex returns to the button that opened it.
+	_focus_before_pause = _codex_button
+	_column.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_DISABLED
+	Juice.squash(_codex_button, 0.2)
+	codex = Codex.open(self, _column)
+	codex.closed.connect(_on_codex_closed)
+	print("[Shop] Codex opened, shift paused")
+
+
+func _on_codex_closed() -> void:
+	codex = null
+	_resume()
+	print("[Shop] Codex closed, shift resumed")
+
+
+## Unpauses the shift and gives focus back: to the running station's Assist button,
+## else to the control focused before the pause (or the Codex) opened.
+func _resume() -> void:
 	get_tree().paused = false
 	_update_pot()
 	_column.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_INHERITED
@@ -374,7 +428,6 @@ func close_pause() -> void:
 		before.grab_focus(true)
 	else:
 		_focus_play()
-	print("[Shop] Resumed")
 
 
 ## Shows the description of `help`'s mode (ASSIST_INFO or GENTLE_INFO) in a
@@ -524,25 +577,67 @@ func _fit() -> void:
 	print("[Shop] Stage at %s, %d ceiling copies above it" % [stage_rect.position, copies])
 
 
+## Lays the shelf out: centred when it fits the row, else from SHELF_MARGIN on and
+## scrollable (sideways drags on the items, keyboard focus reveals the focused one).
 func _build_shelf() -> void:
 	var ids := stock.keys()
-	var left := (STAGE_SIZE.x - ids.size() * SHELF_SPACING) / 2.0 + (SHELF_SPACING - ShelfItem.ITEM_SIZE.x) / 2.0
+	var width := ids.size() * SHELF_SPACING
+	var left := (STAGE_SIZE.x - width) / 2.0 + (SHELF_SPACING - ShelfItem.ITEM_SIZE.x) / 2.0
+	if width > STAGE_SIZE.x:
+		left = SHELF_MARGIN
+		_shelf_scroll_max = SHELF_MARGIN * 2.0 + (ids.size() - 1) * SHELF_SPACING + ShelfItem.ITEM_SIZE.x - STAGE_SIZE.x
+		# Items scrolled past the row's ends are hidden and cannot be tapped.
+		_shelf_row.clip_contents = true
 	var layout: Array[String] = []
 	for i in ids.size():
 		var id: String = ids[i]
 		var item := SHELF_ITEM_SCENE.instantiate() as ShelfItem
 		item.setup(Content.ingredient(id), stock[id])
 		item.position = Vector2(roundf(left + i * SHELF_SPACING), 0.0)
+		item.scrollable = _shelf_scroll_max > 0.0
 		item.chosen.connect(_on_item_chosen)
 		item.dropped.connect(_on_item_dropped)
+		item.swiped.connect(_scroll_shelf_by)
+		item.focus_entered.connect(_on_shelf_item_focused.bind(item))
 		_shelf_row.add_child(item)
+		_shelf_x[id] = item.position.x
 		# Down from any shelf item goes to Brew (the items share a row, so Godot would pick a neighbour).
 		item.focus_neighbor_bottom = item.get_path_to(_brew_button)
 		_shelf_items[id] = item
 		layout.append("%s@%s" % [id, item.position + _shelf_row.position + ShelfItem.ITEM_SIZE / 2.0])
 	if not ids.is_empty():
 		_brew_button.focus_neighbor_top = _brew_button.get_path_to(_shelf_items[ids[floori((ids.size() - 1) / 2.0)]])
-	print("[Shop] Shelf (stage coordinates): %s, brew@%s" % [", ".join(layout), _brew_button.position + _brew_button.size / 2.0])
+	print("[Shop] Shelf (stage coordinates): %s, brew@%s%s" % [", ".join(layout), _brew_button.position + _brew_button.size / 2.0,
+		(", scrolls %d" % _shelf_scroll_max) if _shelf_scroll_max > 0.0 else ""])
+
+
+## Scrolls the shelf `dx` units (positive moves the items right), within 0.._shelf_scroll_max.
+func _scroll_shelf_by(dx: float) -> void:
+	set_shelf_scroll(shelf_scroll - dx)
+
+
+## Scrolls the shelf so `scroll` units of it are left of the row (clamped to its range).
+func set_shelf_scroll(scroll: float) -> void:
+	shelf_scroll = clampf(scroll, 0.0, _shelf_scroll_max)
+	for id in _shelf_items:
+		Juice.reset_shake(_shelf_items[id])
+		_shelf_items[id].position = Vector2(roundf(_shelf_x[id] - shelf_scroll), 0.0)
+
+
+## Keyboard focus on a shelf item scrolls it into view. A hidden focus (the shop's own
+## grab_focus(true) when a customer arrives) leaves the shelf where the thumb put it.
+func _on_shelf_item_focused(item: ShelfItem) -> void:
+	if item.has_focus(true):
+		reveal_shelf_item(item)
+
+
+## Scrolls the shelf just enough to show all of `item` (keyboard focus, tests).
+func reveal_shelf_item(item: ShelfItem) -> void:
+	var x := _shelf_x[item.ingredient.id] - shelf_scroll
+	if x < SHELF_MARGIN:
+		set_shelf_scroll(shelf_scroll + x - SHELF_MARGIN)
+	elif x + ShelfItem.ITEM_SIZE.x > STAGE_SIZE.x - SHELF_MARGIN:
+		set_shelf_scroll(shelf_scroll + x + ShelfItem.ITEM_SIZE.x - STAGE_SIZE.x + SHELF_MARGIN)
 
 
 ## Lets the next customer in when the line has room: right away (after
@@ -580,9 +675,13 @@ func _spawn_next_customer() -> void:
 		push_error("[Shop] Day %d customer %d (%s wants %s) cannot be set up; skipping" % [shift.day, _next_customer, spec.archetype, spec.potion])
 		_spawn_next_customer()
 		return
+	if who.is_story():
+		# A story character always wears its own look, so it is recognised on every visit.
+		look = who.fixed_look
 	var visitor := CUSTOMER_SCENE.instantiate() as Customer
 	visitor.setup(who, wants, says, who.patience_seconds * shift.patience_scale, look)
 	visitor.number = _next_customer
+	visitor.visit = spec
 	visitor.arrived.connect(_on_customer_arrived)
 	visitor.patience_ran_out.connect(_on_patience_ran_out.bind(visitor))
 	visitor.left.connect(_on_customer_left.bind(visitor))
@@ -608,6 +707,18 @@ func _pick_request(potion_id: String, archetype_id: String) -> RequestLine:
 	for line in lines:
 		texts.append(line.id)
 	return Content.request(_pick("request/%s/%s" % [potion_id, archetype_id], texts))
+
+
+## The line `who` says for reaction `key` (a grade of Archetype.GRADES, "stormed_off" or
+## "refused") whose story outcome is `outcome` (Story.OUTCOMES). A story beat records the
+## outcome under its flag (story_outcomes, committed with the day) and says its own line;
+## anyone else says one of its archetype's lines.
+func _reaction_line(who: Customer, key: String, outcome: String) -> String:
+	if who.visit != null and who.visit.beat != "":
+		story_outcomes[who.visit.flag()] = outcome
+		print("[Shop] Story beat %s: %s" % [who.visit.flag(), outcome])
+		return who.visit.lines[outcome]
+	return _pick("reaction/%s/%s" % [who.archetype.id, key], who.archetype.reactions[key])
 
 
 ## A random entry of `options`, avoiding the one picked last time for `key` when there is a choice.
@@ -801,6 +912,7 @@ func _on_brew_pressed() -> void:
 		used.append(item.id)
 		if item.grind:
 			_ground.append(item.id)
+	_brew_ids = used
 	print("[Shop] Brewing %s for %s: essence %s, target %s, distance %d, tier %s" % [used, wants.id, _brew, wants.target, distance, Brew.Grade.keys()[_tier]])
 	pot.clear()
 	_update_pot()
@@ -845,6 +957,7 @@ func _show_station_layer(on: bool) -> void:
 	_shelf_row.focus_behavior_recursive = behavior
 	_brew_button.focus_behavior_recursive = behavior
 	_refuse_button.focus_behavior_recursive = behavior
+	_codex_button.focus_behavior_recursive = behavior
 
 
 func _station_params(step: String) -> Dictionary:
@@ -947,8 +1060,9 @@ func _deliver(grade: Brew.Grade, quality: float) -> void:
 	print("[Shop] Served customer %d/%d (%s): %s, quality %.2f, paid %d, tip %d, reputation %+d, coins %d" % [customer.number, shift.customers.size(), customer.archetype.id, Brew.Grade.keys()[grade], quality, pay, tip, reputation_change, coins])
 	_update_hud()
 	_show_stamp(grade)
+	_note_in_codex(grade)
 	var grade_key: String = Archetype.GRADES[grade]
-	var reaction := _pick("reaction/%s/%s" % [customer.archetype.id, grade_key], customer.archetype.reactions[grade_key])
+	var reaction := _reaction_line(customer, grade_key, Story.outcome_for(grade))
 	if grade == Brew.Grade.MISBREW:
 		var essence := Brew.misbrew_essence(_brew, wants.target)
 		var effect: String = Content.MISBREW_EFFECTS[essence] if essence >= 0 else ""
@@ -968,6 +1082,18 @@ func _deliver(grade: Brew.Grade, quality: float) -> void:
 	if tip > 0:
 		Juice.fly_text(_fx, stage * (PAY_FROM + TIP_OFFSET), _coin_icon.get_global_rect().get_center(), "tip +%d" % tip, GOLD, PAY_HOLD + TIP_DELAY)
 	_say(reaction, REACTION_HOLD, _send_off.bind(customer))
+
+
+## Notes what this delivery taught in the Codex: the request's hint words (any grade),
+## and the recipe when the brew was Good or better. "Codex +N" pops over the Codex button.
+func _note_in_codex(grade: Brew.Grade) -> void:
+	var learned := _game.learn_words(customer.request.hints)
+	if grade == Brew.Grade.PERFECT or grade == Brew.Grade.GOOD:
+		if _game.learn_recipe(customer.potion, _brew_ids):
+			learned += 1
+	if learned > 0:
+		Juice.pop_text(_fx, _codex_button.get_global_rect().get_center() - Vector2(0, 30), "Codex +%d" % learned, CREAM)
+		Juice.squash(_codex_button, 0.3)
 
 
 ## Slams the grade stamp onto the counter front (overshooting scale, an ink puff,
@@ -1045,8 +1171,7 @@ func _on_patience_ran_out(who: Customer) -> void:
 		_focus_play()
 	print("[Shop] Customer %d/%d (%s) stormed off: reputation %+d" % [customer.number, shift.customers.size(), customer.archetype.id, Economy.STORMED_OFF_REPUTATION])
 	Juice.shake(_stage, 2.0, 0.3)
-	var lines := customer.archetype.reactions["stormed_off"]
-	_say(_pick("reaction/%s/stormed_off" % customer.archetype.id, lines), STORMED_HOLD, _send_off.bind(customer))
+	_say(_reaction_line(customer, "stormed_off", Story.STORMED_OFF), STORMED_HOLD, _send_off.bind(customer))
 
 
 ## Gives `button` copies of its theme styles with NARROW_MARGIN side margins, so a
@@ -1082,7 +1207,7 @@ func refuse_customer() -> void:
 	_update_hud()
 	Juice.squash(_refuse_button, 0.2)
 	print("[Shop] Refused customer %d/%d (%s): reputation %+d" % [who.number, shift.customers.size(), who.archetype.id, Economy.REFUSED_REPUTATION])
-	_say(_pick("reaction/%s/refused" % who.archetype.id, who.archetype.reactions["refused"]), REACTION_HOLD, _send_off.bind(who))
+	_say(_reaction_line(who, "refused", Story.REFUSED), REACTION_HOLD, _send_off.bind(who))
 	_focus_play()
 
 
@@ -1093,7 +1218,7 @@ func _storm_off_queue(who: Customer) -> void:
 	reputation += Economy.STORMED_OFF_REPUTATION
 	queue.erase(who)
 	print("[Shop] Customer %d/%d (%s) stormed off from the queue: reputation %+d" % [who.number, shift.customers.size(), who.archetype.id, Economy.STORMED_OFF_REPUTATION])
-	_say_aside(_pick("reaction/%s/stormed_off" % who.archetype.id, who.archetype.reactions["stormed_off"]), who)
+	_say_aside(_reaction_line(who, "stormed_off", Story.STORMED_OFF), who)
 	who.leave()
 	_close_up_line()
 
@@ -1156,7 +1281,7 @@ func _end_day() -> void:
 		remove_from_pot(0)
 	var result := day_result()
 	print("[Shop] Day %d done: %s" % [shift.day, result])
-	_game.finish_day(result, coins, stock, reputation)
+	_game.finish_day(result, coins, stock, reputation, story_outcomes)
 
 
 func _update_hud() -> void:

@@ -84,6 +84,8 @@ var effect := ""
 var look: Look
 ## The visitor's number in the shift (1-based), for logs.
 var number := 0
+## The day's schedule entry this visitor comes from (its story beat, if any), or null.
+var visit: DayCustomer
 ## The place in line it stands at or walks to (0 = counter).
 var slot := 0
 
