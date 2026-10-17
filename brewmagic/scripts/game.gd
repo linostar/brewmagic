@@ -50,7 +50,7 @@ const SAVE_PATH := "user://save.json"
 const TOOL_SAVE_PATH := "user://tool_save.json"
 ## The save format's version. Every change to the format bumps it and appends one
 ## step to save_migrations(), so saves of older versions are upgraded, not discarded.
-const SAVE_VERSION := 1
+const SAVE_VERSION := 2
 ## Upper bounds a save's numbers must respect (anything else marks it corrupt);
 ## SAVE_SCORE_MAX bounds reputation (either sign) and rush_best.
 const SAVE_COINS_MAX := 999999
@@ -62,8 +62,14 @@ const SAVE_EXACT_MAX := 9007199254740992.0
 const SAVE_KEYS: Dictionary[String, Variant.Type] = {
 	"version": TYPE_INT, "day": TYPE_INT, "at_market": TYPE_BOOL, "coins": TYPE_INT, "reputation": TYPE_INT,
 	"stock": TYPE_DICTIONARY, "upgrades": TYPE_DICTIONARY, "codex": TYPE_DICTIONARY, "flags": TYPE_DICTIONARY,
-	"rush_best": TYPE_INT, "settings": TYPE_DICTIONARY,
+	"endings": TYPE_ARRAY, "rush_hour_unlocked": TYPE_BOOL, "rush_best": TYPE_INT, "settings": TYPE_DICTIONARY,
 }
+## Version 1 kept these in flags (moved out by the version 2 step of save_migrations).
+const V1_ENDING_FLAG := "ending"
+const V1_RUSH_HOUR_FLAG := "rush_hour_unlocked"
+## A version 1 save from the two-day build at this day (market closed, no flags) had
+## finished that build's story; the version 2 step reopens the market before it.
+const V1_STORY_OVER_DAY := 3
 const SETTINGS_KEYS: Array[String] = ["assist", "gentle"]
 const CODEX_WORDS := "words"
 const CODEX_RECIPES := "recipes"
@@ -83,14 +89,18 @@ var reputation := 0
 var stock: Dictionary[String, int] = {}
 ## Station step id -> owned upgrade level (absent means 0).
 var upgrades: Dictionary[String, int] = {}
-## The Codex: what the player has learned, as saved. CODEX_WORDS: the hint word ids
-## served so far (learn_words); CODEX_RECIPES: potion id -> the ingredient ids of a
-## brew of it at Good or better (learn_recipe). Read it through codex_words() and
-## codex_recipes(); an empty dictionary is an empty Codex.
+## The Codex: what the player has learned, as saved (kept by new_game: the player's
+## knowledge outlives a story). CODEX_WORDS: the hint word ids served so far
+## (learn_words); CODEX_RECIPES: potion id -> the ingredient ids of a brew of it at
+## Good or better (learn_recipe). Read it through codex_words() and codex_recipes();
+## an empty dictionary is an empty Codex.
 var codex: Dictionary = {}
-## The story's flags (Story): each beat's outcome under "<character>.<beat>", the ending
-## reached (Story.ENDING_FLAG) and the Rush Hour unlock (Story.RUSH_HOUR_FLAG).
+## This story's flags (Story): each beat's outcome under "<character>.<beat>".
 var flags: Dictionary = {}
+## The endings reached in any story (Story.ENDINGS ids, each once, in the order first
+## reached) and the Rush Hour unlock; like the Codex, new_game keeps them.
+var endings: Array[String] = []
+var rush_hour_unlocked := false
 ## Filled in plan step 8.
 var rush_best := 0
 ## Where the save lives: SAVE_PATH, or TOOL_SAVE_PATH in tool runs.
@@ -254,12 +264,19 @@ func tolerance_scale(step: String) -> float:
 	return Economy.upgrade_tolerance(upgrade, upgrades.get(step, 0)) * gentle
 
 
-## Starts a new story from day 1's starting coins and stock (settings and the Rush
-## Hour best stay) and saves it.
+## Starts a new story from day 1's starting coins and stock and saves it. What
+## outlives a story stays: the settings, the Codex, the endings reached, the Rush Hour
+## unlock and its best.
 func new_game() -> void:
 	var best := rush_best
+	var kept_codex := codex
+	var kept_endings := endings
+	var unlocked := rush_hour_unlocked
 	_reset_progress()
 	rush_best = best
+	codex = kept_codex
+	endings = kept_endings
+	rush_hour_unlocked = unlocked
 	var first := Content.day(Content.FIRST_DAY)
 	if first != null:
 		coins = first.starting_coins
@@ -392,14 +409,20 @@ func story_over() -> bool:
 
 
 ## Ends the story: picks the ending from the flags and reputation (Story.ending),
-## records it in flags with the Rush Hour unlock, saves, and returns its id.
+## records it in endings (once) with the Rush Hour unlock, saves, and returns its id.
 func finish_story() -> String:
 	var ending := Story.ending(flags, reputation)
-	flags[Story.ENDING_FLAG] = ending
-	flags[Story.RUSH_HOUR_FLAG] = true
-	print("[Game] Story finished: ending %s (reputation %d, flags %s); Rush Hour unlocked" % [ending, reputation, flags])
+	if not ending in endings:
+		endings.append(ending)
+	rush_hour_unlocked = true
+	print("[Game] Story finished: ending %s (reputation %d, flags %s); endings reached %s; Rush Hour unlocked" % [ending, reputation, flags, endings])
 	save_game()
 	return ending
+
+
+## True when finish_story() has recorded `ending` (endings reached and the unlock).
+func has_recorded(ending: String) -> bool:
+	return rush_hour_unlocked and ending in endings
 
 
 ## Closes the market and goes to the next morning.
@@ -441,8 +464,8 @@ func buy_upgrade(upgrade: Upgrade) -> bool:
 func save_game() -> void:
 	var data := {
 		"version": SAVE_VERSION, "day": day, "at_market": at_market, "coins": coins, "reputation": reputation,
-		"stock": stock, "upgrades": upgrades, "codex": codex, "flags": flags, "rush_best": rush_best,
-		"settings": {"assist": assist_mode, "gentle": gentle_mode},
+		"stock": stock, "upgrades": upgrades, "codex": codex, "flags": flags, "endings": endings,
+		"rush_hour_unlocked": rush_hour_unlocked, "rush_best": rush_best, "settings": {"assist": assist_mode, "gentle": gentle_mode},
 	}
 	var temp := save_path + ".tmp"
 	var file := FileAccess.open(temp, FileAccess.WRITE)
@@ -460,8 +483,8 @@ func save_game() -> void:
 		DirAccess.remove_absolute(temp)
 		_report_error("Could not replace save '%s' with '%s': %s; the save is unchanged" % [save_path, temp, error_string(replaced)])
 		return
-	print("[Game] Saved to %s: day %d%s, %d coins, reputation %d, upgrades %s, flags %s, assist %s, gentle %s" % [
-		save_path, day, " (market)" if at_market else "", coins, reputation, upgrades, flags, assist_mode, gentle_mode])
+	print("[Game] Saved to %s: day %d%s, %d coins, reputation %d, upgrades %s, flags %s, endings %s, Rush Hour %s, assist %s, gentle %s" % [
+		save_path, day, " (market)" if at_market else "", coins, reputation, upgrades, flags, endings, rush_hour_unlocked, assist_mode, gentle_mode])
 
 
 ## Loads save_path into progress and settings. A missing save starts fresh silently
@@ -495,8 +518,8 @@ func load_game() -> void:
 		gentle_mode = false
 		_discard_save("corrupt (%s)" % problem)
 		return
-	print("[Game] Loaded save from %s: day %d%s, %d coins, reputation %d, stock %s, upgrades %s, flags %s, assist %s, gentle %s" % [
-		save_path, day, " (market)" if at_market else "", coins, reputation, stock, upgrades, flags, assist_mode, gentle_mode])
+	print("[Game] Loaded save from %s: day %d%s, %d coins, reputation %d, stock %s, upgrades %s, flags %s, endings %s, Rush Hour %s, assist %s, gentle %s" % [
+		save_path, day, " (market)" if at_market else "", coins, reputation, stock, upgrades, flags, endings, rush_hour_unlocked, assist_mode, gentle_mode])
 
 
 ## Where a corrupt save is moved: save.json -> save.corrupt.json.
@@ -558,6 +581,8 @@ func _reset_progress() -> void:
 	upgrades = {}
 	codex = {}
 	flags = {}
+	endings = []
+	rush_hour_unlocked = false
 	rush_best = 0
 
 
@@ -619,6 +644,13 @@ func _apply_save(data: Variant) -> String:
 	if flags_problem != "":
 		return flags_problem
 	flags = saved["flags"]
+	for ending: Variant in saved["endings"]:
+		if typeof(ending) != TYPE_STRING or not ending in Story.ENDINGS:
+			return "endings has an unknown ending %s, not one of %s" % [ending, Story.ENDINGS]
+		if ending in endings:
+			return "endings has '%s' twice" % ending
+		endings.append(ending)
+	rush_hour_unlocked = saved["rush_hour_unlocked"]
 	var settings: Dictionary = saved["settings"]
 	if settings.size() != SETTINGS_KEYS.size() or not SETTINGS_KEYS.all(func(key: String) -> bool: return typeof(settings.get(key)) == TYPE_BOOL):
 		return "settings must be exactly %s, each true or false" % [SETTINGS_KEYS]
@@ -648,11 +680,26 @@ static func migrate_save(saved: Dictionary, migrations: Array[Callable], target:
 
 
 ## The save format's upgrade steps: entry i turns a version i + 1 save into
-## version i + 2 (none yet: version 1 is the first). Steps run before the save is
-## validated, so they must read keys with get() and leave anything malformed for
-## the validation to report.
+## version i + 2. Steps run before the save is validated, so they must read keys
+## with get() and leave anything malformed for the validation to report.
 static func save_migrations() -> Array[Callable]:
-	return []
+	return [_save_v1_to_v2]
+
+
+## Version 1 -> 2: the ending reached and the Rush Hour unlock move out of the story's
+## flags into `endings` and `rush_hour_unlocked` (kept by new_game). A save of the
+## two-day build that had finished its story (V1_STORY_OVER_DAY, market closed, no
+## flags) reopens the market before that day, which now exists.
+static func _save_v1_to_v2(saved: Dictionary) -> void:
+	var old_flags: Variant = saved.get("flags")
+	var story_flags: Dictionary = old_flags if old_flags is Dictionary else {}
+	if story_flags.is_empty() and _is_whole(saved.get("day")) and int(saved["day"]) == V1_STORY_OVER_DAY and typeof(saved.get("at_market")) == TYPE_BOOL and not saved["at_market"]:
+		saved["at_market"] = true
+		print("[Game] Save upgrade: the two-day story's finished save reopens the market before day %d" % V1_STORY_OVER_DAY)
+	saved["endings"] = [story_flags[V1_ENDING_FLAG]] if story_flags.has(V1_ENDING_FLAG) else []
+	saved["rush_hour_unlocked"] = story_flags.get(V1_RUSH_HOUR_FLAG, false)
+	story_flags.erase(V1_ENDING_FLAG)
+	story_flags.erase(V1_RUSH_HOUR_FLAG)
 
 
 ## Reports `problem`, moves the bad save to backup_path() and writes defaults in

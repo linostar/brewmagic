@@ -167,6 +167,7 @@ func _recipe_row(potion: PotionType, ingredient_ids: PackedStringArray) -> VBoxC
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var title := _label(potion.name)
 	title.add_theme_color_override(&"font_color", NAME_COLOR)
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(title)
 	top.add_child(_label(", ".join(potion.steps)))
@@ -181,7 +182,11 @@ func _recipe_row(potion: PotionType, ingredient_ids: PackedStringArray) -> VBoxC
 			continue
 		bottom.add_child(_icon(Art.texture("ingredients", id), ICON_SIZE))
 		names.append(item.name)
-	bottom.add_child(_label(" + ".join(names)))
+	# Three long names are wider than the column: they wrap under each other instead.
+	var listed := _label(" + ".join(names))
+	listed.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	listed.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bottom.add_child(listed)
 	row.add_child(bottom)
 	return row
 

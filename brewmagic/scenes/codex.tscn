@@ -41,8 +41,8 @@ anchors_preset = -1
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_top = -312.0
-offset_bottom = -288.0
+offset_top = -388.0
+offset_bottom = -364.0
 grow_horizontal = 2
 grow_vertical = 0
 theme_type_variation = &"TitleLabel"
@@ -57,16 +57,29 @@ anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 6.0
-offset_top = -284.0
+offset_top = -360.0
 offset_right = -6.0
 offset_bottom = -6.0
 grow_horizontal = 2
 grow_vertical = 0
-pivot_offset = Vector2(129, 139)
+pivot_offset = Vector2(129, 177)
 
 [node name="List" type="VBoxContainer" parent="Column/Panel"]
 layout_mode = 2
 theme_override_constants/separation = 4
+
+[node name="Heading" type="Label" parent="Column/Panel/List"]
+layout_mode = 2
+theme_type_variation = &"DarkLabel"
+text = "Hint words"
+horizontal_alignment = 1
+
+[node name="Entries" type="VBoxContainer" parent="Column/Panel/List"]
+custom_minimum_size = Vector2(0, 226)
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+theme_override_constants/separation = 3
 
 [node name="Tabs" type="HBoxContainer" parent="Column/Panel/List"]
 layout_mode = 2
@@ -90,19 +103,6 @@ accessibility_name = "Recipes: potions you have brewed well"
 toggle_mode = true
 button_group = SubResource("ButtonGroup_tabs")
 text = "Recipes"
-
-[node name="Heading" type="Label" parent="Column/Panel/List"]
-layout_mode = 2
-theme_type_variation = &"DarkLabel"
-text = "Hint words"
-horizontal_alignment = 1
-
-[node name="Entries" type="VBoxContainer" parent="Column/Panel/List"]
-custom_minimum_size = Vector2(0, 150)
-layout_mode = 2
-size_flags_vertical = 3
-mouse_filter = 2
-theme_override_constants/separation = 3
 
 [node name="Footer" type="HBoxContainer" parent="Column/Panel/List"]
 layout_mode = 2

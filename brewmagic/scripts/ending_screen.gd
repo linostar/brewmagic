@@ -35,8 +35,10 @@ func _ready() -> void:
 	($Column/Picture/Counter as TextureRect).texture = Art.texture("shop", "shop_counter")
 	var id := Story.ending(_game.flags, _game.reputation)
 	if _game.story_over():
-		# Game.finish_day recorded it when the last day ended; a save from before that records it now.
-		id = str(_game.flags.get(Story.ENDING_FLAG, "")) if _game.flags.has(Story.ENDING_FLAG) else _game.finish_story()
+		# Game.finish_day recorded it when the last day ended (the flags and reputation
+		# have not changed since); a save from before that records it now.
+		if not _game.has_recorded(id):
+			_game.finish_story()
 	else:
 		# Only reachable outside the story flow (the scene opened on its own).
 		print("[Ending] The story is not over (day %d); showing %s without recording it" % [_game.day, id])

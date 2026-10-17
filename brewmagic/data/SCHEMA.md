@@ -218,7 +218,9 @@ One upgrade per station: exactly one entry for each of `"stir"`, `"pour"`, `"mor
   customer, and I7 and I8 hold for that path's customers (in I8, story beats count with no pay, since they can be
   refused, but their ingredients are used). Every beat has its `lines`, every beat visit pins a `request`, and no two
   potions share a `target`.
-- **I14** Endings: exactly the three ids above, every page fits, every `cast` id is a known archetype.
+- **I14** Endings: exactly the three ids above, every page fits, every `cast` id is a known archetype. The texts
+  match the rule under "Story": only `charming_chaos` refuses the licence, and `cosy_corner` claims nothing about
+  which arcs went well (it covers every granted licence short of Guild Master).
 
 ## Current content (days 1-7)
 | ingredient | essence | day | flags | price |
@@ -284,8 +286,9 @@ Vexley's overflow customer on day 5. Morning notes change with the flags on days
 **Endings** (`Story.ending(flags, reputation)`, `scripts/logic/story.gd`): the licence is granted when `quill.fair` is
 `great`; an arc is resolved when the character's day-7 beat is `great` (so Quill's counts with the licence).
 - `guild_master`: licence, all three arcs resolved and reputation >= `Story.GUILD_MASTER_REPUTATION` (30).
-- `cosy_corner`: licence and at least two arcs resolved (otherwise).
-- `charming_chaos`: everything else (no licence, or only Quill's arc resolved): the village loves the shop anyway.
+- `cosy_corner`: any other granted licence (some arcs unresolved, or reputation under 30); its pages fit every such case.
+- `charming_chaos`: exactly the licence refused (its first page says so): the village loves the shop anyway.
 
-When the last day ends, `Game.finish_story()` records the ending as `flags.ending` and sets `flags.rush_hour_unlocked`
-(both saved, so quitting on the last summary keeps them); the ending scene then shows it.
+When the last day ends, `Game.finish_story()` adds the ending to `Game.endings` (each ending once) and sets
+`Game.rush_hour_unlocked` (both saved, so quitting on the last summary keeps them, and kept by a new game, like the
+Codex); the ending scene then shows it. `Game.flags` holds beat outcomes only.

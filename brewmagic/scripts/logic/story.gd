@@ -2,7 +2,8 @@ class_name Story
 ## The Guild Fair story rules (data/SCHEMA.md "Story"), static, no nodes: the outcome of a
 ## story beat, flag conditions on later customers and morning notes, and the ending.
 ## A beat's outcome is stored in Game.flags under its flag "<character>.<beat>"
-## (DayCustomer.flag()); the story also keeps ENDING_FLAG and RUSH_HOUR_FLAG there.
+## (DayCustomer.flag()); nothing else is kept there (the endings reached and the Rush
+## Hour unlock outlive a story, in Game.endings and Game.rush_hour_unlocked).
 
 ## A beat's outcomes: served Perfect or Good, served Meh or Misbrew, refused, stormed off.
 const GREAT := "great"
@@ -22,9 +23,6 @@ const GUILD_MASTER := "guild_master"
 const COSY_CORNER := "cosy_corner"
 const CHARMING_CHAOS := "charming_chaos"
 const ENDINGS: Array[String] = [GUILD_MASTER, COSY_CORNER, CHARMING_CHAOS]
-## Flags the story keeps besides beat outcomes: the ending reached and the Rush Hour unlock.
-const ENDING_FLAG := "ending"
-const RUSH_HOUR_FLAG := "rush_hour_unlocked"
 
 
 ## The outcome a served brew of `grade` gives a beat: great for Perfect and Good, poor for Meh and Misbrew.
@@ -85,21 +83,14 @@ static func final_flags() -> PackedStringArray:
 
 
 ## What is wrong with a saved `flags` dictionary, or "": every key must be a beat flag of
-## the story (beat_flags) with an outcome of OUTCOMES, ENDING_FLAG with an id of ENDINGS,
-## or RUSH_HOUR_FLAG with a bool.
+## the story (beat_flags) with an outcome of OUTCOMES.
 static func flags_problem(flags: Dictionary) -> String:
 	var beats := beat_flags()
 	for key: Variant in flags:
 		var value: Variant = flags[key]
 		if typeof(key) != TYPE_STRING:
 			return "flags has a key that is not a string: %s" % key
-		if key == ENDING_FLAG:
-			if typeof(value) != TYPE_STRING or not value in ENDINGS:
-				return "flags.%s is %s, not one of %s" % [key, value, ENDINGS]
-		elif key == RUSH_HOUR_FLAG:
-			if typeof(value) != TYPE_BOOL:
-				return "flags.%s is %s, not true or false" % [key, value]
-		elif key in beats:
+		if key in beats:
 			if typeof(value) != TYPE_STRING or not value in OUTCOMES:
 				return "flags.%s is %s, not one of %s" % [key, value, OUTCOMES]
 		else:
@@ -110,17 +101,12 @@ static func flags_problem(flags: Dictionary) -> String:
 ## The ending the story reaches (one of ENDINGS): the licence is granted when LICENCE_FLAG
 ## is great; an arc is resolved when its character's final beat (final_flags) is great.
 ##   GUILD_MASTER: licence, every arc resolved, reputation >= GUILD_MASTER_REPUTATION.
-##   COSY_CORNER: licence and at least two arcs resolved.
-##   CHARMING_CHAOS: anything else.
+##   COSY_CORNER: any other granted licence.
+##   CHARMING_CHAOS: the licence refused (its pages say so).
 static func ending(flags: Dictionary, reputation: int) -> String:
-	var finals := final_flags()
-	var resolved := 0
-	for flag in finals:
-		if outcome(flags, flag) == GREAT:
-			resolved += 1
-	var licence := outcome(flags, LICENCE_FLAG) == GREAT
-	if licence and resolved == finals.size() and reputation >= GUILD_MASTER_REPUTATION:
-		return GUILD_MASTER
-	if licence and resolved >= 2:
-		return COSY_CORNER
-	return CHARMING_CHAOS
+	if outcome(flags, LICENCE_FLAG) != GREAT:
+		return CHARMING_CHAOS
+	for flag in final_flags():
+		if outcome(flags, flag) != GREAT:
+			return COSY_CORNER
+	return GUILD_MASTER if reputation >= GUILD_MASTER_REPUTATION else COSY_CORNER

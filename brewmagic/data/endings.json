@@ -14,7 +14,7 @@
     "title": "Cosy Corner Shop",
     "pages": [
       { "cast": ["quill"], "text": "Inspector Quill stamps your licence with a small, approving nod. 'Not flashy. Very solid. Clause three would be proud.'" },
-      { "cast": ["vexley", "stranger"], "text": "Not every story ended neatly, but the regulars keep coming back, and the kettle is always on." },
+      { "cast": ["vexley", "stranger"], "text": "Old faces and new ones drop by for tea now and then. The regulars keep coming back, and the kettle is always on." },
       { "cast": ["goat_farmer", "gossip_granny", "apprentice_knight"], "text": "You stay the village's cosy corner shop: warm tonics, gossip on tap and a goat who visits daily. The end... for now." }
     ]
   },

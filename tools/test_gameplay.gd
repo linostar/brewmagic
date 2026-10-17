@@ -840,6 +840,8 @@ func _test_shop_day1_assist() -> void:
 func _test_shop_last_day_storm_off() -> void:
 	var last := Content.days().size()
 	_game.new_game()
+	_game.endings = []
+	_game.rush_hour_unlocked = false
 	_game.assist_mode = true
 	_game.day = last
 	for item in Content.ingredients_unlocked_by(last):
@@ -883,11 +885,12 @@ func _test_shop_last_day_storm_off() -> void:
 	_check(("Reputation: %+d" % reputation) in money and "Stormed off: 1" in money, "last day: the summary shows the storm-off and the reputation change", money)
 	var button := summary.get_node("Column/ContinueButton") as Button
 	_check(button.text == "The ending", "last day: the summary leads to the ending", button.text)
-	var recorded: Dictionary = _read_save().get("flags", {})
-	_check(recorded.has(Story.ENDING_FLAG) and recorded.get(Story.RUSH_HOUR_FLAG) == true, "last day: the ending and the Rush Hour unlock are saved before the ending scene", str(recorded))
+	var recorded := _read_save()
+	var reached := Story.ending(_game.flags, _game.reputation)
+	_check(recorded.get("endings") == [reached] and recorded.get("rush_hour_unlocked") == true, "last day: the ending and the Rush Hour unlock are saved before the ending scene", str(recorded))
 	await _tap(button)
 	_check(await _until(func() -> bool: return _game.state == GameState.Flow.ENDING and not _game.is_transitioning(), FLOW_FRAMES), "last day: The ending opens the ending", str(_game.state))
-	_check(_game.flags.get(Story.ENDING_FLAG) == Story.ending(_game.flags, _game.reputation) and _game.flags.get(Story.RUSH_HOUR_FLAG) == true, "last day: the ending is recorded and Rush Hour unlocked", str(_game.flags))
+	_check(_game.endings == ([reached] as Array[String]) and _game.rush_hour_unlocked, "last day: the ending is recorded once and Rush Hour unlocked", "%s %s" % [_game.endings, _game.rush_hour_unlocked])
 	_game.assist_mode = false
 	_game.new_game()
 
@@ -2133,8 +2136,10 @@ func _test_save_round_trip() -> void:
 	_game.reputation = -4
 	_game.stock = {"ember_pepper": 2, "moonmoss": 0}
 	_game.upgrades = {"stir": 1, "pour": 2}
-	_game.flags = {"quill.inspection": "great", "vexley.opening": "refused", "ending": "cosy_corner", "rush_hour_unlocked": true}
+	_game.flags = {"quill.inspection": "great", "vexley.opening": "refused"}
 	_game.codex = {"words": ["hint_warm", "hint_calm"], "recipes": {"hearthglow_tonic": ["ember_pepper", "sunpetal"]}}
+	_game.endings = ["cosy_corner", "guild_master"]
+	_game.rush_hour_unlocked = true
 	_game.rush_best = 7
 	_game.assist_mode = true
 	_game.gentle_mode = true
@@ -2146,15 +2151,22 @@ func _test_save_round_trip() -> void:
 	_game.load_game()
 	_check(_game.day == 2 and _game.at_market and _game.coins == 33 and _game.reputation == -4 and _game.rush_best == 7, "save round trip: day, market, coins, reputation, Rush best", "%d %s %d %d %d" % [_game.day, _game.at_market, _game.coins, _game.reputation, _game.rush_best])
 	_check(_game.stock == ({"ember_pepper": 2, "moonmoss": 0} as Dictionary[String, int]) and _game.upgrades == ({"stir": 1, "pour": 2} as Dictionary[String, int]), "save round trip: stock and upgrades", "%s %s" % [_game.stock, _game.upgrades])
-	_check(_game.flags.recursive_equal({"quill.inspection": "great", "vexley.opening": "refused", "ending": "cosy_corner", "rush_hour_unlocked": true}, 1), "save round trip: story flags", str(_game.flags))
+	_check(_game.flags.recursive_equal({"quill.inspection": "great", "vexley.opening": "refused"}, 1), "save round trip: story flags", str(_game.flags))
+	_check(_game.endings == (["cosy_corner", "guild_master"] as Array[String]) and _game.rush_hour_unlocked, "save round trip: endings reached and the Rush Hour unlock", "%s %s" % [_game.endings, _game.rush_hour_unlocked])
 	_check(_game.codex_words() == PackedStringArray(["hint_warm", "hint_calm"]) and _game.codex_recipes() == ({"hearthglow_tonic": PackedStringArray(["ember_pepper", "sunpetal"])} as Dictionary[String, PackedStringArray]), "save round trip: codex", str(_game.codex))
 	_check(_game.assist_mode and _game.gentle_mode and _game.reported_errors.size() == errors, "save round trip: settings, no errors", "%s %s" % [_game.assist_mode, _game.gentle_mode])
 	_game.rush_best = 7
 	_game.new_game()
-	_check(_game.rush_best == 7 and _game.assist_mode and _game.day == 1 and _game.upgrades.is_empty(), "a new game keeps the settings and the Rush best only", "%d %s %d %s" % [_game.rush_best, _game.assist_mode, _game.day, _game.upgrades])
+	_check(_game.rush_best == 7 and _game.assist_mode and _game.day == 1 and _game.upgrades.is_empty() and _game.flags.is_empty() and _game.coins == Content.day(1).starting_coins, "a new game restarts the story but keeps the settings and the Rush best", "%d %s %d %s %s" % [_game.rush_best, _game.assist_mode, _game.day, _game.upgrades, _game.flags])
+	var saved_after := _read_save()
+	_check(_game.rush_hour_unlocked and _game.endings == (["cosy_corner", "guild_master"] as Array[String]) and saved_after.get("rush_hour_unlocked") == true and saved_after.get("endings") == ["cosy_corner", "guild_master"], "a new game keeps the Rush Hour unlock and the endings reached (saved)", str(saved_after))
+	_check(_game.codex_words() == PackedStringArray(["hint_warm", "hint_calm"]) and _game.codex_recipes().has("hearthglow_tonic"), "a new game keeps the Codex", str(_game.codex))
 	_game.assist_mode = false
 	_game.gentle_mode = false
 	_game.rush_best = 0
+	_game.codex = {}
+	_game.endings = []
+	_game.rush_hour_unlocked = false
 	_game.new_game()
 
 
@@ -2186,13 +2198,21 @@ func _test_save_missing_and_corrupt() -> void:
 		"huge rush_best": JSON.stringify(_with(good, "rush_best", GameState.SAVE_SCORE_MAX + 1)),
 		"unknown story flag": JSON.stringify(_with(good, "flags", {"goat_trusts_you": true})),
 		"bad beat outcome": JSON.stringify(_with(good, "flags", {"quill.inspection": "splendid"})),
-		"unknown ending": JSON.stringify(_with(good, "flags", {"ending": "happily_ever_after"})),
-		"rush unlock not a bool": JSON.stringify(_with(good, "flags", {"rush_hour_unlocked": "yes"})),
+		"ending left in flags": JSON.stringify(_with(good, "flags", {"ending": "cosy_corner"})),
+		"unknown ending": JSON.stringify(_with(good, "endings", ["happily_ever_after"])),
+		"repeated ending": JSON.stringify(_with(good, "endings", ["cosy_corner", "cosy_corner"])),
+		"endings not a list": JSON.stringify(_with(good, "endings", "cosy_corner")),
+		"ending that is a list": JSON.stringify(_with(good, "endings", [["cosy_corner", "guild_master"]])),
+		"ending that is an empty list": JSON.stringify(_with(good, "endings", [[]])),
+		"rush unlock not a bool": JSON.stringify(_with(good, "rush_hour_unlocked", "yes")),
 		"unknown codex key": JSON.stringify(_with(good, "codex", {"spells": []})),
 		"unknown codex word": JSON.stringify(_with(good, "codex", {"words": ["hint_banana"]})),
 		"repeated codex word": JSON.stringify(_with(good, "codex", {"words": ["hint_warm", "hint_warm"]})),
 		"codex recipe of an unknown potion": JSON.stringify(_with(good, "codex", {"recipes": {"elixir_of_life": ["ember_pepper", "sunpetal"]}})),
 		"codex recipe of one ingredient": JSON.stringify(_with(good, "codex", {"recipes": {"hearthglow_tonic": ["ember_pepper"]}})),
+		"codex words not a list": JSON.stringify(_with(good, "codex", {"words": "hint_warm"})),
+		"codex recipes not an object": JSON.stringify(_with(good, "codex", {"recipes": ["hearthglow_tonic"]})),
+		"codex recipe with an unknown ingredient": JSON.stringify(_with(good, "codex", {"recipes": {"hearthglow_tonic": ["ember_pepper", "dragon_tooth"]}})),
 	}
 	var error_label := _game.get_node("Fade/ErrorLabel") as Label
 	for case in cases:
@@ -2233,6 +2253,18 @@ func _test_save_migrations() -> void:
 	_check(GameState.migrate_save(middle, steps, 3) == "" and middle == {"version": 3, "coins": 10}, "a version 2 save runs only the last step", str(middle))
 	var newer := {"version": 4}
 	_check("newer" in GameState.migrate_save(newer, steps, 3) and newer == {"version": 4}, "a save from a newer game is refused unchanged", str(newer))
+	var v1 := {"version": 1, "day": 8, "at_market": false, "flags": {"quill.fair": "great", "ending": "cosy_corner", "rush_hour_unlocked": true}}
+	var upgraded := GameState.migrate_save(v1, GameState.save_migrations(), GameState.SAVE_VERSION)
+	_check(upgraded == "" and v1 == {"version": 2, "day": 8, "at_market": false, "flags": {"quill.fair": "great"}, "endings": ["cosy_corner"], "rush_hour_unlocked": true}, "version 1 -> 2: the ending and the Rush Hour unlock move out of the flags", "%s %s" % [upgraded, v1])
+	var v1_plain := {"version": 1, "day": 2, "at_market": false, "flags": {}}
+	GameState.migrate_save(v1_plain, GameState.save_migrations(), GameState.SAVE_VERSION)
+	_check(v1_plain == {"version": 2, "day": 2, "at_market": false, "flags": {}, "endings": [], "rush_hour_unlocked": false}, "version 1 -> 2: a save without an ending gets none and no unlock", str(v1_plain))
+	var v1_two_day_end := {"version": 1, "day": 3.0, "at_market": false, "flags": {}}
+	GameState.migrate_save(v1_two_day_end, GameState.save_migrations(), GameState.SAVE_VERSION)
+	_check(v1_two_day_end.get("at_market") == true, "version 1 -> 2: the two-day build's finished save reopens the market before day 3", str(v1_two_day_end))
+	var v1_story_day_3 := {"version": 1, "day": 3, "at_market": false, "flags": {"quill.inspection": "great"}}
+	GameState.migrate_save(v1_story_day_3, GameState.save_migrations(), GameState.SAVE_VERSION)
+	_check(v1_story_day_3.get("at_market") == false, "version 1 -> 2: a day-3 save with story flags keeps its morning", str(v1_story_day_3))
 
 
 ## Save files that cannot be written: a temporary file that cannot be created (the
@@ -2635,10 +2667,10 @@ func _test_story_rules() -> void:
 	_check(Story.morning_note(day5, {"quill.inspection": "great"}) != Story.morning_note(day5, {"quill.inspection": "poor"}) and Story.morning_note(Content.day(3), {}) == Content.day(3).morning_note, "story: morning notes follow the flags, else the day's note", Story.morning_note(day5, {}))
 	_check(Story.beat_flags().size() == 9 and Story.final_flags() == PackedStringArray(["vexley.fair", "stranger.fair", "quill.fair"]), "story: nine beats, three final ones on day 7", "%s / %s" % [Story.beat_flags(), Story.final_flags()])
 	var problems := PackedStringArray()
-	for bad: Dictionary in [{"nobody.waves": "great"}, {"quill.inspection": "splendid"}, {"ending": "the_end"}, {"rush_hour_unlocked": 1}, {"quill.inspection": 3}]:
+	for bad: Dictionary in [{"nobody.waves": "great"}, {"quill.inspection": "splendid"}, {"ending": "guild_master"}, {"rush_hour_unlocked": true}, {"quill.inspection": 3}]:
 		if Story.flags_problem(bad) == "":
 			problems.append(str(bad))
-	_check(problems.is_empty() and Story.flags_problem({"quill.inspection": "great", "ending": "guild_master", "rush_hour_unlocked": true}) == "", "story: saved flags are validated", str(problems))
+	_check(problems.is_empty() and Story.flags_problem({"quill.inspection": "great", "quill.fair": "refused"}) == "", "story: saved flags are validated (beat outcomes only)", str(problems))
 
 
 ## Story beats in the shop (day 3, Assist): a story character wears its fixed look;
@@ -2692,8 +2724,9 @@ func _test_shop_story_beats() -> void:
 ## (any grade), a Good or better brew its recipe (a Meh one does not); an exact recipe
 ## replaces an inexact one but not the other way round; everything is saved at once.
 func _test_codex_records() -> void:
+	_game.codex = {}
 	_game.new_game()
-	_check(_game.codex_words().is_empty() and _game.codex_recipes().is_empty(), "codex: a new game's Codex is empty", str(_game.codex))
+	_check(_game.codex_words().is_empty() and _game.codex_recipes().is_empty(), "codex: an empty Codex stays empty in a new game", str(_game.codex))
 	_game.assist_mode = true
 	var shop := await _open_shop()
 	if not await _wait_for_order(shop, "codex"):
@@ -2706,10 +2739,11 @@ func _test_codex_records() -> void:
 	if await _wait_for_order(shop, "codex 2"):
 		var second := shop.customer
 		var recipe := _exact_recipe(second.potion, shop.stock)
-		var words_before := _game.codex_words().size()
 		if await _serve(shop, recipe, "codex Good"):
 			var held: PackedStringArray = _game.codex_recipes().get(second.potion.id, PackedStringArray())
-			_check(held == PackedStringArray(recipe) and _game.codex_words().size() >= words_before, "codex: a Good brew notes its recipe", str(_game.codex))
+			var words := _game.codex_words()
+			var hints_noted := not second.request.hints.is_empty() and Array(second.request.hints).all(func(id: String) -> bool: return id in words)
+			_check(held == PackedStringArray(recipe) and hints_noted, "codex: a Good brew notes its recipe and its request's hint words", "%s hints %s" % [_game.codex, second.request.hints])
 			var saved: Dictionary = _read_save().get("codex", {})
 			_check(saved.get("recipes", {}).has(second.potion.id), "codex: the Codex is saved as it is earned", str(saved))
 			_check(not _game.learn_recipe(second.potion, PackedStringArray([recipe[0], recipe[0], recipe[1]])), "codex: an inexact recipe does not replace an exact one", str(_game.codex_recipes()))
@@ -2722,13 +2756,16 @@ func _test_codex_records() -> void:
 	var replaced := _game.learn_recipe(tonic, exact)
 	var kept := not _game.learn_recipe(tonic, near)
 	_check(first_noted and replaced and kept and _game.codex_recipes()["hearthglow_tonic"] == exact, "codex: the first Good recipe is noted, an exact one replaces it, an inexact one never replaces an exact one", str(_game.codex_recipes()))
+	_game.codex = {}
 	_game.new_game()
 
 
 ## The Codex panel: the shop's Codex button pauses the shift and opens the Words tab
 ## (each word with its essence's name and icon); Recipes lists the potion, its stations
-## and ingredients; pages turn; keyboard focus stays inside, and Escape (ui_cancel)
-## closes it, resumes the shift and gives focus back. The morning and the market open it too.
+## and ingredients (a page of three-ingredient recipes with the longest names still fits
+## the column, its controls in the thumb zone, at 9:16, 9:19.5 and 16:9); pages turn;
+## keyboard focus stays inside, and Escape (ui_cancel) closes it, resumes the shift and
+## gives focus back. The morning and the market open it too.
 func _test_codex_panel() -> void:
 	var shop := await _open_shop()
 	var recipes := {}
@@ -2738,6 +2775,13 @@ func _test_codex_panel() -> void:
 			for b in pool:
 				if not recipes.has(potion.id) and a.essence + b.essence == potion.target:
 					recipes[potion.id] = [a.id, b.id]
+	# The rest of the first page: the three longest ingredient names, the widest row there is.
+	var longest := Content.ingredients().map(func(item: Ingredient) -> Ingredient: return item)
+	longest.sort_custom(func(a: Ingredient, b: Ingredient) -> bool: return a.name.length() > b.name.length())
+	var long_recipe := longest.slice(0, 3).map(func(item: Ingredient) -> String: return item.id)
+	var long_names := " + ".join(PackedStringArray(longest.slice(0, 3).map(func(item: Ingredient) -> String: return item.name)))
+	for potion: PotionType in Content.potions().slice(1, Codex.RECIPES_PER_PAGE):
+		recipes[potion.id] = long_recipe
 	_game.codex = {"words": ["hint_calm", "hint_warm"], "recipes": recipes}
 	var button := shop.get_node("Column/Stage/CodexButton") as Button
 	_check(button.accessibility_name == "Codex" and button.focus_mode == Control.FOCUS_ALL, "codex: the shop's Codex button is focusable and named", button.accessibility_name)
@@ -2755,6 +2799,20 @@ func _test_codex_panel() -> void:
 	await _tap(codex.get_node("Column/Panel/List/Tabs/RecipesTab") as Button)
 	var first_page := codex.entry_texts()
 	_check(codex.tab == Codex.Tab.RECIPES and first_page.size() == Codex.RECIPES_PER_PAGE and "Hearthglow Tonic stir, pour Ember Pepper + Sunpetal" in first_page, "codex: recipes show name, stations and ingredients", str(first_page))
+	_check(first_page.size() == Codex.RECIPES_PER_PAGE and Array(first_page).slice(1).all(func(text: String) -> bool: return long_names in text), "codex: three-ingredient recipes list every ingredient name", str(first_page))
+	var panel := codex.get_node("Column/Panel") as Control
+	var controls: Array[Control] = []
+	for path: String in ["Tabs/WordsTab", "Tabs/RecipesTab", "Footer/PrevButton", "Footer/NextButton", "Footer/CloseButton"]:
+		controls.append(codex.get_node("Column/Panel/List/" + path) as Control)
+	for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
+		root.size = window
+		await _frames(10)
+		var column := _game.column_rect()
+		var rows := codex.get_node("Column/Panel/List/Entries").get_children().all(func(row: Control) -> bool: return panel.get_global_rect().encloses(row.get_global_rect()))
+		_check(column.encloses(panel.get_global_rect()) and rows, "codex at %s: the panel of three-ingredient recipes stays inside the column" % window, "panel %s column %s" % [panel.get_global_rect(), column])
+		_check_targets(controls, null, "codex at %s" % window)
+	root.size = BASE_WINDOW
+	await _frames(10)
 	var pages := codex.page_count()
 	await _tap(codex.get_node("Column/Panel/List/Footer/NextButton") as Button)
 	_check(pages == ceili(recipes.size() / float(Codex.RECIPES_PER_PAGE)) and codex.page == 1 and codex.entry_texts() != first_page, "codex: Next turns the page", "%d pages, page %d" % [pages, codex.page])
@@ -2783,7 +2841,7 @@ func _test_codex_panel() -> void:
 ## Story.ending on every path of the three final beats (4^3 outcomes) at reputations
 ## just under and at the Guild Master threshold, against the rule written out here:
 ## licence = quill.fair great; Guild Master needs the licence, all three arcs and the
-## reputation; Cosy Corner the licence and two arcs; anything else is Charming Chaos.
+## reputation; any other granted licence is Cosy Corner; a refused one Charming Chaos.
 func _test_story_ending_rule() -> void:
 	var finals := Story.final_flags()
 	var wrong := PackedStringArray()
@@ -2800,7 +2858,7 @@ func _test_story_ending_rule() -> void:
 					var expected := Story.CHARMING_CHAOS
 					if licence and resolved == 3 and reputation >= Story.GUILD_MASTER_REPUTATION:
 						expected = Story.GUILD_MASTER
-					elif licence and resolved >= 2:
+					elif licence:
 						expected = Story.COSY_CORNER
 					var got := Story.ending(flags, reputation)
 					reached[got] = true
@@ -2808,6 +2866,11 @@ func _test_story_ending_rule() -> void:
 						wrong.append("%s rep %d: %s, expected %s" % [flags, reputation, got, expected])
 	_check(paths == 128 and wrong.is_empty() and reached.size() == 3, "story: the ending rule on all 128 final paths reaches all three endings", "\n".join(wrong))
 	_check(Story.ending({}, 99) == Story.CHARMING_CHAOS and Story.LICENCE_FLAG in finals, "story: no recorded final beats is Charming Chaos; the licence is a final beat", str(finals))
+	var licence_only := {finals[0]: Story.REFUSED, finals[1]: Story.POOR, Story.LICENCE_FLAG: Story.GREAT}
+	_check(Story.ending(licence_only, 0) == Story.COSY_CORNER, "story: a granted licence with no other arc resolved is Cosy Corner, never Charming Chaos", str(licence_only))
+	var chaos_refuses := "declines your licence" in Content.ending(Story.CHARMING_CHAOS).pages[0]
+	var others_grant := [Story.GUILD_MASTER, Story.COSY_CORNER].all(func(id: String) -> bool: return Array(Content.ending(id).pages).all(func(text: String) -> bool: return not "declines" in text))
+	_check(chaos_refuses and others_grant, "story: only Charming Chaos's pages refuse the licence", "")
 
 
 ## The ending scene after the story: it records the ending and the Rush Hour unlock
@@ -2815,6 +2878,8 @@ func _test_story_ending_rule() -> void:
 ## by Enter (focused Next, in the thumb zone), and "The end" goes back to the title.
 func _test_ending_scene() -> void:
 	_game.new_game()
+	_game.endings = []
+	_game.rush_hour_unlocked = false
 	_game.day = Content.days().size() + 1
 	_game.reputation = Story.GUILD_MASTER_REPUTATION
 	for flag in Story.final_flags():
@@ -2824,8 +2889,8 @@ func _test_ending_scene() -> void:
 	_check(screen != null and screen.ending == ending and (screen.get_node("Column/Title") as Label).text == ending.title, "ending: the Guild Master ending shows its title", str(screen))
 	if screen == null:
 		return
-	var saved: Dictionary = _read_save().get("flags", {})
-	_check(_game.flags.get(Story.ENDING_FLAG) == Story.GUILD_MASTER and _game.flags.get(Story.RUSH_HOUR_FLAG) == true and saved.get(Story.ENDING_FLAG) == Story.GUILD_MASTER and saved.get(Story.RUSH_HOUR_FLAG) == true, "ending: the ending and the Rush Hour unlock are saved", str(saved))
+	var saved := _read_save()
+	_check(_game.endings == ([Story.GUILD_MASTER] as Array[String]) and _game.rush_hour_unlocked and saved.get("endings") == [Story.GUILD_MASTER] and saved.get("rush_hour_unlocked") == true, "ending: the ending and the Rush Hour unlock are saved", str(saved))
 	var next := screen.get_node("Column/NextButton") as Button
 	_check(root.gui_get_focus_owner() == next and next.accessibility_name != "", "ending: Next has focus and a name", str(root.gui_get_focus_owner()))
 	for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
@@ -2848,6 +2913,10 @@ func _test_ending_scene() -> void:
 			await _tap(next)
 	_check(await _until(func() -> bool: return _game.state == GameState.Flow.TITLE and not _game.is_transitioning(), FLOW_FRAMES), "ending: The end goes back to the title", str(_game.state))
 	_game.new_game()
+	_check(_game.rush_hour_unlocked and _game.endings == ([Story.GUILD_MASTER] as Array[String]) and _game.flags.is_empty(), "ending: the next new game keeps the unlock and the ending reached", "%s %s" % [_game.rush_hour_unlocked, _game.endings])
+	_game.endings = []
+	_game.rush_hour_unlocked = false
+	_game.new_game()
 
 
 ## The whole story, headless, through the real screens (taps on Open the shop, To the
@@ -2860,15 +2929,35 @@ func _test_ending_scene() -> void:
 ##   customers stay away, no licence: Charming Chaos.
 ## Ingredients are bought at each market with the coins earned (Game.buy_stock at the
 ## day's prices), so the run also checks that the pay covers the next day.
+## Each day's beats are checked against the request each path must bring (written out
+## here from data/SCHEMA.md "Story"), and the conditioned extra customers (the goat
+## farmer on day 4, Vexley's overflow on day 5) against whether the path sends them.
 func _test_story_playthrough_helpful() -> void:
-	await _play_story(false, Story.GUILD_MASTER)
+	var beats: Dictionary[int, Dictionary] = {
+		3: {"quill.inspection": "stillwater_quill_1", "stranger.first_sneeze": "dewdrop_stranger_1"},
+		4: {"vexley.opening": "steamwhistle_vexley_1"},
+		5: {"quill.audit": "steamwhistle_quill_1"},
+		6: {"stranger.confession": "hushfire_stranger_1", "vexley.truce": "panacea_vexley_1"},
+		7: {"vexley.fair": "starfire_vexley_1", "stranger.fair": "panacea_stranger_1", "quill.fair": "panacea_quill_1"},
+	}
+	await _play_story(false, Story.GUILD_MASTER, beats, {4: 1, 5: 1})
 
 
 func _test_story_playthrough_refusing() -> void:
-	await _play_story(true, Story.CHARMING_CHAOS)
+	var beats: Dictionary[int, Dictionary] = {
+		3: {"quill.inspection": "stillwater_quill_1", "stranger.first_sneeze": "dewdrop_stranger_1"},
+		4: {"vexley.opening": "steamwhistle_vexley_1"},
+		5: {"quill.audit": "stillwater_quill_2"},
+		6: {"stranger.confession": "dewdrop_stranger_2", "vexley.truce": "embermoss_vexley_1"},
+		7: {"vexley.fair": "duskbloom_vexley_1", "stranger.fair": "hushfire_stranger_2", "quill.fair": "starfire_quill_1"},
+	}
+	await _play_story(true, Story.CHARMING_CHAOS, beats, {4: 0, 5: 0})
 
 
-func _play_story(refuse_beats: bool, expected_ending: String) -> void:
+## `beats`: day -> {beat flag: the request id its visit must pin} for every beat of that
+## day (a day not listed has none); `extras`: day -> how many conditioned customers
+## without a beat come (days not listed: none).
+func _play_story(refuse_beats: bool, expected_ending: String, beats: Dictionary[int, Dictionary], extras: Dictionary[int, int]) -> void:
 	var label := "playthrough (%s)" % ("refusing" if refuse_beats else "helpful")
 	_delete_saves()
 	_game.load_game()
@@ -2904,6 +2993,12 @@ func _play_story(refuse_beats: bool, expected_ending: String) -> void:
 		if not finished:
 			break
 		_check(seen == expected, "%s: day %d brings its %d customers for the flags" % [label, number, expected.size()], "%d of %d" % [seen.size(), expected.size()])
+		var seen_beats := {}
+		for visit in seen:
+			if visit.beat != "":
+				seen_beats[visit.flag()] = visit.request
+		var extra_count := seen.filter(func(visit: DayCustomer) -> bool: return visit.beat == "" and not visit.when.is_empty()).size()
+		_check(seen_beats.recursive_equal(beats.get(number, {}), 1) and extra_count == extras.get(number, 0), "%s: day %d brings the path's beat variants and conditioned extras" % [label, number], "beats %s (expected %s), extras %d (expected %d)" % [seen_beats, beats.get(number, {}), extra_count, extras.get(number, 0)])
 		if not await _until(func() -> bool: return current_scene is Summary and not _game.is_transitioning(), FLOW_FRAMES * 2):
 			_check(false, "%s: day %d summary" % [label, number], str(current_scene))
 			finished = false
@@ -2917,7 +3012,7 @@ func _play_story(refuse_beats: bool, expected_ending: String) -> void:
 	if finished:
 		_check(await _until(func() -> bool: return current_scene is EndingScreen and not _game.is_transitioning(), FLOW_FRAMES), "%s: the last summary leads to the ending" % label, str(current_scene))
 		var screen := current_scene as EndingScreen
-		_check(screen != null and screen.ending.id == expected_ending and _game.flags.get(Story.ENDING_FLAG) == expected_ending and _game.flags.get(Story.RUSH_HOUR_FLAG) == true, "%s: reaches %s (reputation %d)" % [label, expected_ending, _game.reputation], "%s %s" % [screen.ending.id if screen != null else "-", _game.flags])
+		_check(screen != null and screen.ending.id == expected_ending and _game.endings == ([expected_ending] as Array[String]) and _game.rush_hour_unlocked, "%s: reaches %s (reputation %d)" % [label, expected_ending, _game.reputation], "%s %s" % [screen.ending.id if screen != null else "-", _game.flags])
 		var beat_outcome := Story.REFUSED if refuse_beats else Story.GREAT
 		var beats_ok := Array(Story.beat_flags()).all(func(flag: String) -> bool: return _game.flags.get(flag) == beat_outcome)
 		_check(beats_ok, "%s: every beat recorded %s" % [label, beat_outcome], str(_game.flags))
@@ -2954,13 +3049,25 @@ func _buy_for_day(number: int) -> bool:
 	return true
 
 
-## A version-1 save from before the story (empty codex and flags) loads unchanged.
+## Version-1 saves load through the version 2 upgrade: one from before the story (empty
+## codex and flags) loads unchanged; the two-day build's finished save (day 3, market
+## closed, no flags) reopens the day-3 market; a finished story's ending and Rush Hour
+## unlock move out of the flags and survive a new game.
 func _test_save_v1_without_story_loads() -> void:
-	_write_save(JSON.stringify({"version": 1, "day": 4, "at_market": true, "coins": 60, "reputation": 9, "stock": {"moonmoss": 2},
-		"upgrades": {}, "codex": {}, "flags": {}, "rush_best": 0, "settings": {"assist": false, "gentle": false}}))
+	var v1 := {"version": 1, "day": 4, "at_market": true, "coins": 60, "reputation": 9, "stock": {"moonmoss": 2},
+		"upgrades": {}, "codex": {}, "flags": {}, "rush_best": 0, "settings": {"assist": false, "gentle": false}}
+	_write_save(JSON.stringify(v1))
 	var errors := _game.reported_errors.size()
 	_game.load_game()
-	_check(_game.reported_errors.size() == errors and _game.day == 4 and _game.coins == 60 and _game.codex.is_empty() and _game.flags.is_empty(), "a v1 save with empty codex and flags loads", "%s day %d" % [_game.reported_errors.slice(errors), _game.day])
+	_check(_game.reported_errors.size() == errors and _game.day == 4 and _game.at_market and _game.coins == 60 and _game.codex.is_empty() and _game.flags.is_empty() and _game.endings.is_empty() and not _game.rush_hour_unlocked, "a v1 save with empty codex and flags loads", "%s day %d" % [_game.reported_errors.slice(errors), _game.day])
+	_write_save(JSON.stringify(_with(_with(v1, "day", 3), "at_market", false)))
+	_game.load_game()
+	_check(_game.reported_errors.size() == errors and _game.day == 3 and _game.at_market and _game.can_continue(), "a v1 save that finished the two-day story reopens the day-3 market", "%s day %d market %s" % [_game.reported_errors.slice(errors), _game.day, _game.at_market])
+	_write_save(JSON.stringify(_with(_with(v1, "day", Content.days().size() + 1), "flags", {"quill.fair": "great", "ending": "cosy_corner", "rush_hour_unlocked": true})))
+	_game.load_game()
+	_check(_game.reported_errors.size() == errors and _game.flags == {"quill.fair": "great"} and _game.endings == (["cosy_corner"] as Array[String]) and _game.rush_hour_unlocked, "a v1 finished story's ending and unlock load outside the flags", "%s %s %s" % [_game.flags, _game.endings, _game.rush_hour_unlocked])
+	_game.new_game()
+	_check(_game.rush_hour_unlocked and _game.endings == (["cosy_corner"] as Array[String]) and _read_save().get("version") == GameState.SAVE_VERSION, "a v1 save's Rush Hour unlock survives a new game", "%s %s" % [_game.rush_hour_unlocked, _game.endings])
 	_delete_saves()
 	_game.load_game()
 
