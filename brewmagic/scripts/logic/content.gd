@@ -17,7 +17,7 @@ const DATA_DIR := "res://data/"
 ## vocabulary.request_ids, which is checked once requests.json is loaded.
 const FILES: Array[String] = [
 	"ingredients.json", "potions.json", "vocabulary.json", "archetypes.json",
-	"requests.json", "misbrews.json", "days.json", "upgrades.json",
+	"requests.json", "misbrews.json", "days.json", "upgrades.json", "endings.json",
 ]
 ## Essence names in Vector4i component order.
 const ESSENCES: Array[String] = ["ember", "frost", "bloom", "gloom"]

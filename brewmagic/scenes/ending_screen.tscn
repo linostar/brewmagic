@@ -1,0 +1,102 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ending_screen.gd" id="1_ending"]
+
+[node name="EndingScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_ending")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.29, 0.204, 0.251, 1)
+
+[node name="Column" type="Control" parent="."]
+anchors_preset = 0
+offset_right = 270.0
+offset_bottom = 480.0
+mouse_filter = 2
+
+[node name="Picture" type="Control" parent="Column"]
+clip_contents = true
+anchors_preset = 0
+offset_right = 270.0
+offset_bottom = 192.0
+mouse_filter = 2
+
+[node name="Backdrop" type="TextureRect" parent="Column/Picture"]
+layout_mode = 0
+offset_right = 270.0
+offset_bottom = 192.0
+mouse_filter = 2
+
+[node name="Cast" type="Node2D" parent="Column/Picture"]
+
+[node name="Counter" type="TextureRect" parent="Column/Picture"]
+layout_mode = 0
+offset_top = 136.0
+offset_right = 270.0
+offset_bottom = 192.0
+mouse_filter = 2
+
+[node name="Title" type="Label" parent="Column"]
+layout_mode = 0
+offset_top = 198.0
+offset_right = 270.0
+offset_bottom = 222.0
+theme_type_variation = &"TitleLabel"
+text = "The End"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Card" type="PanelContainer" parent="Column"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 228.0
+offset_right = 258.0
+offset_bottom = 330.0
+pivot_offset = Vector2(123, 51)
+
+[node name="Text" type="Label" parent="Column/Card"]
+layout_mode = 2
+theme_type_variation = &"DarkLabel"
+text = "Text"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Page" type="Label" parent="Column"]
+layout_mode = 0
+offset_top = 338.0
+offset_right = 270.0
+offset_bottom = 354.0
+text = "Page 1 of 1"
+horizontal_alignment = 1
+
+[node name="NextButton" type="Button" parent="Column"]
+custom_minimum_size = Vector2(180, 44)
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -90.0
+offset_top = -72.0
+offset_right = 90.0
+offset_bottom = -28.0
+grow_horizontal = 2
+grow_vertical = 0
+pivot_offset = Vector2(90, 22)
+accessibility_name = "Next page"
+text = "Next"

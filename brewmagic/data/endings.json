@@ -1,0 +1,30 @@
+[
+  {
+    "id": "guild_master",
+    "title": "Guild Master",
+    "pages": [
+      { "cast": ["quill"], "text": "At the Guild Fair, Inspector Quill unrolls a scroll so long it trips two judges. 'Licence granted. And a seat on the Guild council.'" },
+      { "cast": ["vexley", "stranger"], "text": "Madame Vexley shares your stall and insists it was her idea. The Hooded Stranger lights every lantern without singeing one tent." },
+      { "cast": ["goat_farmer", "gossip_granny", "dramatic_bard"], "text": "The village cheers. Granny Marigold tells everyone she discovered you. Duchess the goat eats the trophy ribbon." },
+      { "cast": ["vexley", "quill", "stranger"], "text": "Your little shop is now the finest in the Guild. Somewhere, a cauldron bubbles happily. The end... for now." }
+    ]
+  },
+  {
+    "id": "cosy_corner",
+    "title": "Cosy Corner Shop",
+    "pages": [
+      { "cast": ["quill"], "text": "Inspector Quill stamps your licence with a small, approving nod. 'Not flashy. Very solid. Clause three would be proud.'" },
+      { "cast": ["vexley", "stranger"], "text": "Not every story ended neatly, but the regulars keep coming back, and the kettle is always on." },
+      { "cast": ["goat_farmer", "gossip_granny", "apprentice_knight"], "text": "You stay the village's cosy corner shop: warm tonics, gossip on tap and a goat who visits daily. The end... for now." }
+    ]
+  },
+  {
+    "id": "charming_chaos",
+    "title": "Charming Chaos",
+    "pages": [
+      { "cast": ["quill"], "text": "The Guild declines your licence. Quill writes 'chaotic' on a form, crosses it out, and writes 'memorable' instead." },
+      { "cast": ["vexley", "stranger"], "text": "A few things got singed along the way. Vexley is insufferable about it. The dragon sends a very sorry note." },
+      { "cast": ["goat_farmer", "gossip_granny", "dramatic_bard"], "text": "But the village loves you anyway. The bard writes a ballad about your shop: eleven verses, one explosion. The end... for now." }
+    ]
+  }
+]

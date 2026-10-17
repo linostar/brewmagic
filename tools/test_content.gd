@@ -65,6 +65,7 @@ func _tests() -> Array[Callable]:
 		_test_i12_bellows_consistency,
 		_test_i13_story_paths,
 		_test_flag_paths_enumerate_conditions,
+		_test_i14_endings,
 		_test_part_values_have_sprites,
 		_test_malformed_data_errors,
 		_test_title_shows_content_errors,
@@ -420,6 +421,31 @@ func _test_i13_story_paths() -> void:
 	_check(problems.is_empty(), "I13 every story path (%d) has each beat once, customers every day, all solvable" % paths.size(), "\n".join(problems))
 
 
+## I14: exactly the three endings of Story.ENDINGS, each with 2..5 pages that fit a page
+## and casts of known archetypes; the licence beat is one of the final beats.
+func _test_i14_endings() -> void:
+	var problems: Array[String] = []
+	var ids: Array[String] = []
+	for ending in Content.endings():
+		ids.append(ending.id)
+		if ending.pages.size() < Content.MIN_PAGES or ending.pages.size() > Content.MAX_PAGES or ending.casts.size() != ending.pages.size():
+			problems.append("%s has %d pages" % [ending.id, ending.pages.size()])
+		for i in ending.pages.size():
+			if Content.page_problem(ending.pages[i]) != "":
+				problems.append("%s page %d: %s" % [ending.id, i, Content.page_problem(ending.pages[i])])
+			for id in ending.casts[i]:
+				if Content.archetypes().all(func(a: Archetype) -> bool: return a.id != id):
+					problems.append("%s page %d: unknown cast %s" % [ending.id, i, id])
+	ids.sort()
+	var expected := Story.ENDINGS.duplicate()
+	expected.sort()
+	if ids != expected:
+		problems.append("endings %s, expected %s" % [ids, expected])
+	if not Story.LICENCE_FLAG in Story.final_flags():
+		problems.append("the licence beat %s is not a final beat %s" % [Story.LICENCE_FLAG, Story.final_flags()])
+	_check(problems.is_empty(), "I14 three endings whose pages fit; the licence is decided on the last day", "\n".join(problems))
+
+
 ## The path enumerator covers each outcome class a condition can tell apart: two
 ## conditions on one flag naming {great} and {great, poor} split its outcomes into
 ## three classes (great; poor; refused or stormed_off), so 3 paths.
@@ -558,6 +584,12 @@ func _test_malformed_data_errors() -> void:
 			"data/days.json [day_2] morning_notes: is empty"],
 		["look with one cloth twice", "archetypes.json", func(data: Array) -> void: data[0]["look"] = {"cloth_a": "red", "cloth_b": "red", "hair": "black", "skin": "light"},
 			"data/archetypes.json [goat_farmer] look.cloth_b: 'red' is also cloth_a; the two cloths must differ"],
+		["ending missing", "endings.json", func(data: Array) -> void: data.pop_back(),
+			"data/endings.json [-] id: ending 'charming_chaos' is missing"],
+		["ending page too long", "endings.json", func(data: Array) -> void: data[0]["pages"][0]["text"] = "word ".repeat(32).strip_edges(),
+			"data/endings.json [guild_master] pages[0].text: page text wraps to 7 lines (max 6)"],
+		["ending cast unknown", "endings.json", func(data: Array) -> void: data[0]["pages"][0]["cast"] = ["nobody"],
+			"data/endings.json [guild_master] pages[0].cast[0]: unknown archetype id 'nobody'"],
 		["look with an unknown ramp", "archetypes.json", func(data: Array) -> void: data[0]["look"] = {"cloth_a": "red", "cloth_b": "blue", "hair": "black", "skin": "teal"},
 			"data/archetypes.json [goat_farmer] look.skin: 'teal' is not one of [\"light\", \"medium\", \"deep\"]"],
 	]

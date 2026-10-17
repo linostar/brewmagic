@@ -153,6 +153,8 @@ func _tests() -> Array[Callable]:
 		_test_codex_records,
 		_test_codex_panel,
 		_test_save_v1_without_story_loads,
+		_test_story_ending_rule,
+		_test_ending_scene,
 	]
 
 
@@ -829,7 +831,7 @@ func _test_shop_day1_assist() -> void:
 ## the last one storms off with an exact recipe already in the pot. The day ends
 ## with those ingredients back in stock, the summary counts the storm-off and the
 ## day's reputation (below zero when it outweighs the serves), the story is over
-## (no market, nothing to continue) and the summary goes back to the title.
+## (no market, nothing to continue) and the summary leads to the ending.
 func _test_shop_last_day_storm_off() -> void:
 	var last := Content.days().size()
 	_game.new_game()
@@ -875,9 +877,10 @@ func _test_shop_last_day_storm_off() -> void:
 	var money := (summary.get_node("Column/Card/List/Money") as Label).text
 	_check(("Reputation: %+d" % reputation) in money and "Stormed off: 1" in money, "last day: the summary shows the storm-off and the reputation change", money)
 	var button := summary.get_node("Column/ContinueButton") as Button
-	_check(button.text == "Back to title", "last day: the summary offers the title", button.text)
+	_check(button.text == "The ending", "last day: the summary leads to the ending", button.text)
 	await _tap(button)
-	_check(await _until(func() -> bool: return _game.state == GameState.Flow.TITLE and not _game.is_transitioning(), FLOW_FRAMES), "last day: Back to title opens the title", str(_game.state))
+	_check(await _until(func() -> bool: return _game.state == GameState.Flow.ENDING and not _game.is_transitioning(), FLOW_FRAMES), "last day: The ending opens the ending", str(_game.state))
+	_check(_game.flags.get(Story.ENDING_FLAG) == Story.ending(_game.flags, _game.reputation) and _game.flags.get(Story.RUSH_HOUR_FLAG) == true, "last day: the ending is recorded and Rush Hour unlocked", str(_game.flags))
 	_game.assist_mode = false
 	_game.new_game()
 
@@ -2768,6 +2771,76 @@ func _test_codex_panel() -> void:
 			_check(scene.get_children().all(func(child: Node) -> bool: return not (child is Codex) or child.is_queued_for_deletion()) and root.gui_get_focus_owner() == opener, "codex: Close returns to the %s" % GameState.Flow.keys()[flow], str(root.gui_get_focus_owner()))
 	_game.new_game()
 	await _goto_scene(GameState.Flow.TITLE)
+
+
+## Story.ending on every path of the three final beats (4^3 outcomes) at reputations
+## just under and at the Guild Master threshold, against the rule written out here:
+## licence = quill.fair great; Guild Master needs the licence, all three arcs and the
+## reputation; Cosy Corner the licence and two arcs; anything else is Charming Chaos.
+func _test_story_ending_rule() -> void:
+	var finals := Story.final_flags()
+	var wrong := PackedStringArray()
+	var reached := {}
+	var paths := 0
+	for a in Story.OUTCOMES:
+		for b in Story.OUTCOMES:
+			for c in Story.OUTCOMES:
+				var flags := {finals[0]: a, finals[1]: b, finals[2]: c}
+				var resolved := [a, b, c].count(Story.GREAT)
+				var licence: bool = flags[Story.LICENCE_FLAG] == Story.GREAT
+				for reputation: int in [Story.GUILD_MASTER_REPUTATION - 1, Story.GUILD_MASTER_REPUTATION]:
+					paths += 1
+					var expected := Story.CHARMING_CHAOS
+					if licence and resolved == 3 and reputation >= Story.GUILD_MASTER_REPUTATION:
+						expected = Story.GUILD_MASTER
+					elif licence and resolved >= 2:
+						expected = Story.COSY_CORNER
+					var got := Story.ending(flags, reputation)
+					reached[got] = true
+					if got != expected:
+						wrong.append("%s rep %d: %s, expected %s" % [flags, reputation, got, expected])
+	_check(paths == 128 and wrong.is_empty() and reached.size() == 3, "story: the ending rule on all 128 final paths reaches all three endings", "\n".join(wrong))
+	_check(Story.ending({}, 99) == Story.CHARMING_CHAOS and Story.LICENCE_FLAG in finals, "story: no recorded final beats is Charming Chaos; the licence is a final beat", str(finals))
+
+
+## The ending scene after the story: it records the ending and the Rush Hour unlock
+## (saved), shows each page's title, text and cast in the shop, turns pages by tap and
+## by Enter (focused Next, in the thumb zone), and "The end" goes back to the title.
+func _test_ending_scene() -> void:
+	_game.new_game()
+	_game.day = Content.days().size() + 1
+	_game.reputation = Story.GUILD_MASTER_REPUTATION
+	for flag in Story.final_flags():
+		_game.flags[flag] = Story.GREAT
+	var screen: EndingScreen = await _goto_scene(GameState.Flow.ENDING)
+	var ending := Content.ending(Story.GUILD_MASTER)
+	_check(screen != null and screen.ending == ending and (screen.get_node("Column/Title") as Label).text == ending.title, "ending: the Guild Master ending shows its title", str(screen))
+	if screen == null:
+		return
+	var saved: Dictionary = _read_save().get("flags", {})
+	_check(_game.flags.get(Story.ENDING_FLAG) == Story.GUILD_MASTER and _game.flags.get(Story.RUSH_HOUR_FLAG) == true and saved.get(Story.ENDING_FLAG) == Story.GUILD_MASTER and saved.get(Story.RUSH_HOUR_FLAG) == true, "ending: the ending and the Rush Hour unlock are saved", str(saved))
+	var next := screen.get_node("Column/NextButton") as Button
+	_check(root.gui_get_focus_owner() == next and next.accessibility_name != "", "ending: Next has focus and a name", str(root.gui_get_focus_owner()))
+	for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
+		root.size = window
+		await _frames(10)
+		_check_targets([next] as Array[Control], null, "ending at %s" % window)
+	root.size = BASE_WINDOW
+	await process_frame
+	for i in ending.pages.size():
+		var text := (screen.get_node("Column/Card/Text") as Label).text
+		var cast := screen.get_node("Column/Picture/Cast").get_children().filter(func(child: Node) -> bool: return not child.is_queued_for_deletion())
+		var names := cast.map(func(figure: Customer) -> String: return figure.archetype.id)
+		_check(screen.page == i and text == "\n".join(Content.wrap_bubble(ending.pages[i])) and names == Array(ending.casts[i]), "ending: page %d shows its text and cast" % (i + 1), "%s %s" % [text, names])
+		var story_looks := cast.all(func(figure: Customer) -> bool: return not figure.archetype.is_story() or figure.look == figure.archetype.fixed_look)
+		_check(story_looks, "ending: story characters wear their fixed look", str(names))
+		if i == ending.pages.size() - 1:
+			_check(next.text == "The end", "ending: the last page's button reads The end", next.text)
+			await _action(&"ui_accept")
+		else:
+			await _tap(next)
+	_check(await _until(func() -> bool: return _game.state == GameState.Flow.TITLE and not _game.is_transitioning(), FLOW_FRAMES), "ending: The end goes back to the title", str(_game.state))
+	_game.new_game()
 
 
 ## A version-1 save from before the story (empty codex and flags) loads unchanged.

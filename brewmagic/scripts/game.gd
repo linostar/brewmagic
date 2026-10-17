@@ -5,6 +5,7 @@ extends Node
 ## user://, plus ScreenFit (the visible and safe-area rects in base units and the
 ## centred 270-wide gameplay column).
 ## Story flow: title -> morning -> shop -> summary -> market -> morning (next day) ...
+## -> the last day's summary -> ending (finish_story) -> title.
 ## The shop commits a finished day with finish_day(); quitting mid-shift keeps the
 ## progress from before that day.
 ## Every flow change goes through goto(), which fades out, swaps the scene,
@@ -20,7 +21,7 @@ signal transition_finished(state: Flow)
 ## Emitted when the visible rect or the safe area changes (resize, rotation).
 signal screen_fit_changed
 
-enum Flow { TITLE, MORNING, SHOP, SUMMARY, MARKET }
+enum Flow { TITLE, MORNING, SHOP, SUMMARY, MARKET, ENDING }
 
 ## Where the autoload lives. Scripts fetch it through this path instead of the
 ## global "Game" name, which does not exist yet when test scripts compile.
@@ -31,6 +32,7 @@ const SCENE_PATHS: Dictionary[Flow, String] = {
 	Flow.SHOP: "res://scenes/shop.tscn",
 	Flow.SUMMARY: "res://scenes/summary.tscn",
 	Flow.MARKET: "res://scenes/market.tscn",
+	Flow.ENDING: "res://scenes/ending_screen.tscn",
 }
 ## Seconds for each half of a transition (fade out, then fade in).
 const FADE_TIME := 0.18
@@ -378,6 +380,22 @@ static func codex_problem_of(data: Dictionary) -> String:
 			if Content.ingredients().all(func(item: Ingredient) -> bool: return item.id != str(id)):
 				return "codex.%s.%s has unknown ingredient '%s'" % [CODEX_RECIPES, potion, id]
 	return ""
+
+
+## True once the last story day is done (its summary leads to the ending).
+func story_over() -> bool:
+	return day > Content.days().size()
+
+
+## Ends the story: picks the ending from the flags and reputation (Story.ending),
+## records it in flags with the Rush Hour unlock, saves, and returns its id.
+func finish_story() -> String:
+	var ending := Story.ending(flags, reputation)
+	flags[Story.ENDING_FLAG] = ending
+	flags[Story.RUSH_HOUR_FLAG] = true
+	print("[Game] Story finished: ending %s (reputation %d, flags %s); Rush Hour unlocked" % [ending, reputation, flags])
+	save_game()
+	return ending
 
 
 ## Closes the market and goes to the next morning.
