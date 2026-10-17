@@ -150,7 +150,9 @@ func _tests() -> Array[Callable]:
 		_test_bubble_blips,
 		_test_audio_unlock_and_voices,
 		_test_shop_mortar_and_bellows,
-		_test_shop_shelf_scrolls,
+		_test_shop_shelf_fits_without_pages,
+		_test_shop_shelf_pages,
+		_test_shop_shelf_pages_keyboard,
 		_test_story_rules,
 		_test_shop_story_beats,
 		_test_codex_records,
@@ -3072,43 +3074,157 @@ func _test_save_v1_without_story_loads() -> void:
 	_game.load_game()
 
 
-## A shelf wider than the row (day 6, ten ingredients) clips at the row's ends and
-## scrolls: a sideways drag on an item scrolls it (and puts nothing in the pot), a
-## hidden item cannot be tapped, keyboard focus scrolls the focused item into view,
-## and an upward drag still carries an ingredient into the cauldron.
-func _test_shop_shelf_scrolls() -> void:
+## A shelf that fits the row (day 1, four ingredients) is centred as before and
+## shows no page arrows or page label.
+func _test_shop_shelf_fits_without_pages() -> void:
+	var shop := await _open_shop()
+	var ids := shop.stock.keys()
+	var xs: Array[float] = []
+	for id: String in ids:
+		xs.append(shop.shelf_item(id).position.x)
+	var left := (Shop.STAGE_SIZE.x - ids.size() * Shop.SHELF_SPACING) / 2.0 + (Shop.SHELF_SPACING - ShelfItem.ITEM_SIZE.x) / 2.0
+	var expected: Array[float] = []
+	for i in ids.size():
+		expected.append(roundf(left + i * Shop.SHELF_SPACING))
+	_check(ids.size() == 4 and xs == expected and ids.all(func(id: String) -> bool: return shop.shelf_item(id).visible), "shelf pages: four items centred, all showing", "%s, expected %s" % [xs, expected])
+	var hidden := ["ShelfPrev", "ShelfNext", "ShelfPage"].all(func(node: String) -> bool: return not (shop.get_node("Column/Stage/" + node) as Control).visible)
+	_check(hidden, "shelf pages: no arrows or page label when the shelf fits", "")
+	await _close_shop()
+
+
+## The shelf items showing in `shop` (the current page), left to right.
+func _shown_items(shop: Shop) -> Array[ShelfItem]:
+	var shown: Array[ShelfItem] = []
+	for item: ShelfItem in shop.get_node("Column/Stage/ShelfItems").get_children():
+		if item.visible:
+			shown.append(item)
+	shown.sort_custom(func(a: ShelfItem, b: ShelfItem) -> bool: return a.position.x < b.position.x)
+	return shown
+
+
+## Opens the day-6 shop (ten ingredients, three of each in stock), or null.
+func _open_day6_shop(label: String) -> Shop:
 	_game.new_game()
 	for item in Content.ingredients_unlocked_by(6):
 		_game.stock[item.id] = 3
-	var shop: Shop = await _goto_scene(GameState.Flow.SHOP, {"day": 6})
+	var shop := await _goto_scene(GameState.Flow.SHOP, {"day": 6}) as Shop
+	_check(shop != null and shop.stock.size() == 10, label + ": the day-6 shop opens with ten ingredients", str(current_scene))
+	return shop
+
+
+## A shelf wider than the row (day 6, ten ingredients) shows one page at a time
+## between two arrows: every item is on exactly one page, at least 4 whole items per
+## page between the arrows, the arrows and items are big enough and in the thumb zone
+## at 9:16, 9:19.5 and 16:9, the ends disable their arrow, a tap and Enter flip a
+## page with a squash, the pot keeps the page (an item out of stock keeps its slot),
+## and dragging a page-2 item into the cauldron still works.
+func _test_shop_shelf_pages() -> void:
+	var shop := await _open_day6_shop("shelf pages")
 	if shop == null:
-		_check(false, "shelf scroll: the day-6 shop opens", str(current_scene))
 		return
-	var ids := shop.stock.keys()
+	var prev := shop.get_node("Column/Stage/ShelfPrev") as Button
+	var next := shop.get_node("Column/Stage/ShelfNext") as Button
+	var label := shop.get_node("Column/Stage/ShelfPage") as Label
 	var row := shop.get_node("Column/Stage/ShelfItems") as Control
-	var last := shop.shelf_item(ids[-1])
-	_check(ids.size() == 10 and row.clip_contents and shop.shelf_scroll == 0.0 and last.get_global_rect().end.x > row.get_global_rect().end.x, "shelf scroll: ten items overflow a clipped row", "%d %s %s" % [ids.size(), row.clip_contents, last.get_global_rect()])
-	await _tap_at(Vector2(row.get_global_rect().end.x + 10.0, last.get_global_rect().get_center().y))
-	_check(shop.pot.is_empty(), "shelf scroll: a hidden item takes no tap", str(shop.pot.size()))
-	var first := shop.shelf_item(ids[0]).get_global_rect().get_center()
-	await _drag_touch(first, first + Vector2(-150, 0))
-	_check(shop.shelf_scroll > 100.0 and shop.pot.is_empty(), "shelf scroll: a sideways drag scrolls the shelf, not into the pot", "%.0f %d" % [shop.shelf_scroll, shop.pot.size()])
-	shop.shelf_item(ids[0]).grab_focus()
-	_check(shop.shelf_scroll == 0.0 and shop.shelf_item(ids[0]).get_global_rect().position.x >= row.get_global_rect().position.x, "shelf scroll: keyboard focus reveals the focused item", "%.0f" % shop.shelf_scroll)
-	shop.shelf_item(ids[-1]).grab_focus()
-	_check(last.get_global_rect().end.x <= row.get_global_rect().end.x, "shelf scroll: focusing the last item scrolls to it", str(last.get_global_rect()))
-	await _wait_for_order(shop, "shelf scroll")
-	var from := last.get_global_rect().get_center()
-	await _drag_touch(from, shop.get_node("Column/Stage").get_global_transform() * Shop.POT_MOUTH)
-	_check(shop.pot.size() == 1 and shop.pot[0].id == ids[-1], "shelf scroll: an upward drag still drops into the cauldron", str(shop.pot.size()))
+	_check(prev.visible and next.visible and label.visible and prev.accessibility_name == "Previous ingredients" and next.accessibility_name == "Next ingredients", "shelf pages: both arrows and the page label show", "%s %s %s" % [prev.visible, next.visible, label.visible])
+	var seen: Array[String] = []
+	var pages := 0
+	while pages < 10:
+		pages += 1
+		var shown := _shown_items(shop)
+		for item in shown:
+			seen.append(item.ingredient.id)
+			var rect := Rect2(row.position + item.position, item.size)
+			_check(rect.position.x >= prev.position.x + prev.size.x and rect.end.x <= next.position.x, "shelf pages: %s is whole between the arrows on page %d" % [item.ingredient.id, pages], str(rect))
+		_check(shown.size() >= 4 or next.disabled, "shelf pages: page %d shows at least 4 items unless it is the last" % pages, str(shown.size()))
+		_check(label.text == "%d/3" % pages and prev.disabled == (pages == 1) and next.disabled == (pages == 3), "shelf pages: page %d reads %d/3, arrows disabled only at the ends" % [pages, pages], "%s %s %s" % [label.text, prev.disabled, next.disabled])
+		if next.disabled:
+			break
+		await _tap(next)
+	seen.sort()
+	var all: Array[String] = []
+	for id: String in shop.stock:
+		all.append(id)
+	all.sort()
+	_check(pages == 3 and seen == all, "shelf pages: each of the ten items is on exactly one page", "%d pages %s" % [pages, seen])
+	await _tap(next)
+	_check(shop.shelf_page == 2, "shelf pages: the disabled Next does not wrap", str(shop.shelf_page))
+	await _tap(prev)
+	_check(shop.shelf_page == 1 and label.text == "2/3", "shelf pages: a tap on Prev turns back a page", label.text)
+	await _frames(2)
+	_check(not prev.scale.is_equal_approx(Vector2.ONE), "shelf pages: the arrow squashes at once", str(prev.scale))
+	prev.grab_focus()
+	await _action(&"ui_accept")
+	_check(shop.shelf_page == 0 and label.text == "1/3", "shelf pages: Enter on Prev turns back a page", label.text)
+	await _tap(next)
+	var play: Array[Control] = [prev, next]
+	for item in _shown_items(shop):
+		play.append(item)
+	var pause := shop.get_node("Column/Hud/PauseButton") as Control
+	for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
+		root.size = window
+		await _frames(30)
+		_check_targets(play, pause, "shelf pages at %s" % window)
+	root.size = BASE_WINDOW
+	await _frames(10)
+	if await _wait_for_order(shop, "shelf pages"):
+		var page_two := _shown_items(shop)
+		var last := page_two[-1]
+		shop.stock[last.ingredient.id] = 1
+		last.set_stock(1)
+		var at := last.position
+		await _tap(last)
+		_check(shop.shelf_page == 1 and shop.pot.size() == 1 and last.disabled and last.visible and last.position == at, "shelf pages: an item tapped to 0 stock keeps its slot and the page stays", "page %d pot %d %s %s" % [shop.shelf_page, shop.pot.size(), last.disabled, last.position])
+		await _tap(shop.slot_button(0))
+		_check(shop.shelf_page == 1 and shop.pot.is_empty() and not last.disabled, "shelf pages: taking it out of the pot keeps the page", "page %d pot %d" % [shop.shelf_page, shop.pot.size()])
+		var from := page_two[0].get_global_rect().get_center()
+		await _drag_touch(from, shop.get_node("Column/Stage").get_global_transform() * Shop.POT_MOUTH)
+		_check(shop.shelf_page == 1 and shop.pot.size() == 1 and shop.pot[0].id == page_two[0].ingredient.id, "shelf pages: a page-2 item dragged into the cauldron goes in", "page %d pot %d" % [shop.shelf_page, shop.pot.size()])
 	await _close_shop()
 	_game.new_game()
 
 
-## A real tap on the shelf item of ingredient `id`, scrolled into view first (a shelf
-## wider than the row hides the items past its ends).
+## Keyboard across shelf pages: Right from a page's last item focuses Next, Right
+## again turns the page onto its first item; Left mirrors it through Prev. Down from
+## an item is Brew, Up from Brew is the middle item of the page showing, and focus
+## never lands on a hidden item.
+func _test_shop_shelf_pages_keyboard() -> void:
+	var shop := await _open_day6_shop("shelf keys")
+	if shop == null:
+		return
+	var prev := shop.get_node("Column/Stage/ShelfPrev") as Button
+	var next := shop.get_node("Column/Stage/ShelfNext") as Button
+	var page_one := _shown_items(shop)
+	page_one[-1].grab_focus()
+	await _action(&"ui_right")
+	_check(root.gui_get_focus_owner() == next, "shelf keys: Right from the page's last item focuses Next", str(root.gui_get_focus_owner()))
+	await _action(&"ui_right")
+	var page_two := _shown_items(shop)
+	_check(shop.shelf_page == 1 and root.gui_get_focus_owner() == page_two[0], "shelf keys: Right from Next turns the page onto its first item", "page %d %s" % [shop.shelf_page, root.gui_get_focus_owner()])
+	await _action(&"ui_left")
+	_check(root.gui_get_focus_owner() == prev and shop.shelf_page == 1, "shelf keys: Left from the page's first item focuses Prev", str(root.gui_get_focus_owner()))
+	await _action(&"ui_left")
+	_check(shop.shelf_page == 0 and root.gui_get_focus_owner() == page_one[-1], "shelf keys: Left from Prev turns back onto the last item", "page %d %s" % [shop.shelf_page, root.gui_get_focus_owner()])
+	var visible_focus := true
+	for i in 12:
+		await _action(&"ui_right")
+		var owner := root.gui_get_focus_owner()
+		visible_focus = visible_focus and owner != null and owner.is_visible_in_tree()
+	_check(visible_focus and shop.shelf_page == 2, "shelf keys: walking right across every page never focuses a hidden item", "page %d" % shop.shelf_page)
+	shop.set_shelf_page(1)
+	_shown_items(shop)[1].grab_focus()
+	await _action(&"ui_down")
+	_check(root.gui_get_focus_owner() == shop.brew_button(), "shelf keys: Down from a page-2 item focuses Brew", str(root.gui_get_focus_owner()))
+	await _action(&"ui_up")
+	var shown := _shown_items(shop)
+	_check(root.gui_get_focus_owner() == shown[floori((shown.size() - 1) / 2.0)], "shelf keys: Up from Brew focuses the middle item of the page showing", str(root.gui_get_focus_owner()))
+	await _close_shop()
+	_game.new_game()
+
+
+## A real tap on the shelf item of ingredient `id`, its shelf page turned to first.
 func _tap_item(shop: Shop, id: String) -> void:
-	shop.reveal_shelf_item(shop.shelf_item(id))
+	shop.show_shelf_item(shop.shelf_item(id))
 	await _tap(shop.shelf_item(id))
 
 
