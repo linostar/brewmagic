@@ -63,6 +63,8 @@ const SAVE_KEYS: Dictionary[String, Variant.Type] = {
 	"rush_best": TYPE_INT, "settings": TYPE_DICTIONARY,
 }
 const SETTINGS_KEYS: Array[String] = ["assist", "gentle"]
+const CODEX_WORDS := "words"
+const CODEX_RECIPES := "recipes"
 
 ## Settings, persisted in the save. Stations read them through the shop when they begin.
 var assist_mode := false
@@ -79,7 +81,10 @@ var reputation := 0
 var stock: Dictionary[String, int] = {}
 ## Station step id -> owned upgrade level (absent means 0).
 var upgrades: Dictionary[String, int] = {}
-## Filled in plan step 7.
+## The Codex: what the player has learned, as saved. CODEX_WORDS: the hint word ids
+## served so far (learn_words); CODEX_RECIPES: potion id -> the ingredient ids of a
+## brew of it at Good or better (learn_recipe). Read it through codex_words() and
+## codex_recipes(); an empty dictionary is an empty Codex.
 var codex: Dictionary = {}
 ## The story's flags (Story): each beat's outcome under "<character>.<beat>", the ending
 ## reached (Story.ENDING_FLAG) and the Rush Hour unlock (Story.RUSH_HOUR_FLAG).
@@ -291,6 +296,90 @@ func finish_day(result: Dictionary, coins_now: int, stock_now: Dictionary[String
 	goto(Flow.SUMMARY, result)
 
 
+## The hint word ids in the Codex, in the order they were learned.
+func codex_words() -> PackedStringArray:
+	return PackedStringArray(codex.get(CODEX_WORDS, []))
+
+
+## Potion id -> the ingredient ids the Codex holds for it.
+func codex_recipes() -> Dictionary[String, PackedStringArray]:
+	var recipes: Dictionary[String, PackedStringArray] = {}
+	var saved: Dictionary = codex.get(CODEX_RECIPES, {})
+	for id: String in saved:
+		recipes[id] = PackedStringArray(saved[id])
+	return recipes
+
+
+## Adds the hint words of `ids` the Codex does not hold yet; saves when any is new.
+## Returns how many were new.
+func learn_words(ids: PackedStringArray) -> int:
+	var words: Array = codex.get(CODEX_WORDS, [])
+	var learned := PackedStringArray()
+	for id in ids:
+		if not id in words:
+			words.append(id)
+			learned.append(id)
+	if learned.is_empty():
+		return 0
+	codex[CODEX_WORDS] = words
+	print("[Game] Codex: learned hint words %s" % learned)
+	save_game()
+	return learned.size()
+
+
+## Records `ingredients` (ids, 2-3) as the Codex recipe of `potion`, brewed at Good or
+## better: kept when it is the first, or exact (Perfect match) where the one held is not.
+## Saves and returns true when the Codex changed.
+func learn_recipe(potion: PotionType, ingredients: PackedStringArray) -> bool:
+	var recipes: Dictionary = codex.get(CODEX_RECIPES, {})
+	if recipes.has(potion.id) and (_is_exact(potion, PackedStringArray(recipes[potion.id])) or not _is_exact(potion, ingredients)):
+		return false
+	recipes[potion.id] = Array(ingredients)
+	codex[CODEX_RECIPES] = recipes
+	print("[Game] Codex: recipe for %s is %s" % [potion.id, ingredients])
+	save_game()
+	return true
+
+
+func _is_exact(potion: PotionType, ingredients: PackedStringArray) -> bool:
+	var essences: Array[Vector4i] = []
+	for id in ingredients:
+		var item := Content.ingredient(id)
+		if item == null:
+			return false
+		essences.append(item.essence)
+	return Brew.combine(essences) == potion.target
+
+
+## What is wrong with a saved Codex, or "": only the keys CODEX_WORDS (unique known
+## hint word ids) and CODEX_RECIPES (known potion id -> 2..3 known ingredient ids).
+static func codex_problem_of(data: Dictionary) -> String:
+	for key: Variant in data:
+		if key != CODEX_WORDS and key != CODEX_RECIPES:
+			return "codex has unknown key '%s'" % key
+	var words: Variant = data.get(CODEX_WORDS, [])
+	if typeof(words) != TYPE_ARRAY:
+		return "codex.%s is not a list" % CODEX_WORDS
+	var seen := {}
+	for id: Variant in words:
+		if typeof(id) != TYPE_STRING or Content.hint_words().all(func(word: HintWord) -> bool: return word.id != id) or seen.has(id):
+			return "codex.%s has an unknown or repeated hint word %s" % [CODEX_WORDS, id]
+		seen[id] = true
+	var recipes: Variant = data.get(CODEX_RECIPES, {})
+	if typeof(recipes) != TYPE_DICTIONARY:
+		return "codex.%s is not an object" % CODEX_RECIPES
+	for potion: Variant in recipes:
+		if Content.potions().all(func(item: PotionType) -> bool: return item.id != str(potion)):
+			return "codex.%s has unknown potion '%s'" % [CODEX_RECIPES, potion]
+		var used: Variant = recipes[potion]
+		if typeof(used) != TYPE_ARRAY or (used as Array).size() < Brew.MIN_INGREDIENTS or (used as Array).size() > Brew.MAX_INGREDIENTS:
+			return "codex.%s.%s is not a list of %d..%d ingredients" % [CODEX_RECIPES, potion, Brew.MIN_INGREDIENTS, Brew.MAX_INGREDIENTS]
+		for id: Variant in used:
+			if Content.ingredients().all(func(item: Ingredient) -> bool: return item.id != str(id)):
+				return "codex.%s.%s has unknown ingredient '%s'" % [CODEX_RECIPES, potion, id]
+	return ""
+
+
 ## Closes the market and goes to the next morning.
 func leave_market() -> void:
 	at_market = false
@@ -500,6 +589,9 @@ func _apply_save(data: Variant) -> String:
 		if not _is_whole(level) or int(level) < 0 or int(level) > top:
 			return "upgrade level of '%s' is not 0..%d" % [station, top]
 		upgrades[str(station)] = int(level)
+	var codex_problem := codex_problem_of(saved["codex"])
+	if codex_problem != "":
+		return codex_problem
 	codex = saved["codex"]
 	var flags_problem := Story.flags_problem(saved["flags"])
 	if flags_problem != "":

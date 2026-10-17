@@ -150,6 +150,9 @@ func _tests() -> Array[Callable]:
 		_test_shop_shelf_scrolls,
 		_test_story_rules,
 		_test_shop_story_beats,
+		_test_codex_records,
+		_test_codex_panel,
+		_test_save_v1_without_story_loads,
 	]
 
 
@@ -1124,7 +1127,7 @@ func _test_shop_controls_size_and_zone() -> void:
 		for id in _exact_recipe(shop.customer.potion, shop.stock):
 			await _tap_item(shop, id)
 		var pause := shop.get_node("Column/Hud/PauseButton") as Button
-		var play: Array[Control] = [shop.brew_button(), shop.get_node("Column/Stage/RefuseButton") as Control, shop.slot_button(0), shop.slot_button(1), shop.slot_button(2), shop.get_node("Column/Stage/SkipButton") as Control, pause]
+		var play: Array[Control] = [shop.brew_button(), shop.get_node("Column/Stage/RefuseButton") as Control, shop.get_node("Column/Stage/CodexButton") as Control, shop.slot_button(0), shop.slot_button(1), shop.slot_button(2), shop.get_node("Column/Stage/SkipButton") as Control, pause]
 		for item in shop.get_node("Column/Stage/ShelfItems").get_children():
 			play.append(item as Control)
 		var pause_buttons: Array[Control] = []
@@ -1139,6 +1142,15 @@ func _test_shop_controls_size_and_zone() -> void:
 			await _frames(30)
 			_check_targets(pause_buttons, pause, "pause panel at %s" % window)
 			shop.close_pause()
+			shop.open_codex()
+			await _frames(30)
+			var codex_buttons: Array[Control] = []
+			for button in shop.codex.find_children("*", "Button", true, false):
+				codex_buttons.append(button as Control)
+			_check(codex_buttons.size() == 5, "layout: the Codex has two tabs, two page buttons and Close", str(codex_buttons.size()))
+			_check_targets(codex_buttons, pause, "codex at %s" % window)
+			shop.codex.close()
+			await process_frame
 		root.size = BASE_WINDOW
 		await _tap(shop.brew_button())
 		if await _until(func() -> bool: return shop.station != null and shop.station.assist_button() != null, FLOW_FRAMES):
@@ -1314,7 +1326,9 @@ func _test_shop_keyboard_day1_assist() -> void:
 		var coins := _game.coins
 		await _action(&"ui_accept")
 		_check(_game.coins < coins, "keyboard: ui_accept on a market card buys it", "%d -> %d" % [coins, _game.coins])
-		var on_next := await _focus_by_keys(market.get_node("Column/Shop/NextDayButton") as Button)
+		# Down from the cards reaches the Codex button, right of it is Next day.
+		var on_codex := await _focus_by_keys(market.get_node("Column/Shop/CodexButton") as Button)
+		var on_next := on_codex and await _focus_by_keys(market.get_node("Column/Shop/NextDayButton") as Button)
 		await _action(&"ui_accept")
 		_check(on_next and await _until(func() -> bool: return current_scene is Morning and not _game.is_transitioning(), FLOW_FRAMES), "keyboard: Next day opens the morning", str(current_scene))
 	_game.assist_mode = false
@@ -2110,6 +2124,7 @@ func _test_save_round_trip() -> void:
 	_game.stock = {"ember_pepper": 2, "moonmoss": 0}
 	_game.upgrades = {"stir": 1, "pour": 2}
 	_game.flags = {"quill.inspection": "great", "vexley.opening": "refused", "ending": "cosy_corner", "rush_hour_unlocked": true}
+	_game.codex = {"words": ["hint_warm", "hint_calm"], "recipes": {"hearthglow_tonic": ["ember_pepper", "sunpetal"]}}
 	_game.rush_best = 7
 	_game.assist_mode = true
 	_game.gentle_mode = true
@@ -2122,6 +2137,7 @@ func _test_save_round_trip() -> void:
 	_check(_game.day == 2 and _game.at_market and _game.coins == 33 and _game.reputation == -4 and _game.rush_best == 7, "save round trip: day, market, coins, reputation, Rush best", "%d %s %d %d %d" % [_game.day, _game.at_market, _game.coins, _game.reputation, _game.rush_best])
 	_check(_game.stock == ({"ember_pepper": 2, "moonmoss": 0} as Dictionary[String, int]) and _game.upgrades == ({"stir": 1, "pour": 2} as Dictionary[String, int]), "save round trip: stock and upgrades", "%s %s" % [_game.stock, _game.upgrades])
 	_check(_game.flags.recursive_equal({"quill.inspection": "great", "vexley.opening": "refused", "ending": "cosy_corner", "rush_hour_unlocked": true}, 1), "save round trip: story flags", str(_game.flags))
+	_check(_game.codex_words() == PackedStringArray(["hint_warm", "hint_calm"]) and _game.codex_recipes() == ({"hearthglow_tonic": PackedStringArray(["ember_pepper", "sunpetal"])} as Dictionary[String, PackedStringArray]), "save round trip: codex", str(_game.codex))
 	_check(_game.assist_mode and _game.gentle_mode and _game.reported_errors.size() == errors, "save round trip: settings, no errors", "%s %s" % [_game.assist_mode, _game.gentle_mode])
 	_game.rush_best = 7
 	_game.new_game()
@@ -2162,6 +2178,11 @@ func _test_save_missing_and_corrupt() -> void:
 		"bad beat outcome": JSON.stringify(_with(good, "flags", {"quill.inspection": "splendid"})),
 		"unknown ending": JSON.stringify(_with(good, "flags", {"ending": "happily_ever_after"})),
 		"rush unlock not a bool": JSON.stringify(_with(good, "flags", {"rush_hour_unlocked": "yes"})),
+		"unknown codex key": JSON.stringify(_with(good, "codex", {"spells": []})),
+		"unknown codex word": JSON.stringify(_with(good, "codex", {"words": ["hint_banana"]})),
+		"repeated codex word": JSON.stringify(_with(good, "codex", {"words": ["hint_warm", "hint_warm"]})),
+		"codex recipe of an unknown potion": JSON.stringify(_with(good, "codex", {"recipes": {"elixir_of_life": ["ember_pepper", "sunpetal"]}})),
+		"codex recipe of one ingredient": JSON.stringify(_with(good, "codex", {"recipes": {"hearthglow_tonic": ["ember_pepper"]}})),
 	}
 	var error_label := _game.get_node("Fade/ErrorLabel") as Label
 	for case in cases:
@@ -2383,9 +2404,9 @@ func _test_morning_missing_day_returns_to_title() -> void:
 ## focusable with an accessibility name, at 9:16, 9:19.5 and 16:9.
 func _test_loop_screens_size_and_zone() -> void:
 	var screens: Array[Array] = [
-		[GameState.Flow.MORNING, {}, ["Column/OpenShopButton"]],
+		[GameState.Flow.MORNING, {}, ["Column/OpenShopButton", "Column/CodexButton"]],
 		[GameState.Flow.SUMMARY, {"day": 1, "title": "Test", "customers": 3, "served": 2, "stormed_off": 1, "refused": 1, "grades": [1, 1, 0, 0], "earned": 20, "tips": 2, "reputation": 1, "coins": 42}, ["Column/ContinueButton"]],
-		[GameState.Flow.MARKET, {}, ["Column/Shop/Tabs/StockTab", "Column/Shop/Tabs/UpgradesTab", "Column/Shop/NextDayButton"]],
+		[GameState.Flow.MARKET, {}, ["Column/Shop/Tabs/StockTab", "Column/Shop/Tabs/UpgradesTab", "Column/Shop/CodexButton", "Column/Shop/NextDayButton"]],
 		[GameState.Flow.TITLE, {}, ["Column/OpenShopButton", "Column/NewGameButton"]],
 	]
 	for screen in screens:
@@ -2655,6 +2676,109 @@ func _test_shop_story_beats() -> void:
 	_check(note == Story.morning_note(Content.day(5), expected) and note != Content.day(5).morning_note, "story: the morning shows the note for the flags", note)
 	await _close_shop()
 	_game.new_game()
+
+
+## The Codex records as the player earns: a delivery notes the request's hint words
+## (any grade), a Good or better brew its recipe (a Meh one does not); an exact recipe
+## replaces an inexact one but not the other way round; everything is saved at once.
+func _test_codex_records() -> void:
+	_game.new_game()
+	_check(_game.codex_words().is_empty() and _game.codex_recipes().is_empty(), "codex: a new game's Codex is empty", str(_game.codex))
+	_game.assist_mode = true
+	var shop := await _open_shop()
+	if not await _wait_for_order(shop, "codex"):
+		await _close_shop()
+		return
+	var first := shop.customer
+	if await _serve(shop, _recipe_between(first.potion, shop.stock, 2, 2), "codex Meh"):
+		_check(_game.codex_words() == first.request.hints and _game.codex_recipes().is_empty(), "codex: a Meh delivery notes its hint words but no recipe", str(_game.codex))
+		await _skip_lines(shop)
+	if await _wait_for_order(shop, "codex 2"):
+		var second := shop.customer
+		var recipe := _exact_recipe(second.potion, shop.stock)
+		var words_before := _game.codex_words().size()
+		if await _serve(shop, recipe, "codex Good"):
+			var held: PackedStringArray = _game.codex_recipes().get(second.potion.id, PackedStringArray())
+			_check(held == PackedStringArray(recipe) and _game.codex_words().size() >= words_before, "codex: a Good brew notes its recipe", str(_game.codex))
+			var saved: Dictionary = _read_save().get("codex", {})
+			_check(saved.get("recipes", {}).has(second.potion.id), "codex: the Codex is saved as it is earned", str(saved))
+			_check(not _game.learn_recipe(second.potion, PackedStringArray([recipe[0], recipe[0], recipe[1]])), "codex: an inexact recipe does not replace an exact one", str(_game.codex_recipes()))
+	await _close_shop()
+	_game.codex = {}
+	var tonic := Content.potion("hearthglow_tonic")
+	var near := PackedStringArray(["ember_pepper", "honeycomb"])
+	var exact := PackedStringArray(["ember_pepper", "sunpetal"])
+	var first_noted := _game.learn_recipe(tonic, near)
+	var replaced := _game.learn_recipe(tonic, exact)
+	var kept := not _game.learn_recipe(tonic, near)
+	_check(first_noted and replaced and kept and _game.codex_recipes()["hearthglow_tonic"] == exact, "codex: the first Good recipe is noted, an exact one replaces it, an inexact one never replaces an exact one", str(_game.codex_recipes()))
+	_game.new_game()
+
+
+## The Codex panel: the shop's Codex button pauses the shift and opens the Words tab
+## (each word with its essence's name and icon); Recipes lists the potion, its stations
+## and ingredients; pages turn; keyboard focus stays inside, and Escape (ui_cancel)
+## closes it, resumes the shift and gives focus back. The morning and the market open it too.
+func _test_codex_panel() -> void:
+	var shop := await _open_shop()
+	var recipes := {}
+	for potion in Content.potions():
+		var pool := Content.ingredients()
+		for a in pool:
+			for b in pool:
+				if not recipes.has(potion.id) and a.essence + b.essence == potion.target:
+					recipes[potion.id] = [a.id, b.id]
+	_game.codex = {"words": ["hint_calm", "hint_warm"], "recipes": recipes}
+	var button := shop.get_node("Column/Stage/CodexButton") as Button
+	_check(button.accessibility_name == "Codex" and button.focus_mode == Control.FOCUS_ALL, "codex: the shop's Codex button is focusable and named", button.accessibility_name)
+	await _tap(button)
+	var codex := shop.codex
+	if codex == null:
+		_check(false, "codex: the Codex button opens the Codex", "not open")
+		await _close_shop()
+		return
+	_check(paused and codex.tab == Codex.Tab.WORDS, "codex: opening it pauses the shift on the Words tab", "paused %s tab %d" % [paused, codex.tab])
+	var words := codex.entry_texts()
+	_check(words.size() == 1 and "warmth: ember" in words[0] and "calm: frost" in words[0], "codex: words show their essence by name, in vocabulary order", str(words))
+	var icons := codex.find_children("*", "TextureRect", true, false).filter(func(icon: TextureRect) -> bool: return icon.texture == Art.texture("ui", "essence_ember"))
+	_check(icons.size() == 1, "codex: each word shows its essence icon too", str(icons.size()))
+	await _tap(codex.get_node("Column/Panel/List/Tabs/RecipesTab") as Button)
+	var first_page := codex.entry_texts()
+	_check(codex.tab == Codex.Tab.RECIPES and first_page.size() == Codex.RECIPES_PER_PAGE and "Hearthglow Tonic stir, pour Ember Pepper + Sunpetal" in first_page, "codex: recipes show name, stations and ingredients", str(first_page))
+	var pages := codex.page_count()
+	await _tap(codex.get_node("Column/Panel/List/Footer/NextButton") as Button)
+	_check(pages == ceili(recipes.size() / float(Codex.RECIPES_PER_PAGE)) and codex.page == 1 and codex.entry_texts() != first_page, "codex: Next turns the page", "%d pages, page %d" % [pages, codex.page])
+	(codex.get_node("Column/Panel/List/Tabs/WordsTab") as Button).grab_focus()
+	_check(await _focus_stays_in(codex), "codex: keyboard focus stays in the Codex", str(root.gui_get_focus_owner()))
+	await _key(KEY_ESCAPE)
+	await process_frame
+	_check(shop.codex == null and not paused and root.gui_get_focus_owner() == button, "codex: Escape closes it, resumes the shift and refocuses its button", "codex %s paused %s focus %s" % [shop.codex, paused, root.gui_get_focus_owner()])
+	await _close_shop()
+	for flow: GameState.Flow in [GameState.Flow.MORNING, GameState.Flow.MARKET]:
+		_game.day = 2
+		_game.at_market = flow == GameState.Flow.MARKET
+		var scene := await _goto_scene(flow)
+		var opener := scene.get_node("Column/CodexButton" if flow == GameState.Flow.MORNING else "Column/Shop/CodexButton") as Button
+		await _tap(opener)
+		var opened := scene.get_children().filter(func(child: Node) -> bool: return child is Codex)
+		_check(opened.size() == 1, "codex: the %s opens the Codex" % GameState.Flow.keys()[flow], str(opened))
+		if opened.size() == 1:
+			await _tap((opened[0] as Codex).get_node("Column/Panel/List/Footer/CloseButton") as Button)
+			await process_frame
+			_check(scene.get_children().all(func(child: Node) -> bool: return not (child is Codex) or child.is_queued_for_deletion()) and root.gui_get_focus_owner() == opener, "codex: Close returns to the %s" % GameState.Flow.keys()[flow], str(root.gui_get_focus_owner()))
+	_game.new_game()
+	await _goto_scene(GameState.Flow.TITLE)
+
+
+## A version-1 save from before the story (empty codex and flags) loads unchanged.
+func _test_save_v1_without_story_loads() -> void:
+	_write_save(JSON.stringify({"version": 1, "day": 4, "at_market": true, "coins": 60, "reputation": 9, "stock": {"moonmoss": 2},
+		"upgrades": {}, "codex": {}, "flags": {}, "rush_best": 0, "settings": {"assist": false, "gentle": false}}))
+	var errors := _game.reported_errors.size()
+	_game.load_game()
+	_check(_game.reported_errors.size() == errors and _game.day == 4 and _game.coins == 60 and _game.codex.is_empty() and _game.flags.is_empty(), "a v1 save with empty codex and flags loads", "%s day %d" % [_game.reported_errors.slice(errors), _game.day])
+	_delete_saves()
+	_game.load_game()
 
 
 ## A shelf wider than the row (day 6, ten ingredients) clips at the row's ends and

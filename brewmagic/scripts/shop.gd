@@ -49,6 +49,10 @@ extends Control
 ## Any tap (on the panel or the dim around it), Enter or ui_cancel (its shortcut)
 ## closes it and focus goes back to the "?".
 ##
+## Codex: the Codex button (right of Brew) opens the Codex overlay and pauses the
+## shift until it closes. Every delivery notes its request's hint words in the Codex,
+## and a Good or better brew its recipe (Game.learn_words, Game.learn_recipe).
+##
 ## Story beats: a visitor whose day entry is a story beat (Customer.visit) records its
 ## outcome (Story: great, poor, refused or stormed_off) in story_outcomes and says the
 ## beat's own line for it instead of an archetype reaction; the day's end commits the
@@ -67,8 +71,8 @@ const STATION_SCENES: Dictionary[String, PackedScene] = {
 	"bellows": preload("res://scenes/stations/bellows.tscn"),
 }
 const STAGE_SIZE := Vector2(270, 480)
-const POT_CAPACITY := 3
-const MIN_BREW := 2
+const POT_CAPACITY := Brew.MAX_INGREDIENTS
+const MIN_BREW := Brew.MIN_INGREDIENTS
 const SHELF_SPACING := 42.0
 ## Gap at each end of a shelf too wide for the row (it scrolls).
 const SHELF_MARGIN := 4.0
@@ -196,6 +200,10 @@ var _brew := Vector4i.ZERO
 var _tier := Brew.Grade.MISBREW
 var _step := 0
 var _qualities: Array[float] = []
+## Ids of the brew's ingredients, in pot order (the Codex notes a good brew's recipe).
+var _brew_ids := PackedStringArray()
+## The open Codex overlay, or null.
+var codex: Codex
 ## Ids of the brew's ingredients flagged `grind` (what the Mortar grinds), in pot order.
 var _ground: Array[String] = []
 ## Called once when the bubble's current line advances.
@@ -232,6 +240,7 @@ var _day_over := false
 @onready var _shelf_row: Control = $Column/Stage/ShelfItems
 @onready var _brew_button: Button = $Column/Stage/BrewButton
 @onready var _refuse_button: Button = $Column/Stage/RefuseButton
+@onready var _codex_button: Button = $Column/Stage/CodexButton
 @onready var _station_host: Control = $Column/Stage/StationHost
 @onready var _station_dim: ColorRect = $Column/Stage/StationHost/Dim
 @onready var _coin_icon: TextureRect = $Column/Hud/CoinIcon
@@ -267,6 +276,7 @@ func _ready() -> void:
 	_skip_button.pressed.connect(_bubble.skip)
 	_brew_button.pressed.connect(_on_brew_pressed)
 	_refuse_button.pressed.connect(refuse_customer)
+	_codex_button.pressed.connect(open_codex)
 	_narrow_margins(_refuse_button)
 	for i in _slots.size():
 		_slots[i].pressed.connect(_on_slot_pressed.bind(i))
@@ -381,6 +391,34 @@ func close_pause() -> void:
 		close_mode_help()
 	_pause_panel.hide()
 	_modal_dim.hide()
+	_resume()
+	print("[Shop] Resumed")
+
+
+## Opens the Codex over the shop; the shift pauses until it closes.
+func open_codex() -> void:
+	if _day_over or codex != null or get_tree().paused:
+		return
+	get_tree().paused = true
+	_update_pot()
+	# Closing the Codex returns to the button that opened it.
+	_focus_before_pause = _codex_button
+	_column.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_DISABLED
+	Juice.squash(_codex_button, 0.2)
+	codex = Codex.open(self, _column)
+	codex.closed.connect(_on_codex_closed)
+	print("[Shop] Codex opened, shift paused")
+
+
+func _on_codex_closed() -> void:
+	codex = null
+	_resume()
+	print("[Shop] Codex closed, shift resumed")
+
+
+## Unpauses the shift and gives focus back: to the running station's Assist button,
+## else to the control focused before the pause (or the Codex) opened.
+func _resume() -> void:
 	get_tree().paused = false
 	_update_pot()
 	_column.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_INHERITED
@@ -390,7 +428,6 @@ func close_pause() -> void:
 		before.grab_focus(true)
 	else:
 		_focus_play()
-	print("[Shop] Resumed")
 
 
 ## Shows the description of `help`'s mode (ASSIST_INFO or GENTLE_INFO) in a
@@ -875,6 +912,7 @@ func _on_brew_pressed() -> void:
 		used.append(item.id)
 		if item.grind:
 			_ground.append(item.id)
+	_brew_ids = used
 	print("[Shop] Brewing %s for %s: essence %s, target %s, distance %d, tier %s" % [used, wants.id, _brew, wants.target, distance, Brew.Grade.keys()[_tier]])
 	pot.clear()
 	_update_pot()
@@ -919,6 +957,7 @@ func _show_station_layer(on: bool) -> void:
 	_shelf_row.focus_behavior_recursive = behavior
 	_brew_button.focus_behavior_recursive = behavior
 	_refuse_button.focus_behavior_recursive = behavior
+	_codex_button.focus_behavior_recursive = behavior
 
 
 func _station_params(step: String) -> Dictionary:
@@ -1021,6 +1060,7 @@ func _deliver(grade: Brew.Grade, quality: float) -> void:
 	print("[Shop] Served customer %d/%d (%s): %s, quality %.2f, paid %d, tip %d, reputation %+d, coins %d" % [customer.number, shift.customers.size(), customer.archetype.id, Brew.Grade.keys()[grade], quality, pay, tip, reputation_change, coins])
 	_update_hud()
 	_show_stamp(grade)
+	_note_in_codex(grade)
 	var grade_key: String = Archetype.GRADES[grade]
 	var reaction := _reaction_line(customer, grade_key, Story.outcome_for(grade))
 	if grade == Brew.Grade.MISBREW:
@@ -1042,6 +1082,18 @@ func _deliver(grade: Brew.Grade, quality: float) -> void:
 	if tip > 0:
 		Juice.fly_text(_fx, stage * (PAY_FROM + TIP_OFFSET), _coin_icon.get_global_rect().get_center(), "tip +%d" % tip, GOLD, PAY_HOLD + TIP_DELAY)
 	_say(reaction, REACTION_HOLD, _send_off.bind(customer))
+
+
+## Notes what this delivery taught in the Codex: the request's hint words (any grade),
+## and the recipe when the brew was Good or better. "Codex +N" pops over the Codex button.
+func _note_in_codex(grade: Brew.Grade) -> void:
+	var learned := _game.learn_words(customer.request.hints)
+	if grade == Brew.Grade.PERFECT or grade == Brew.Grade.GOOD:
+		if _game.learn_recipe(customer.potion, _brew_ids):
+			learned += 1
+	if learned > 0:
+		Juice.pop_text(_fx, _codex_button.get_global_rect().get_center() - Vector2(0, 30), "Codex +%d" % learned, CREAM)
+		Juice.squash(_codex_button, 0.3)
 
 
 ## Slams the grade stamp onto the counter front (overshooting scale, an ink puff,

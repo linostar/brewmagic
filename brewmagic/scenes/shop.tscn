@@ -222,6 +222,16 @@ accessibility_name = "Refuse this customer"
 disabled = true
 text = "Refuse"
 
+[node name="CodexButton" type="Button" parent="Column/Stage"]
+layout_mode = 0
+offset_left = 186.0
+offset_top = 424.0
+offset_right = 264.0
+offset_bottom = 470.0
+pivot_offset = Vector2(39, 23)
+accessibility_name = "Codex"
+text = "Codex"
+
 [node name="StationHost" type="Control" parent="Column/Stage"]
 anchors_preset = 0
 offset_top = 192.0

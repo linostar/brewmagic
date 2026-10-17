@@ -162,19 +162,34 @@ offset_right = 264.0
 offset_bottom = 230.0
 theme_override_constants/separation = 4
 
-[node name="NextDayButton" type="Button" parent="Column/Shop"]
-custom_minimum_size = Vector2(160, 40)
+[node name="CodexButton" type="Button" parent="Column/Shop"]
+custom_minimum_size = Vector2(100, 40)
 layout_mode = 1
 anchors_preset = -1
-anchor_left = 0.5
 anchor_top = 1.0
-anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -80.0
+offset_left = 6.0
 offset_top = -46.0
-offset_right = 80.0
+offset_right = 106.0
 offset_bottom = -6.0
-grow_horizontal = 2
+grow_vertical = 0
+focus_neighbor_right = NodePath("../NextDayButton")
+accessibility_name = "Codex"
+text = "Codex"
+
+[node name="NextDayButton" type="Button" parent="Column/Shop"]
+custom_minimum_size = Vector2(152, 40)
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -158.0
+offset_top = -46.0
+offset_right = -6.0
+offset_bottom = -6.0
+grow_horizontal = 0
 grow_vertical = 0
 accessibility_name = "Next day: open tomorrow's morning"
 text = "Next day"
