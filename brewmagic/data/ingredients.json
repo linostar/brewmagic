@@ -6,6 +6,7 @@
     "unlock_day": 1,
     "base_price": 2,
     "grind": false,
+    "heat": false,
     "description": "Hot enough to toast bread. Do not keep it in a back pocket."
   },
   {
@@ -15,6 +16,7 @@
     "unlock_day": 1,
     "base_price": 2,
     "grind": false,
+    "heat": false,
     "description": "So cooling that sniffing it counts as a short holiday."
   },
   {
@@ -24,6 +26,7 @@
     "unlock_day": 1,
     "base_price": 2,
     "grind": false,
+    "heat": false,
     "description": "Turns towards whoever is talking. Mends things. Likes compliments."
   },
   {
@@ -33,6 +36,7 @@
     "unlock_day": 1,
     "base_price": 3,
     "grind": false,
+    "heat": false,
     "description": "A mushroom that sighs when picked. Brings sleep and the spooky sort of dark."
   },
   {
@@ -42,6 +46,7 @@
     "unlock_day": 2,
     "base_price": 4,
     "grind": false,
+    "heat": false,
     "description": "A little warmth, a lot of healing. The bees would like a receipt."
   },
   {
@@ -51,6 +56,47 @@
     "unlock_day": 2,
     "base_price": 4,
     "grind": true,
+    "heat": false,
     "description": "Grows on north-facing gravestones, tough as old boots. Grind it: a touch of calm, a lot of spooky."
+  },
+  {
+    "id": "cinderroot",
+    "name": "Cinderroot",
+    "essence": [3, 0, 0, 0],
+    "unlock_day": 4,
+    "base_price": 5,
+    "grind": false,
+    "heat": true,
+    "description": "A root that smoulders in the soil. It only gives up its fire to a roaring flame: pump the bellows."
+  },
+  {
+    "id": "snowfire_pearl",
+    "name": "Snowfire Pearl",
+    "essence": [1, 1, 0, 0],
+    "unlock_day": 6,
+    "base_price": 5,
+    "grind": false,
+    "heat": false,
+    "description": "Warm on one side, frosty on the other. Oysters argue about which side is up."
+  },
+  {
+    "id": "twilight_bloom",
+    "name": "Twilight Bloom",
+    "essence": [0, 0, 1, 1],
+    "unlock_day": 6,
+    "base_price": 5,
+    "grind": false,
+    "heat": false,
+    "description": "Opens at dusk, yawns at dawn. Half healing, half bedtime story."
+  },
+  {
+    "id": "starlight_dew",
+    "name": "Starlight Dew",
+    "essence": [0, 1, 1, 1],
+    "unlock_day": 6,
+    "base_price": 6,
+    "grind": true,
+    "heat": false,
+    "description": "Dew that froze while a star was watching. Grind the crystals: calm, growth and a hint of night."
   }
 ]

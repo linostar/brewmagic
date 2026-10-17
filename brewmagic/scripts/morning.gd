@@ -1,7 +1,8 @@
 class_name Morning
 extends Control
 ## Morning screen (flow MORNING): the story day Game.day, its title, its morning
-## note from data/days.json on a parchment card, the coins and stock the day
+## note from data/days.json on a parchment card (the first conditioned note that
+## matches Game.flags, Story.morning_note), the coins and stock the day
 ## starts with, and "Open the shop" (thumb zone), which starts the shift.
 ## A day missing from the data sends the player back to the title with the reason.
 
@@ -23,11 +24,11 @@ func _ready() -> void:
 		return
 	($Column/DayLabel as Label).text = "Day %d" % spec.day
 	($Column/TitleLabel as Label).text = spec.title
-	($Column/Card/Note as Label).text = "\n".join(Content.wrap_bubble(spec.morning_note))
+	($Column/Card/Note as Label).text = "\n".join(Content.wrap_bubble(Story.morning_note(spec, _game.flags)))
 	var in_stock := 0
 	for id in _game.stock:
 		in_stock += _game.stock[id]
-	($Column/Status as Label).text = "Coins: %d\nIngredients in stock: %d\nCustomers expected: %d" % [_game.coins, in_stock, spec.customers.size()]
+	($Column/Status as Label).text = "Coins: %d\nIngredients in stock: %d\nCustomers expected: %d" % [_game.coins, in_stock, Story.customers_of(spec, _game.flags).size()]
 	_open_button.pressed.connect(_on_open_pressed)
 	Juice.squash(_card, 0.12)
 	_open_button.grab_focus(true)

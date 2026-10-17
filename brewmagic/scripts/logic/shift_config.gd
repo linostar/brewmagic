@@ -10,7 +10,7 @@ var mode := Mode.STORY
 ## Story day number (1..7).
 var day := 1
 var title := ""
-## The scheduled customers, in arrival order.
+## The scheduled customers on this story path, in arrival order.
 var customers: Array[DayCustomer] = []
 ## The potions customers may ask for this shift (unlock_day <= day), in file order.
 var allowed_potions: Array[PotionType] = []

@@ -27,5 +27,77 @@
       { "archetype": "apprentice_knight", "potion": "moonbloom_draught" },
       { "archetype": "dramatic_bard", "potion": "valour_cordial" }
     ]
+  },
+  {
+    "id": "day_3",
+    "day": 3,
+    "title": "The Guild Comes Calling",
+    "morning_note": "A Guild inspector is in town. Five new potions on the menu. Brew neatly!",
+    "patience_scale": 1.0,
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4 },
+    "customers": [
+      { "archetype": "goat_farmer", "potion": "greenthumb_syrup" },
+      { "archetype": "dramatic_bard", "potion": "nightfire_punch" },
+      { "archetype": "gossip_granny", "potion": "nocturne_syrup" },
+      { "archetype": "busy_baker", "potion": "stillwater_draught" }
+    ]
+  },
+  {
+    "id": "day_4",
+    "day": 4,
+    "title": "Rival Across the Street",
+    "morning_note": "Cinderroot is in! Pump the bellows to wake its fire. Who opened that shop?",
+    "patience_scale": 1.0,
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4, "cinderroot": 5 },
+    "customers": [
+      { "archetype": "apprentice_knight", "potion": "bonfire_tonic" },
+      { "archetype": "night_watchman", "potion": "smoulder_syrup" },
+      { "archetype": "haughty_noble", "potion": "dewdrop_balm" },
+      { "archetype": "retired_wizard", "potion": "embermoss_elixir" }
+    ]
+  },
+  {
+    "id": "day_5",
+    "day": 5,
+    "title": "Market Day Rush",
+    "morning_note": "Market day! More customers, less patience. Brew fast, smile faster.",
+    "patience_scale": 0.75,
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4, "cinderroot": 5 },
+    "customers": [
+      { "archetype": "busy_baker", "potion": "hearthglow_tonic" },
+      { "archetype": "dramatic_bard", "potion": "nightfire_punch" },
+      { "archetype": "apprentice_knight", "potion": "bonfire_tonic" },
+      { "archetype": "haughty_noble", "potion": "dewdrop_balm" },
+      { "archetype": "goat_farmer", "potion": "greenthumb_syrup" },
+      { "archetype": "night_watchman", "potion": "smoulder_syrup" },
+      { "archetype": "retired_wizard", "potion": "moonbloom_draught" }
+    ]
+  },
+  {
+    "id": "day_6",
+    "day": 6,
+    "title": "Rare Goods",
+    "morning_note": "Rare goods at the market: snowfire pearls, twilight blooms and starlight dew.",
+    "patience_scale": 1.0,
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4, "cinderroot": 5, "snowfire_pearl": 5, "twilight_bloom": 5, "starlight_dew": 6 },
+    "customers": [
+      { "archetype": "retired_wizard", "potion": "starfire_elixir" },
+      { "archetype": "gossip_granny", "potion": "duskbloom_syrup" },
+      { "archetype": "haughty_noble", "potion": "panacea" },
+      { "archetype": "busy_baker", "potion": "hushfire_tonic" }
+    ]
+  },
+  {
+    "id": "day_7",
+    "day": 7,
+    "title": "The Guild Fair",
+    "morning_note": "The Guild Fair! Everyone you've met is here. The licence is decided today.",
+    "patience_scale": 1.2,
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4, "cinderroot": 5, "snowfire_pearl": 5, "twilight_bloom": 5, "starlight_dew": 6 },
+    "customers": [
+      { "archetype": "goat_farmer", "potion": "valour_cordial" },
+      { "archetype": "dramatic_bard", "potion": "hearthglow_tonic" },
+      { "archetype": "apprentice_knight", "potion": "bonfire_tonic" }
+    ]
   }
 ]

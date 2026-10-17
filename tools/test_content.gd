@@ -1,7 +1,8 @@
 extends SceneTree
 ## Headless content tests: loads brewmagic/data/*.json through Content and checks every
-## invariant I1..I11 of brewmagic/data/SCHEMA.md, the bubble wrap, the lookup API, that
-## malformed data produces exactly the expected errors, and the title's content-error banner.
+## invariant of brewmagic/data/SCHEMA.md (the story ones on every flag path), the bubble
+## wrap, the lookup API, that malformed data produces exactly the expected errors, and the
+## title's content-error banner.
 ##   "$GODOT" --headless --path brewmagic --script "$PWD/tools/test_content.gd"
 ## Prints "test_content: OK" when every test passes; exits 1 otherwise.
 ## To add a test: write a `_test_*` func (it may await) that reports through _check(),
@@ -19,6 +20,10 @@ const MIN_REQUESTS_PER_PAIR := 3
 const MIN_MISBREWS_PER_ESSENCE := 5
 ## Distance from target at which a brew is a Misbrew.
 const MISBREW_DISTANCE := 3
+## The day the Bellows first appears (SCHEMA.md I10).
+const BELLOWS_DAY := 4
+## Beats each story character has at least (SCHEMA.md I13).
+const MIN_BEATS := 3
 
 var _failures: Array[String] = []
 var _passed := 0
@@ -57,6 +62,9 @@ func _tests() -> Array[Callable]:
 		_test_i9_misbrews_overshoot,
 		_test_i10_coverage,
 		_test_i11_mortar_consistency,
+		_test_i12_bellows_consistency,
+		_test_i13_story_paths,
+		_test_flag_paths_enumerate_conditions,
 		_test_part_values_have_sprites,
 		_test_malformed_data_errors,
 		_test_title_shows_content_errors,
@@ -139,6 +147,11 @@ func _test_i2_lines_fit_bubble() -> void:
 		_collect_bubble_problem(problems, line.id, line.text)
 	for spec in Content.days():
 		_collect_bubble_problem(problems, spec.id, spec.morning_note)
+		for note in spec.morning_notes:
+			_collect_bubble_problem(problems, spec.id + " morning_notes", note["text"])
+		for customer in spec.customers:
+			for outcome in customer.lines:
+				_collect_bubble_problem(problems, "%s %s.%s" % [spec.id, customer.flag(), outcome], customer.lines[outcome])
 	_check(problems.is_empty(), "I2 every line fits its bubble", "\n".join(problems))
 
 
@@ -161,6 +174,10 @@ func _test_bubble_lines_fit_font() -> void:
 		texts[line.id] = line.text
 	for line in Content.misbrews():
 		texts[line.id] = line.text
+	for spec in Content.days():
+		for customer in spec.customers:
+			for outcome in customer.lines:
+				texts["%s %s.%s" % [spec.id, customer.flag(), outcome]] = customer.lines[outcome]
 	var overflows: Array[String] = []
 	var widest := 0.0
 	for key in texts:
@@ -238,12 +255,18 @@ func _test_i7_potions_and_days_solvable() -> void:
 	for item in Content.potions():
 		if _exact_recipes(item.target, Content.ingredients_unlocked_by(item.unlock_day)).is_empty():
 			problems.append("%s has no exact recipe by day %d" % [item.id, item.unlock_day])
+	# Every day customer on any path (a superset of each path's list).
 	for spec in Content.days():
 		var pool := Content.ingredients_unlocked_by(spec.day)
 		for i in spec.customers.size():
 			if _exact_recipes(Content.potion(spec.customers[i].potion).target, pool).is_empty():
 				problems.append("%s customer %d (%s) is not solvable" % [spec.id, i, spec.customers[i].potion])
-	_check(problems.is_empty(), "I7 every potion and day customer is exactly solvable", "\n".join(problems))
+	var targets: Dictionary[Vector4i, String] = {}
+	for item in Content.potions():
+		if targets.has(item.target):
+			problems.append("%s and %s share the target %s" % [targets[item.target], item.id, item.target])
+		targets[item.target] = item.id
+	_check(problems.is_empty(), "I7 every potion and day customer is exactly solvable, targets unique", "\n".join(problems))
 
 
 func _test_i8_day1_stock_serves_day1() -> void:
@@ -259,15 +282,21 @@ func _test_i8_day1_stock_serves_day1() -> void:
 ## fail it, and stock carried over from day 1 must count (dear frost mint and
 ## nightshade caps are covered by the ones day 1 leaves).
 func _test_i8_market_serves_later_days() -> void:
-	var problems := _market_shortfalls()
-	_check(problems.is_empty(), "I8 day N-1 Perfect pay plus the carried-over stock buys every day-N customer at day N's market", "\n".join(problems))
+	var problems: Array[String] = []
+	var paths := _flag_paths()
+	for path in paths:
+		for problem in _market_shortfalls(path):
+			problems.append("path %s: %s" % [path, problem])
+	_check(problems.is_empty(), "I8 on all %d flag paths, day N-1 Perfect pay (beats unpaid) plus the carried-over stock buys every day-N customer at day N's market" % paths.size(), "\n".join(problems))
 	var texts := _real_texts()
 	var data: Array = JSON.parse_string(texts["days.json"])
 	data[1]["market"]["moonmoss"] = 30
 	texts["days.json"] = JSON.stringify(data)
 	var errors := _load_quietly(texts)
 	var expensive := _market_shortfalls()
-	_check(errors.is_empty() and expensive.size() == 1 and expensive[0].begins_with("day_2:"), "I8 rejects a day-2 market the day-1 pay cannot cover", "%s / %s" % [errors, expensive])
+	# Day 2 fails; every later day then has no Perfect day before it to carry stock from.
+	var cascade := expensive.slice(1).all(func(problem: String) -> bool: return "no Perfect day" in problem)
+	_check(errors.is_empty() and not expensive.is_empty() and expensive[0].begins_with("day_2:") and cascade, "I8 rejects a day-2 market the day-1 pay cannot cover", "%s / %s" % [errors, expensive])
 	texts = _real_texts()
 	data = JSON.parse_string(texts["days.json"])
 	data[1]["market"]["frost_mint"] = 12
@@ -291,15 +320,25 @@ func _test_i9_misbrews_overshoot() -> void:
 
 func _test_i10_coverage() -> void:
 	var problems: Array[String] = []
-	for item in Content.potions():
-		for archetype in Content.archetypes():
-			var count := Content.requests_for(item.id, archetype.id).size()
+	for spec in Content.days():
+		for customer in spec.customers:
+			if customer.request != "":
+				continue
+			var count := Content.requests_for(customer.potion, customer.archetype).size()
 			if count < MIN_REQUESTS_PER_PAIR:
-				problems.append("%s/%s has %d requests" % [item.id, archetype.id, count])
+				problems.append("%s: %s/%s has %d requests" % [spec.id, customer.potion, customer.archetype, count])
+	for item in Content.potions():
 		if item.unlock_day == 1 and item.steps != PackedStringArray(["stir", "pour"]):
 			problems.append("%s steps %s (day 1 uses stir, pour)" % [item.id, item.steps])
+		if item.unlock_day < BELLOWS_DAY and "bellows" in item.steps:
+			problems.append("%s (day %d) uses the bellows before day %d" % [item.id, item.unlock_day, BELLOWS_DAY])
 	if not Content.potions().any(func(item: PotionType) -> bool: return item.unlock_day == 2 and "mortar" in item.steps):
 		problems.append("no day-2 potion uses the mortar")
+	if not Content.potions().any(func(item: PotionType) -> bool: return item.unlock_day == BELLOWS_DAY and "bellows" in item.steps):
+		problems.append("no day-%d potion uses the bellows" % BELLOWS_DAY)
+	for item in Content.ingredients():
+		if item.unlock_day < BELLOWS_DAY and item.heat:
+			problems.append("%s needs heat before day %d" % [item.id, BELLOWS_DAY])
 	for k in Content.ESSENCES.size():
 		var lines := Content.misbrews_for(k)
 		if lines.size() < MIN_MISBREWS_PER_ESSENCE:
@@ -320,14 +359,129 @@ func _test_i10_coverage() -> void:
 
 ## I11: a potion lists "mortar" exactly when every exact recipe of it needs a grind ingredient.
 func _test_i11_mortar_consistency() -> void:
+	var problems := _station_mismatches("mortar", func(item: Ingredient) -> bool: return item.grind)
+	_check(problems.is_empty(), "I11 mortar steps match the grind ingredients", "\n".join(problems))
+
+
+## I12: a potion lists "bellows" exactly when every exact recipe of it needs a heat ingredient.
+func _test_i12_bellows_consistency() -> void:
+	var problems := _station_mismatches("bellows", func(item: Ingredient) -> bool: return item.heat)
+	_check(problems.is_empty(), "I12 bellows steps match the heat ingredients", "\n".join(problems))
+
+
+## The potions whose `steps` list `station` while not every exact recipe has an ingredient
+## that `needs` it, or the other way round.
+func _station_mismatches(station: String, needs: Callable) -> Array[String]:
 	var problems: Array[String] = []
 	for item in Content.potions():
 		var recipes := _exact_recipes(item.target, Content.ingredients_unlocked_by(item.unlock_day))
-		var all_grind := not recipes.is_empty() and recipes.all(func(brew: PackedStringArray) -> bool:
-			return Array(brew).any(func(id: String) -> bool: return Content.ingredient(id).grind))
-		if ("mortar" in item.steps) != all_grind:
+		var all_need := not recipes.is_empty() and recipes.all(func(brew: PackedStringArray) -> bool:
+			return Array(brew).any(func(id: String) -> bool: return needs.call(Content.ingredient(id))))
+		if (station in item.steps) != all_need:
 			problems.append("%s steps %s but recipes %s" % [item.id, item.steps, recipes])
-	_check(problems.is_empty(), "I11 mortar steps match the grind ingredients", "\n".join(problems))
+	return problems
+
+
+## I13 on the real data: every story character has its beats (the last on the last day),
+## and on every flag path every day has customers, each beat of the day comes exactly
+## once, and every customer is exactly solvable (I8 per path is in its own test).
+func _test_i13_story_paths() -> void:
+	var problems: Array[String] = []
+	var days := Content.days()
+	var beat_day: Dictionary[String, int] = {}
+	for spec in days:
+		for customer in spec.customers:
+			if customer.beat != "":
+				beat_day[customer.flag()] = spec.day
+	for who in Content.archetypes():
+		if not who.is_story():
+			continue
+		var own := beat_day.keys().filter(func(flag: String) -> bool: return flag.begins_with(who.id + "."))
+		if own.size() < MIN_BEATS:
+			problems.append("%s has %d beats (min %d)" % [who.id, own.size(), MIN_BEATS])
+		elif own.map(func(flag: String) -> int: return beat_day[flag]).max() != days[-1].day:
+			problems.append("%s has no beat on day %d" % [who.id, days[-1].day])
+	var paths := _flag_paths()
+	for path in paths:
+		for spec in days:
+			var customers := Story.customers_of(spec, path)
+			if customers.is_empty():
+				problems.append("path %s: %s has no customers" % [path, spec.id])
+			var pool := Content.ingredients_unlocked_by(spec.day)
+			for flag: String in beat_day:
+				if beat_day[flag] != spec.day:
+					continue
+				var visits := customers.filter(func(c: DayCustomer) -> bool: return c.flag() == flag).size()
+				if visits != 1:
+					problems.append("path %s: %s has beat %s %d times" % [path, spec.id, flag, visits])
+			for customer in customers:
+				if _exact_recipes(Content.potion(customer.potion).target, pool).is_empty():
+					problems.append("path %s: %s %s is not solvable" % [path, spec.id, customer.potion])
+	_check(problems.is_empty(), "I13 every story path (%d) has each beat once, customers every day, all solvable" % paths.size(), "\n".join(problems))
+
+
+## The path enumerator covers each outcome class a condition can tell apart: two
+## conditions on one flag naming {great} and {great, poor} split its outcomes into
+## three classes (great; poor; refused or stormed_off), so 3 paths.
+func _test_flag_paths_enumerate_conditions() -> void:
+	var texts := _real_texts()
+	var archetypes: Array = JSON.parse_string(texts["archetypes.json"])
+	var hero: Dictionary = (archetypes[0] as Dictionary).duplicate(true)
+	hero["id"] = "test_hero"
+	hero["look"] = {"cloth_a": "red", "cloth_b": "blue", "hair": "black", "skin": "light"}
+	archetypes.append(hero)
+	texts["archetypes.json"] = JSON.stringify(archetypes)
+	var requests: Array = JSON.parse_string(texts["requests.json"])
+	var line: Dictionary = (requests[0] as Dictionary).duplicate(true)
+	line["id"] = "hearthglow_test_hero_1"
+	line["archetype"] = "test_hero"
+	requests.append(line)
+	texts["requests.json"] = JSON.stringify(requests)
+	var lines := {"great": "Yay.", "poor": "Hm.", "refused": "Oh.", "stormed_off": "Bye."}
+	var data: Array = JSON.parse_string(texts["days.json"])
+	(data[0]["customers"] as Array).append({"archetype": "test_hero", "potion": "hearthglow_tonic", "request": "hearthglow_test_hero_1", "beat": "start", "lines": lines})
+	(data[1]["customers"] as Array).append({"archetype": "goat_farmer", "potion": "hearthglow_tonic", "when": {"test_hero.start": ["great"]}})
+	(data[1]["customers"] as Array).append({"archetype": "dramatic_bard", "potion": "hearthglow_tonic", "when": {"test_hero.start": ["great", "poor"]}})
+	texts["days.json"] = JSON.stringify(data)
+	var errors := _load_quietly(texts)
+	var paths := _flag_paths()
+	var sizes := paths.map(func(path: Dictionary) -> int: return Story.customers_of(Content.day(2), path).size())
+	Content.reload()
+	var base := Content.day(2).customers.size()
+	_check(errors.is_empty() and paths.size() == 3 and sizes == [base + 2, base + 1, base], "flag paths split outcomes into the classes conditions tell apart", "%s / %s / %s" % [errors, paths, sizes])
+
+
+## One flag path per combination of the outcome classes the data's `when` conditions
+## tell apart: for each flag some `when` names, its outcomes grouped by which named
+## lists contain them, one outcome per group. Flags no condition names are left out
+## (Story treats them as Story.UNRECORDED, and they cannot change a day).
+func _flag_paths() -> Array[Dictionary]:
+	var lists: Dictionary[String, Array] = {}
+	for spec in Content.days():
+		var conditions: Array = spec.customers.map(func(c: DayCustomer) -> Dictionary: return c.when)
+		conditions.append_array(spec.morning_notes.map(func(note: Dictionary) -> Dictionary: return note["when"]))
+		for when: Dictionary in conditions:
+			for flag: String in when:
+				if not lists.has(flag):
+					lists[flag] = []
+				lists[flag].append(when[flag])
+	var paths: Array[Dictionary] = [{}]
+	for flag in lists:
+		var classes: Dictionary[String, String] = {}
+		for outcome in Story.OUTCOMES:
+			var signature := ""
+			for named: PackedStringArray in lists[flag]:
+				signature += "1" if outcome in named else "0"
+			if not classes.has(signature):
+				classes[signature] = outcome
+		var grown: Array[Dictionary] = []
+		for path in paths:
+			for outcome: String in classes.values():
+				var next := path.duplicate()
+				next[flag] = outcome
+				grown.append(next)
+		paths = grown
+	return paths
 
 
 ## Every part value the schema allows has both idle frames in the customer atlas, so the
@@ -383,6 +537,23 @@ func _test_malformed_data_errors() -> void:
 			"data/upgrades.json [-] station: station 'pour' has no upgrade"]],
 		["overlong line", "archetypes.json", func(data: Array) -> void: data[0]["reactions"]["perfect"][0] = "word ".repeat(16).strip_edges(),
 			"data/archetypes.json [goat_farmer] reactions.perfect[0]: bubble text is 79 characters (max 78)"],
+		["heat not a bool", "ingredients.json", func(data: Array) -> void: data[0]["heat"] = "no",
+			"data/ingredients.json [ember_pepper] heat: expected bool, got String"],
+		["when names an unknown beat", "days.json", func(data: Array) -> void: data[1]["customers"][0]["when"] = {"nobody.waves": ["great"]},
+			"data/days.json [day_2] customers[0].when.nobody.waves: unknown story beat flag 'nobody.waves'"],
+		["when is empty", "days.json", func(data: Array) -> void: data[1]["customers"][0]["when"] = {},
+			"data/days.json [day_2] customers[0].when: is empty"],
+		["beat on an ordinary visitor", "days.json", func(data: Array) -> void: data[1]["customers"][0]["beat"] = "chat",
+			["data/days.json [day_2] customers[0].beat: only story characters have beats; 'goat_farmer' has no look",
+			"data/days.json [day_2] customers[0].lines: missing key (required on a story beat)"]],
+		["lines without a beat", "days.json", func(data: Array) -> void: data[1]["customers"][0]["lines"] = {},
+			"data/days.json [day_2] customers[0].lines: only story beats have lines"],
+		["morning notes empty", "days.json", func(data: Array) -> void: data[1]["morning_notes"] = [],
+			"data/days.json [day_2] morning_notes: is empty"],
+		["look with one cloth twice", "archetypes.json", func(data: Array) -> void: data[0]["look"] = {"cloth_a": "red", "cloth_b": "red", "hair": "black", "skin": "light"},
+			"data/archetypes.json [goat_farmer] look.cloth_b: 'red' is also cloth_a; the two cloths must differ"],
+		["look with an unknown ramp", "archetypes.json", func(data: Array) -> void: data[0]["look"] = {"cloth_a": "red", "cloth_b": "blue", "hair": "black", "skin": "teal"},
+			"data/archetypes.json [goat_farmer] look.skin: 'teal' is not one of [\"light\", \"medium\", \"deep\"]"],
 	]
 	for case: Array in cases:
 		var texts := _real_texts()
@@ -489,25 +660,28 @@ func _overshoots(brew: Vector4i, target: Vector4i) -> bool:
 	return false
 
 
-## SCHEMA.md I8 for days >= 2 on the loaded content, simulated from day 1's starting
+## SCHEMA.md I8 for days >= 2 on the loaded content and the story path `flags` (each
+## day's customers are those whose `when` matches it), simulated from day 1's starting
 ## stock. A day starts with the stock any Perfect run of the day before can leave
 ## (every leftover is tried: the worst one counts). One problem per day N where, for
 ## some carried-over stock, the cheapest Perfect plan (an exact recipe per customer)
 ## buys more at day N's market (Economy.market_price) than day N-1's Perfect pay
-## (Economy.pay, no tips, no other coins) covers.
-func _market_shortfalls() -> Array[String]:
+## (Economy.pay, no tips, no other coins; story beats pay nothing, since they may be
+## refused, but their ingredients count as used) covers.
+func _market_shortfalls(flags: Dictionary = {}) -> Array[String]:
 	var problems: Array[String] = []
 	var days := Content.days()
 	var carried: Array[Dictionary] = []
-	for plan in _plans(days[0]):
+	for plan in _plans(days[0], flags):
 		if plan.keys().all(func(id: String) -> bool: return plan[id] <= days[0].starting_stock.get(id, 0)):
 			_add_unique(carried, _leftover(days[0].starting_stock, plan))
 	for n in range(1, days.size()):
 		var spec := days[n]
 		var budget := 0
-		for customer in days[n - 1].customers:
-			budget += Economy.pay(Content.potion(customer.potion).price, Brew.Grade.PERFECT)
-		var plans := _plans(spec)
+		for customer in Story.customers_of(days[n - 1], flags):
+			if customer.beat == "":
+				budget += Economy.pay(Content.potion(customer.potion).price, Brew.Grade.PERFECT)
+		var plans := _plans(spec, flags)
 		if plans.is_empty() or carried.is_empty():
 			problems.append("%s: %s" % [spec.id, "a customer has no exact recipe" if plans.is_empty() else "no Perfect day %d to carry stock over from" % days[n - 1].day])
 			carried = []
@@ -534,12 +708,12 @@ func _market_shortfalls() -> Array[String]:
 	return problems
 
 
-## Every distinct Perfect plan of `spec`: one exact recipe (ingredients unlocked by its
-## day) per customer, as ingredient id -> count used.
-func _plans(spec: DaySpec) -> Array[Dictionary]:
+## Every distinct Perfect plan of `spec` on the story path `flags`: one exact recipe
+## (ingredients unlocked by its day) per customer, as ingredient id -> count used.
+func _plans(spec: DaySpec, flags: Dictionary = {}) -> Array[Dictionary]:
 	var plans: Array[Dictionary] = [{}]
 	var pool := Content.ingredients_unlocked_by(spec.day)
-	for customer in spec.customers:
+	for customer in Story.customers_of(spec, flags):
 		var grown: Array[Dictionary] = []
 		for plan in plans:
 			for recipe in _exact_recipes(Content.potion(customer.potion).target, pool):

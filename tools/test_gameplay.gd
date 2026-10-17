@@ -147,6 +147,7 @@ func _tests() -> Array[Callable]:
 		_test_bubble_blips,
 		_test_audio_unlock_and_voices,
 		_test_shop_mortar_and_bellows,
+		_test_shop_shelf_scrolls,
 	]
 
 
@@ -856,7 +857,7 @@ func _test_shop_last_day_storm_off() -> void:
 		await _close_shop()
 		return
 	for id in _exact_recipe(shop.customer.potion, shop.stock):
-		await _tap(shop.shelf_item(id))
+		await _tap_item(shop, id)
 	_check(shop.pot.size() == 2, "last day: the last order's ingredients are in the pot", str(shop.pot.size()))
 	shop.customer.patience_left = 0.1
 	_check(await _until(func() -> bool: return _game.state == GameState.Flow.SUMMARY and not _game.is_transitioning(), FLOW_FRAMES * 2), "last day: the day ends with the summary", str(_game.state))
@@ -920,7 +921,7 @@ func _test_shop_patience_timeout() -> void:
 		var recipe := _exact_recipe(shop.customer.potion, shop.stock)
 		var before := shop.stock.duplicate()
 		for id in recipe:
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 		await _tap(shop.brew_button())
 		_check(await _until(func() -> bool: return shop.station != null and shop.station.is_running(), FLOW_FRAMES), "brew starts a station", "no station")
 		shop.customer.patience_left = 0.2
@@ -945,7 +946,7 @@ func _test_shop_pot_add_remove() -> void:
 		ids.assign(shop.stock.keys())
 		var first := ids[0]
 		var count := shop.stock[first]
-		await _tap(shop.shelf_item(first))
+		await _tap_item(shop, first)
 		_check(shop.pot.size() == 1 and shop.stock[first] == count - 1 and shop.shelf_item(first).stock == count - 1, "tap adds to the pot", "%d %d" % [shop.pot.size(), shop.stock[first]])
 		_check(shop.brew_button().disabled and not shop.slot_button(0).disabled, "one ingredient: slot filled, Brew disabled", "brew disabled %s" % shop.brew_button().disabled)
 		await _check_preview(shop, Content.ingredient(first).essence, "preview after adding")
@@ -953,7 +954,7 @@ func _test_shop_pot_add_remove() -> void:
 		_check(shop.pot.is_empty() and shop.stock[first] == count, "slot tap restores the stock", "%d %d" % [shop.pot.size(), shop.stock[first]])
 		await _check_preview(shop, Vector4i.ZERO, "preview after removing")
 		for i in 4:
-			await _tap(shop.shelf_item(ids[i]))
+			await _tap_item(shop, ids[i])
 		_check(shop.pot.size() == Shop.POT_CAPACITY and shop.stock[ids[3]] == shop.shelf_item(ids[3]).stock and shop.stock[ids[3]] == Content.day(1).starting_stock[ids[3]], "pot holds at most 3", "%d" % shop.pot.size())
 		_check(not shop.brew_button().disabled, "Brew enabled with 3", "disabled")
 		for i in Shop.POT_CAPACITY:
@@ -987,7 +988,7 @@ func _test_shop_pause_toggles() -> void:
 		await _tap(shop.get_node("Modal/PausePanel/List/ResumeButton") as Button)
 		_check(not paused, "resume unpauses", "still paused")
 		for id in _exact_recipe(shop.customer.potion, shop.stock):
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 		await _tap(shop.brew_button())
 		_check(await _until(func() -> bool: return shop.station != null and shop.station.is_running(), FLOW_FRAMES), "brew starts a station", "no station")
 		_check(shop.station.assist and is_equal_approx(shop.station.tolerance_scale, GameState.GENTLE_TOLERANCE_SCALE), "station gets the toggled settings", "%s %f" % [shop.station.assist, shop.station.tolerance_scale])
@@ -1010,7 +1011,7 @@ func _test_shop_storm_off_locks_brew() -> void:
 	var day := Content.day(1)
 	if await _wait_for_order(shop, "storm-off"):
 		for id in _exact_recipe(shop.customer.potion, shop.stock):
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 		_check(not shop.brew_button().disabled, "storm-off: Brew enabled with 2", "disabled")
 		var leaving := shop.customer
 		var leaving_id := leaving.get_instance_id()
@@ -1028,7 +1029,7 @@ func _test_shop_storm_off_locks_brew() -> void:
 			await _tap(shop.slot_button(0))
 	if await _wait_for_order(shop, "storm-off mid-station"):
 		for id in _exact_recipe(shop.customer.potion, shop.stock):
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 		await _tap(shop.brew_button())
 		_check(await _until(func() -> bool: return shop.station != null and shop.station.assist_button() != null, FLOW_FRAMES), "storm-off mid-station: station runs", "no station")
 		var leaving := shop.customer
@@ -1084,7 +1085,7 @@ func _test_shop_pause_focus() -> void:
 		await _action(&"ui_accept")
 		_check(not paused and root.gui_get_focus_owner() == item, "resume restores the focused shelf item", str(root.gui_get_focus_owner()))
 		for id in _exact_recipe(shop.customer.potion, shop.stock):
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 		await _tap(shop.brew_button())
 		_check(await _until(func() -> bool: return shop.station != null and shop.station.assist_button() != null, FLOW_FRAMES), "pause focus: station runs", "no station")
 		var under_dim: Array[Control] = [shop.brew_button()]
@@ -1119,7 +1120,7 @@ func _test_shop_controls_size_and_zone() -> void:
 	var shop := await _open_shop()
 	if await _wait_for_order(shop, "layout"):
 		for id in _exact_recipe(shop.customer.potion, shop.stock):
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 		var pause := shop.get_node("Column/Hud/PauseButton") as Button
 		var play: Array[Control] = [shop.brew_button(), shop.get_node("Column/Stage/RefuseButton") as Control, shop.slot_button(0), shop.slot_button(1), shop.slot_button(2), shop.get_node("Column/Stage/SkipButton") as Control, pause]
 		for item in shop.get_node("Column/Stage/ShelfItems").get_children():
@@ -1217,7 +1218,7 @@ func _test_shop_shelf_down_reaches_brew() -> void:
 	var shop := await _open_shop()
 	if await _wait_for_order(shop, "shelf focus"):
 		for id in _exact_recipe(shop.customer.potion, shop.stock):
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 		var brew := shop.brew_button()
 		_check(not brew.disabled, "shelf focus: Brew enabled", "pot %d" % shop.pot.size())
 		for item: ShelfItem in shop.get_node("Column/Stage/ShelfItems").get_children():
@@ -1250,7 +1251,7 @@ func _test_shop_perfect_serve_reaction() -> void:
 	if await _wait_for_order(shop, "perfect"):
 		var who := shop.customer.archetype
 		for id in _exact_recipe(shop.customer.potion, shop.stock):
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 		await _tap(shop.brew_button())
 		for step in shop.customer.potion.steps:
 			if not await _until(func() -> bool: return shop.station != null and shop.station.is_running(), FLOW_FRAMES):
@@ -1551,11 +1552,11 @@ func _test_shop_pot_preview_needs() -> void:
 		var recipe := _exact_recipe(shop.customer.potion, shop.stock)
 		var mix := Vector4i.ZERO
 		for id in recipe:
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 			mix += Content.ingredient(id).essence
 			await _check_preview(shop, mix, "preview after adding %s" % id)
 		var extra: String = shop.stock.keys().filter(func(id: String) -> bool: return shop.stock[id] > 0)[0]
-		await _tap(shop.shelf_item(extra))
+		await _tap_item(shop, extra)
 		await _check_preview(shop, mix + Content.ingredient(extra).essence, "preview over the order")
 		await _tap(shop.slot_button(2))
 		await _check_preview(shop, mix, "preview after removing")
@@ -1578,7 +1579,7 @@ func _test_shop_stir_real_touch() -> void:
 		await _frames(5)
 		if await _wait_for_order(shop, label):
 			for id in _exact_recipe(shop.customer.potion, shop.stock):
-				await _tap(shop.shelf_item(id))
+				await _tap_item(shop, id)
 			await _tap(shop.brew_button())
 			if await _until(func() -> bool: return shop.station is Stir and shop.station.is_running(), FLOW_FRAMES):
 				var stir := shop.station as Stir
@@ -1868,7 +1869,7 @@ func _test_shop_refuse() -> void:
 	var next := shop.queue[0]
 	var stock := shop.stock.duplicate()
 	var coins := shop.coins
-	await _tap(shop.shelf_item(_exact_recipe(counter.potion, shop.stock)[0]))
+	await _tap_item(shop, _exact_recipe(counter.potion, shop.stock)[0])
 	await _tap(refuse)
 	var bubble := shop.get_node("Column/Stage/Bubble") as SpeechBubble
 	_check(shop.refused == 1 and shop.reputation == Economy.REFUSED_REPUTATION and shop.coins == coins and shop.served == 0, "refuse: -1 reputation, no pay", "refused %d rep %d coins %d" % [shop.refused, shop.reputation, shop.coins])
@@ -1886,7 +1887,7 @@ func _test_shop_refuse() -> void:
 	if third:
 		_game.assist_mode = true
 		for id in _exact_recipe(shop.customer.potion, shop.stock):
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 		await _tap(shop.brew_button())
 		await _until(func() -> bool: return shop.station != null and shop.station.is_running(), FLOW_FRAMES)
 		_check(refuse.disabled, "refuse: disabled while brewing", "enabled")
@@ -2008,7 +2009,7 @@ func _test_shop_mortar_and_bellows() -> void:
 			shop.shelf_item(item.id).set_stock(2)
 		var recipe := _exact_recipe(wants, shop.stock)
 		for id in recipe:
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 		await _tap(shop.brew_button())
 		var order: Array[String] = []
 		for step in wants.steps:
@@ -2087,9 +2088,10 @@ func _test_shift_configs() -> void:
 		var config := Shift.story(number)
 		var label := "Shift.story(%d)" % number
 		_check(config != null and config.mode == ShiftConfig.Mode.STORY and config.day == number and config.title == spec.title and is_equal_approx(config.patience_scale, spec.patience_scale), label + " day, title, patience", str(config))
-		var same_customers := config.customers.size() == spec.customers.size()
-		for i in mini(config.customers.size(), spec.customers.size()):
-			same_customers = same_customers and config.customers[i].potion == spec.customers[i].potion and config.customers[i].archetype == spec.customers[i].archetype
+		var expected := Story.customers_of(spec, {})
+		var same_customers := config.customers == expected
+		for customer in config.customers:
+			same_customers = same_customers and Story.matches(customer.when, {})
 		_check(same_customers, label + " customers in order", str(config.customers.size()))
 		_check(config.allowed_potions == Content.potions_unlocked_by(number) and config.ingredients == Content.ingredients_unlocked_by(number), label + " allowed potions and ingredients", "%d %d" % [config.allowed_potions.size(), config.ingredients.size()])
 	Content.quiet_errors = true
@@ -2272,7 +2274,7 @@ func _test_shop_passes_station_tolerance() -> void:
 	var shop := current_scene as Shop
 	if await _wait_for_order(shop, "station tolerance"):
 		for id in _exact_recipe(shop.customer.potion, shop.stock):
-			await _tap(shop.shelf_item(id))
+			await _tap_item(shop, id)
 		await _tap(shop.brew_button())
 		for step in shop.customer.potion.steps:
 			var ready := await _until(func() -> bool: return shop.station != null and shop.station.is_running() and shop.station.assist_button() != null, FLOW_FRAMES)
@@ -2502,7 +2504,7 @@ func _serve(shop: Shop, recipe: Array[String], label: String) -> bool:
 	if not await _wait_for_order(shop, label):
 		return false
 	for id in recipe:
-		await _tap(shop.shelf_item(id))
+		await _tap_item(shop, id)
 	_check(shop.pot.size() == recipe.size() and not shop.brew_button().disabled, label + ": Brew enabled", "pot %d" % shop.pot.size())
 	var served := shop.served
 	var steps := shop.customer.potion.steps
@@ -2573,6 +2575,46 @@ func _until(condition: Callable, frames: int) -> bool:
 			return true
 		await process_frame
 	return condition.call()
+
+
+## A shelf wider than the row (day 6, ten ingredients) clips at the row's ends and
+## scrolls: a sideways drag on an item scrolls it (and puts nothing in the pot), a
+## hidden item cannot be tapped, keyboard focus scrolls the focused item into view,
+## and an upward drag still carries an ingredient into the cauldron.
+func _test_shop_shelf_scrolls() -> void:
+	_game.new_game()
+	for item in Content.ingredients_unlocked_by(6):
+		_game.stock[item.id] = 3
+	var shop: Shop = await _goto_scene(GameState.Flow.SHOP, {"day": 6})
+	if shop == null:
+		_check(false, "shelf scroll: the day-6 shop opens", str(current_scene))
+		return
+	var ids := shop.stock.keys()
+	var row := shop.get_node("Column/Stage/ShelfItems") as Control
+	var last := shop.shelf_item(ids[-1])
+	_check(ids.size() == 10 and row.clip_contents and shop.shelf_scroll == 0.0 and last.get_global_rect().end.x > row.get_global_rect().end.x, "shelf scroll: ten items overflow a clipped row", "%d %s %s" % [ids.size(), row.clip_contents, last.get_global_rect()])
+	await _tap_at(Vector2(row.get_global_rect().end.x + 10.0, last.get_global_rect().get_center().y))
+	_check(shop.pot.is_empty(), "shelf scroll: a hidden item takes no tap", str(shop.pot.size()))
+	var first := shop.shelf_item(ids[0]).get_global_rect().get_center()
+	await _drag_touch(first, first + Vector2(-150, 0))
+	_check(shop.shelf_scroll > 100.0 and shop.pot.is_empty(), "shelf scroll: a sideways drag scrolls the shelf, not into the pot", "%.0f %d" % [shop.shelf_scroll, shop.pot.size()])
+	shop.shelf_item(ids[0]).grab_focus()
+	_check(shop.shelf_scroll == 0.0 and shop.shelf_item(ids[0]).get_global_rect().position.x >= row.get_global_rect().position.x, "shelf scroll: keyboard focus reveals the focused item", "%.0f" % shop.shelf_scroll)
+	shop.shelf_item(ids[-1]).grab_focus()
+	_check(last.get_global_rect().end.x <= row.get_global_rect().end.x, "shelf scroll: focusing the last item scrolls to it", str(last.get_global_rect()))
+	await _wait_for_order(shop, "shelf scroll")
+	var from := last.get_global_rect().get_center()
+	await _drag_touch(from, shop.get_node("Column/Stage").get_global_transform() * Shop.POT_MOUTH)
+	_check(shop.pot.size() == 1 and shop.pot[0].id == ids[-1], "shelf scroll: an upward drag still drops into the cauldron", str(shop.pot.size()))
+	await _close_shop()
+	_game.new_game()
+
+
+## A real tap on the shelf item of ingredient `id`, scrolled into view first (a shelf
+## wider than the row hides the items past its ends).
+func _tap_item(shop: Shop, id: String) -> void:
+	shop.reveal_shelf_item(shop.shelf_item(id))
+	await _tap(shop.shelf_item(id))
 
 
 ## A real touch (press and release) at the centre of `control`.

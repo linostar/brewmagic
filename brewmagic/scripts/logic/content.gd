@@ -9,8 +9,8 @@ extends RefCounted
 ## collected in errors() as "data/<file> [<entry id>] <field>: <problem>" and reported with
 ## push_error, all of them, not just the first. Entries with problems are still loaded as
 ## far as they parse (bad fields keep their resource defaults), and the title screen keeps the shop closed
-## while errors() is non-empty. Cross-file invariants (solvability, hint fairness, coverage)
-## are checked by tools/test_content.gd.
+## while errors() is non-empty. Cross-file invariants (solvability, hint fairness, coverage,
+## the story's flag paths) are checked by tools/test_content.gd.
 
 const DATA_DIR := "res://data/"
 ## Load order: each file only references files loaded before it, except
@@ -46,6 +46,12 @@ const MIN_REACTION_LINES := 3
 ## Speech bubble: greedy word wrap at BUBBLE_COLUMNS characters, at most BUBBLE_LINES lines.
 const BUBBLE_COLUMNS := 26
 const BUBBLE_LINES := 3
+## An ending page: the bubble's wrap, up to PAGE_LINES lines; MIN_PAGES..MAX_PAGES per
+## ending, at most MAX_CAST archetypes in a page's picture.
+const PAGE_LINES := 6
+const MIN_PAGES := 2
+const MAX_PAGES := 5
+const MAX_CAST := 3
 
 ## Tests set quiet_errors to assert on expected errors (load errors and unknown-id lookups)
 ## without failing the log check.
@@ -61,6 +67,7 @@ static var _requests: Dictionary[String, RequestLine] = {}
 static var _misbrews: Dictionary[String, MisbrewLine] = {}
 static var _days: Dictionary[int, DaySpec] = {}
 static var _upgrades: Dictionary[String, Upgrade] = {}
+static var _endings: Dictionary[String, Ending] = {}
 ## The file and entry the loader is reading, for error messages.
 static var _file := ""
 static var _entry := ""
@@ -195,6 +202,20 @@ static func days() -> Array[DaySpec]:
 	return result
 
 
+## The ending `id` (one of Story.ENDINGS), or null (with push_error) if there is none.
+static func ending(id: String) -> Ending:
+	_ensure_loaded()
+	return _lookup(_endings, id, "ending") as Ending
+
+
+## Every ending, in file order.
+static func endings() -> Array[Ending]:
+	_ensure_loaded()
+	var result: Array[Ending] = []
+	result.assign(_endings.values())
+	return result
+
+
 ## Every upgrade, in file order.
 static func upgrades() -> Array[Upgrade]:
 	_ensure_loaded()
@@ -288,6 +309,22 @@ static func bubble_problem(text: String) -> String:
 	return ""
 
 
+## Why `text` does not fit an ending page, or "" if it fits: the bubble rules with
+## PAGE_LINES lines (data/SCHEMA.md "Speech bubble limit").
+static func page_problem(text: String) -> String:
+	if text.strip_edges().is_empty():
+		return "page text is empty"
+	if "\n" in text or "\r" in text:
+		return "page text contains a newline"
+	for word: String in text.split(" ", false):
+		if word.length() > BUBBLE_COLUMNS:
+			return "page word '%s' is %d characters (max %d)" % [word, word.length(), BUBBLE_COLUMNS]
+	var line_count := wrap_bubble(text).size()
+	if line_count > PAGE_LINES:
+		return "page text wraps to %d lines (max %d)" % [line_count, PAGE_LINES]
+	return ""
+
+
 static func _ensure_loaded() -> void:
 	if not _loaded:
 		reload()
@@ -304,6 +341,7 @@ static func _reset() -> void:
 	_misbrews.clear()
 	_days.clear()
 	_upgrades.clear()
+	_endings.clear()
 
 
 static func _load(texts: Dictionary[String, String]) -> void:
@@ -329,17 +367,20 @@ static func _load(texts: Dictionary[String, String]) -> void:
 				_load_misbrews(entries)
 			"days.json":
 				_load_days(entries)
+				_check_story()
 			"upgrades.json":
 				_load_upgrades(entries)
-	print("[Content] Loaded %d ingredients, %d potions, %d hint words, %d archetypes, %d requests, %d misbrews, %d days, %d upgrades: %d problem(s)" % [
+			"endings.json":
+				_load_endings(entries)
+	print("[Content] Loaded %d ingredients, %d potions, %d hint words, %d archetypes, %d requests, %d misbrews, %d days, %d upgrades, %d endings: %d problem(s)" % [
 		_ingredients.size(), _potions.size(), _hint_words.size(), _archetypes.size(),
-		_requests.size(), _misbrews.size(), _days.size(), _upgrades.size(), _errors.size()])
+		_requests.size(), _misbrews.size(), _days.size(), _upgrades.size(), _endings.size(), _errors.size()])
 
 
 static func _load_ingredients(entries: Array[Dictionary]) -> void:
 	for entry in entries:
 		var item := Ingredient.new()
-		item.id = _begin_entry(entry, ["id", "name", "essence", "unlock_day", "base_price", "grind", "description"], [], _ingredients)
+		item.id = _begin_entry(entry, ["id", "name", "essence", "unlock_day", "base_price", "grind", "heat", "description"], [], _ingredients)
 		item.name = _string(entry, "name", NAME_MAX)
 		item.essence = _essence(entry, "essence", INGREDIENT_ESSENCE_MAX)
 		if entry.has("essence") and item.essence == Vector4i.ZERO:
@@ -347,6 +388,7 @@ static func _load_ingredients(entries: Array[Dictionary]) -> void:
 		item.unlock_day = _int(entry, "unlock_day", FIRST_DAY, LAST_DAY)
 		item.base_price = _int(entry, "base_price", 1, PRICE_MAX)
 		item.grind = _bool(entry, "grind")
+		item.heat = _bool(entry, "heat")
 		item.description = _string(entry, "description", DESCRIPTION_MAX)
 		if item.id != "":
 			_ingredients[item.id] = item
@@ -399,7 +441,7 @@ static func _load_vocabulary(entries: Array[Dictionary]) -> void:
 static func _load_archetypes(entries: Array[Dictionary]) -> void:
 	for entry in entries:
 		var item := Archetype.new()
-		item.id = _begin_entry(entry, ["id", "name", "patience_seconds", "tip_tendency", "voice", "speech_style", "parts", "reactions"], [], _archetypes)
+		item.id = _begin_entry(entry, ["id", "name", "patience_seconds", "tip_tendency", "voice", "speech_style", "parts", "reactions"], ["look"], _archetypes)
 		item.name = _string(entry, "name", NAME_MAX)
 		item.patience_seconds = _int(entry, "patience_seconds", 10, 300)
 		item.tip_tendency = _float(entry, "tip_tendency", 0.0, 1.0)
@@ -412,6 +454,8 @@ static func _load_archetypes(entries: Array[Dictionary]) -> void:
 		item.part_head = _enum(parts, "head", HEADS, "parts.")
 		item.part_hair = _enum(parts, "hair", HAIRS, "parts.")
 		item.part_accessory = _enum(parts, "accessory", ACCESSORIES, "parts.")
+		if entry.has("look"):
+			item.fixed_look = _look(entry)
 		var reactions := _object(entry, "reactions", Archetype.GRADES)
 		for grade in Archetype.GRADES:
 			if not reactions.has(grade):
@@ -480,13 +524,14 @@ static func _load_days(entries: Array[Dictionary]) -> void:
 	var seen_ids: Dictionary[String, DaySpec] = {}
 	for entry in entries:
 		var item := DaySpec.new()
-		item.id = _begin_entry(entry, ["id", "day", "title", "morning_note", "patience_scale", "customers"], ["starting_coins", "starting_stock", "market"], seen_ids)
+		item.id = _begin_entry(entry, ["id", "day", "title", "morning_note", "patience_scale", "customers"], ["starting_coins", "starting_stock", "market", "morning_notes"], seen_ids)
 		item.day = _int(entry, "day", FIRST_DAY, LAST_DAY)
 		if item.id != "" and entry.has("day") and item.id != "day_%d" % item.day:
 			_error("id", "'%s' does not match day %d" % [item.id, item.day])
 		item.title = _string(entry, "title", NAME_MAX)
 		item.morning_note = _string(entry, "morning_note", BUBBLE_COLUMNS * BUBBLE_LINES, "", false)
 		_bubble(item.morning_note, "morning_note")
+		_load_morning_notes(entry, item)
 		item.patience_scale = _float(entry, "patience_scale", 0.25, 3.0)
 		var first := item.day == FIRST_DAY
 		for key: String in ["starting_coins", "starting_stock", "market"]:
@@ -585,7 +630,7 @@ static func _load_customers(entry: Dictionary, item: DaySpec) -> void:
 			_error(path.trim_suffix("."), "expected Dictionary, got %s" % type_string(typeof(list[i])))
 			continue
 		var spec: Dictionary = list[i]
-		_check_keys(spec, ["archetype", "potion"], ["request"], path)
+		_check_keys(spec, ["archetype", "potion"], ["request", "beat", "lines", "when"], path)
 		var customer := DayCustomer.new()
 		customer.archetype = _reference(spec, "archetype", _archetypes, "archetype", path)
 		customer.potion = _reference(spec, "potion", _potions, "potion", path)
@@ -596,7 +641,190 @@ static func _load_customers(entry: Dictionary, item: DaySpec) -> void:
 			var line := _requests[customer.request]
 			if (customer.potion != "" and line.potion != customer.potion) or (customer.archetype != "" and line.archetype != customer.archetype):
 				_error(path + "request", "'%s' is for %s/%s, not %s/%s" % [line.id, line.potion, line.archetype, customer.potion, customer.archetype])
+		_load_beat(spec, customer, path)
+		customer.when = _when(spec, path)
 		item.customers.append(customer)
+
+
+## A day customer's story beat: `beat` (snake_case) and its `lines`, both required on a story
+## character's visit and an error on anyone else's; a beat pins its request.
+static func _load_beat(spec: Dictionary, customer: DayCustomer, path: String) -> void:
+	var who: Archetype = _archetypes.get(customer.archetype)
+	var story := who != null and who.is_story()
+	if who != null and story != spec.has("beat"):
+		_error(path + "beat", ("missing key (%s is a story character)" if story else "only story characters have beats; '%s' has no look") % customer.archetype)
+	if spec.has("lines") and not spec.has("beat"):
+		_error(path + "lines", "only story beats have lines")
+	if not spec.has("beat"):
+		return
+	customer.beat = _string(spec, "beat", NAME_MAX, path)
+	if customer.beat != "" and _snake_case.search(customer.beat) == null:
+		_error(path + "beat", "'%s' is not snake_case" % customer.beat)
+	if not spec.has("request"):
+		_error(path + "request", "missing key (required on a story beat)")
+	if not spec.has("lines"):
+		_error(path + "lines", "missing key (required on a story beat)")
+		return
+	var lines := _object(spec, "lines", Story.OUTCOMES, path)
+	for outcome in Story.OUTCOMES:
+		if lines.has(outcome):
+			customer.lines[outcome] = _string(lines, outcome, BUBBLE_COLUMNS * BUBBLE_LINES, path + "lines.", false)
+			_bubble(customer.lines[outcome], path + "lines." + outcome)
+
+
+## A `when` condition ({flag: [outcome, ...]}, non-empty) at `path`; its flags are checked
+## against the story's beats once every day is loaded (_check_story).
+static func _when(object: Dictionary, path: String) -> Dictionary[String, PackedStringArray]:
+	var result: Dictionary[String, PackedStringArray] = {}
+	if not object.has("when"):
+		return result
+	var conditions := _object(object, "when", [], path)
+	if typeof(object["when"]) == TYPE_DICTIONARY and conditions.is_empty():
+		_error(path + "when", "is empty")
+	for flag: Variant in conditions:
+		var field := "%swhen.%s" % [path, flag]
+		var outcomes := _strings(conditions, str(flag), true, path + "when.")
+		for i in outcomes.size():
+			if not outcomes[i] in Story.OUTCOMES:
+				_error("%s[%d]" % [field, i], "'%s' is not one of %s" % [outcomes[i], Story.OUTCOMES])
+			elif outcomes.find(outcomes[i]) != i:
+				_error("%s[%d]" % [field, i], "'%s' is repeated" % outcomes[i])
+		result[str(flag)] = outcomes
+	return result
+
+
+## A day's optional `morning_notes`: a non-empty list of {when, text}, each `when` non-empty.
+static func _load_morning_notes(entry: Dictionary, item: DaySpec) -> void:
+	if not entry.has("morning_notes"):
+		return
+	if typeof(entry["morning_notes"]) != TYPE_ARRAY:
+		_error("morning_notes", "expected Array, got %s" % type_string(typeof(entry["morning_notes"])))
+		return
+	var list: Array = entry["morning_notes"]
+	if list.is_empty():
+		_error("morning_notes", "is empty")
+	for i in list.size():
+		var path := "morning_notes[%d]." % i
+		if typeof(list[i]) != TYPE_DICTIONARY:
+			_error(path.trim_suffix("."), "expected Dictionary, got %s" % type_string(typeof(list[i])))
+			continue
+		var note: Dictionary = list[i]
+		_check_keys(note, ["when", "text"], [], path)
+		var text := _string(note, "text", BUBBLE_COLUMNS * BUBBLE_LINES, path, false)
+		_bubble(text, path + "text")
+		item.morning_notes.append({"when": _when(note, path), "text": text})
+
+
+## Story checks across days: the visits (variants) of one beat flag lie on one day, and every
+## `when` names only flags of beats on earlier days.
+static func _check_story() -> void:
+	_begin_file("days.json")
+	var beat_days: Dictionary[String, int] = {}
+	for number in _sorted_days():
+		_entry = "day_%d" % number
+		var customers := _days[number].customers
+		for i in customers.size():
+			var flag := customers[i].flag()
+			if flag == "":
+				continue
+			if beat_days.has(flag) and beat_days[flag] != number:
+				_error("customers[%d].beat" % i, "'%s' is already a beat of day %d" % [flag, beat_days[flag]])
+			else:
+				beat_days[flag] = number
+	for number in _sorted_days():
+		_entry = "day_%d" % number
+		var spec := _days[number]
+		for i in spec.customers.size():
+			_check_when_flags(spec.customers[i].when, "customers[%d]." % i, number, beat_days)
+		for i in spec.morning_notes.size():
+			_check_when_flags(spec.morning_notes[i]["when"], "morning_notes[%d]." % i, number, beat_days)
+
+
+static func _check_when_flags(when: Dictionary[String, PackedStringArray], path: String, number: int, beat_days: Dictionary[String, int]) -> void:
+	for flag in when:
+		if not beat_days.has(flag):
+			_error("%swhen.%s" % [path, flag], "unknown story beat flag '%s'" % flag)
+		elif beat_days[flag] >= number:
+			_error("%swhen.%s" % [path, flag], "'%s' is a beat of day %d, not an earlier day" % [flag, beat_days[flag]])
+
+
+static func _sorted_days() -> Array[int]:
+	var numbers: Array[int] = []
+	numbers.assign(_days.keys())
+	numbers.sort()
+	return numbers
+
+
+## An archetype's fixed `look`: ramp names of Look (two different cloths, a hair, a skin);
+## null when any of them is missing, unknown or the cloths are equal (reported), so a
+## broken look does not also make every visit of the archetype a story-beat error.
+static func _look(entry: Dictionary) -> Look:
+	var object := _object(entry, "look", ["cloth_a", "cloth_b", "hair", "skin"])
+	var look := Look.new()
+	look.cloth_a = _enum(object, "cloth_a", _keys(Look.CLOTHS), "look.")
+	look.cloth_b = _enum(object, "cloth_b", _keys(Look.CLOTHS), "look.")
+	look.hair = _enum(object, "hair", _keys(Look.HAIRS), "look.")
+	look.skin = _enum(object, "skin", _keys(Look.SKINS), "look.")
+	if look.cloth_a != "" and look.cloth_a == look.cloth_b:
+		_error("look.cloth_b", "'%s' is also cloth_a; the two cloths must differ" % look.cloth_b)
+		return null
+	if look.cloth_a == "" or look.cloth_b == "" or look.hair == "" or look.skin == "":
+		return null
+	return look
+
+
+static func _keys(table: Dictionary) -> Array[String]:
+	var keys: Array[String] = []
+	keys.assign(table.keys())
+	return keys
+
+
+static func _load_endings(entries: Array[Dictionary]) -> void:
+	for entry in entries:
+		var item := Ending.new()
+		item.id = _begin_entry(entry, ["id", "title", "pages"], [], _endings)
+		if item.id != "" and not item.id in Story.ENDINGS:
+			_error("id", "'%s' is not one of %s" % [item.id, Story.ENDINGS])
+		item.title = _string(entry, "title", NAME_MAX)
+		_load_pages(entry, item)
+		if item.id != "":
+			_endings[item.id] = item
+	_entry = "-"
+	for id in Story.ENDINGS:
+		if not _endings.has(id):
+			_error("id", "ending '%s' is missing" % id)
+
+
+## An ending's `pages`: MIN_PAGES..MAX_PAGES of {text (page), cast (archetype ids)}.
+static func _load_pages(entry: Dictionary, item: Ending) -> void:
+	if not entry.has("pages"):
+		return
+	if typeof(entry["pages"]) != TYPE_ARRAY:
+		_error("pages", "expected Array, got %s" % type_string(typeof(entry["pages"])))
+		return
+	var list: Array = entry["pages"]
+	if list.size() < MIN_PAGES or list.size() > MAX_PAGES:
+		_error("pages", "has %d pages (%d..%d)" % [list.size(), MIN_PAGES, MAX_PAGES])
+	for i in list.size():
+		var path := "pages[%d]." % i
+		if typeof(list[i]) != TYPE_DICTIONARY:
+			_error(path.trim_suffix("."), "expected Dictionary, got %s" % type_string(typeof(list[i])))
+			continue
+		var page: Dictionary = list[i]
+		_check_keys(page, ["text", "cast"], [], path)
+		var text := _string(page, "text", BUBBLE_COLUMNS * PAGE_LINES, path, false)
+		if page.has("text") and page_problem(text) != "":
+			_error(path + "text", page_problem(text))
+		var cast := _strings(page, "cast", false, path)
+		if cast.size() > MAX_CAST:
+			_error(path + "cast", "has %d archetypes (max %d)" % [cast.size(), MAX_CAST])
+		for k in cast.size():
+			if not _archetypes.has(cast[k]):
+				_error("%scast[%d]" % [path, k], "unknown archetype id '%s'" % cast[k])
+			elif cast.find(cast[k]) != k:
+				_error("%scast[%d]" % [path, k], "'%s' is repeated" % cast[k])
+		item.pages.append(text)
+		item.casts.append(cast)
 
 
 ## Parses a file's text into its entries; reports a parse error or a top level that is not
@@ -762,15 +990,15 @@ static func _strings(object: Dictionary, key: String, require_items := true, pat
 
 
 ## A nested object whose keys must be exactly `keys` (any keys when `keys` is empty).
-static func _object(object: Dictionary, key: String, keys: Array[String]) -> Dictionary:
+static func _object(object: Dictionary, key: String, keys: Array[String], path := "") -> Dictionary:
 	if not object.has(key):
 		return {}
 	if typeof(object[key]) != TYPE_DICTIONARY:
-		_error(key, "expected Dictionary, got %s" % type_string(typeof(object[key])))
+		_error(path + key, "expected Dictionary, got %s" % type_string(typeof(object[key])))
 		return {}
 	var nested: Dictionary = object[key]
 	if not keys.is_empty():
-		_check_keys(nested, keys, [], key + ".")
+		_check_keys(nested, keys, [], path + key + ".")
 	return nested
 
 

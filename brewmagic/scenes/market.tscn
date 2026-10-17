@@ -151,7 +151,7 @@ offset_right = 265.0
 offset_bottom = 222.0
 theme_override_constants/h_separation = 4
 theme_override_constants/v_separation = 4
-columns = 4
+columns = 5
 
 [node name="UpgradeList" type="VBoxContainer" parent="Column/Shop"]
 visible = false

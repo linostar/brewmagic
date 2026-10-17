@@ -12,7 +12,7 @@ extends Control
 ## (Shop panel, bottom of the column) holds the Stock / Upgrades tabs, the cards
 ## of the open tab and Next day. A card is a Button: tap, click or Enter buys one.
 
-const CARD_SIZE := Vector2(62, 64)
+const CARD_SIZE := Vector2(48, 64)
 const UPGRADE_SIZE := Vector2(258, 44)
 const GOLD := Color("#ffc95c")
 const RED := Color("#c43c2c")

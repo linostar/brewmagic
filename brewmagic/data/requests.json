@@ -125,5 +125,53 @@
 
   {"id": "moonbloom_night_watchman_1", "potion": "moonbloom_draught", "archetype": "night_watchman", "hints": ["hint_grow", "hint_cold", "hint_night"], "text": "Station garden won't grow. It's dark. Cold. At night. Noted."},
   {"id": "moonbloom_night_watchman_2", "potion": "moonbloom_draught", "archetype": "night_watchman", "hints": ["hint_curse", "hint_heal", "hint_calm"], "text": "Cursed hedge on my beat. Heal it. Calm it. Then I'll arrest it."},
-  {"id": "moonbloom_night_watchman_3", "potion": "moonbloom_draught", "archetype": "night_watchman", "hints": ["hint_fresh", "hint_spooky", "hint_cool", "hint_calm"], "text": "Fresh lavender for the spooky cells. Cool and calming. Noted."}
+  {"id": "moonbloom_night_watchman_3", "potion": "moonbloom_draught", "archetype": "night_watchman", "hints": ["hint_fresh", "hint_spooky", "hint_cool", "hint_calm"], "text": "Fresh lavender for the spooky cells. Cool and calming. Noted."},
+
+  {"id": "greenthumb_goat_farmer_1", "potion": "greenthumb_syrup", "archetype": "goat_farmer", "hints": ["hint_grow"], "text": "Turnips won't grow. Duchess ate the last lot. Make these grow. Fast."},
+  {"id": "greenthumb_goat_farmer_2", "potion": "greenthumb_syrup", "archetype": "goat_farmer", "hints": ["hint_grow"], "text": "Duchess chewed the hedge bald. It needs to grow back. Today."},
+  {"id": "greenthumb_goat_farmer_3", "potion": "greenthumb_syrup", "archetype": "goat_farmer", "hints": ["hint_fresh", "hint_grow"], "text": "Hay's gone limp. Want it fresh and growing. Duchess is judging."},
+
+  {"id": "nightfire_dramatic_bard_1", "potion": "nightfire_punch", "archetype": "dramatic_bard", "hints": ["hint_courage", "hint_spooky"], "text": "Tonight I play the haunted crypt! Give me COURAGE against the spooky!"},
+  {"id": "nightfire_dramatic_bard_2", "potion": "nightfire_punch", "archetype": "dramatic_bard", "hints": ["hint_curse", "hint_fire"], "text": "A cursed lute! It plays only dirges! Put FIRE in my soul to fight it!"},
+  {"id": "nightfire_dramatic_bard_3", "potion": "nightfire_punch", "archetype": "dramatic_bard", "hints": ["hint_night", "hint_brave"], "text": "My rival hired a ghost to heckle me at night! Make me BRAVE, I beg!"},
+
+  {"id": "nocturne_gossip_granny_1", "potion": "nocturne_syrup", "archetype": "gossip_granny", "hints": ["hint_night", "hint_sleep"], "text": "Edna snores all night, dearie. I need sleep like a log. A big log."},
+  {"id": "nocturne_gossip_granny_2", "potion": "nocturne_syrup", "archetype": "gossip_granny", "hints": ["hint_curse", "hint_sleep"], "text": "Love, the cat's cursed me again. Something to sleep it off, please."},
+  {"id": "nocturne_gossip_granny_3", "potion": "nocturne_syrup", "archetype": "gossip_granny", "hints": ["hint_spooky"], "text": "Ghost stories at Edna's! I want to be the spooky one this time, dearie."},
+
+  {"id": "stillwater_busy_baker_1", "potion": "stillwater_draught", "archetype": "busy_baker", "hints": ["hint_calm"], "text": "Wedding cake for three hundred! I need calm! Lots of calm! Now!"},
+  {"id": "stillwater_busy_baker_2", "potion": "stillwater_draught", "archetype": "busy_baker", "hints": ["hint_cool"], "text": "Ovens roaring all day! I need to cool down! Fast! Before I melt!"},
+  {"id": "stillwater_busy_baker_3", "potion": "stillwater_draught", "archetype": "busy_baker", "hints": ["hint_cold", "hint_calm"], "text": "Bread's proving, I'm panicking! Something cold and calm, quick quick!"},
+
+  {"id": "bonfire_apprentice_knight_1", "potion": "bonfire_tonic", "archetype": "apprentice_knight", "hints": ["hint_courage"], "text": "Um, the dragon drill is today. Sorry. I need courage. A lot of it."},
+  {"id": "bonfire_apprentice_knight_2", "potion": "bonfire_tonic", "archetype": "apprentice_knight", "hints": ["hint_brave"], "text": "Sir Gregor fights trolls barefoot. I'd like to be brave. Ish. Please?"},
+  {"id": "bonfire_apprentice_knight_3", "potion": "bonfire_tonic", "archetype": "apprentice_knight", "hints": ["hint_warm", "hint_fire"], "text": "My armour is freezing, sorry. Something warm? With, um, fire in it?"},
+
+  {"id": "smoulder_night_watchman_1", "potion": "smoulder_syrup", "archetype": "night_watchman", "hints": ["hint_night", "hint_warm"], "text": "Crypt patrol at night. Need warmth. Not scared. Writing that down."},
+  {"id": "smoulder_night_watchman_2", "potion": "smoulder_syrup", "archetype": "night_watchman", "hints": ["hint_curse", "hint_courage"], "text": "Report: cursed graveyard. Officer requests courage. Lots. Officially."},
+  {"id": "smoulder_night_watchman_3", "potion": "smoulder_syrup", "archetype": "night_watchman", "hints": ["hint_spooky", "hint_brave"], "text": "Spooky owl case, ongoing. Brave face needed. For the notebook."},
+
+  {"id": "dewdrop_haughty_noble_1", "potion": "dewdrop_balm", "archetype": "haughty_noble", "hints": ["hint_cool", "hint_heal"], "text": "One's throat is raw from complaining. Something cool and healing."},
+  {"id": "dewdrop_haughty_noble_2", "potion": "dewdrop_balm", "archetype": "haughty_noble", "hints": ["hint_grow", "hint_calm"], "text": "One's roses wilt in this heat. Make them grow, and keep them calm."},
+  {"id": "dewdrop_haughty_noble_3", "potion": "dewdrop_balm", "archetype": "haughty_noble", "hints": ["hint_fresh", "hint_cold"], "text": "One requires a fresh complexion and a cold, superior gaze. Naturally."},
+
+  {"id": "embermoss_retired_wizard_1", "potion": "embermoss_elixir", "archetype": "retired_wizard", "hints": ["hint_curse", "hint_courage", "hint_calm"], "text": "A curse on my teapot! I need courage and a calm hand. Where was I?"},
+  {"id": "embermoss_retired_wizard_2", "potion": "embermoss_elixir", "archetype": "retired_wizard", "hints": ["hint_night", "hint_fire", "hint_cool"], "text": "My old nemesis haunts the attic at night. Fire, and a cool head!"},
+  {"id": "embermoss_retired_wizard_3", "potion": "embermoss_elixir", "archetype": "retired_wizard", "hints": ["hint_spooky", "hint_brave", "hint_cold"], "text": "In '73 I faced a spooky lich. I was brave and cold. Again, please."},
+
+  {"id": "starfire_retired_wizard_1", "potion": "starfire_elixir", "archetype": "retired_wizard", "hints": ["hint_brave", "hint_calm", "hint_heal", "hint_spooky"], "text": "Brave, calm, healing and spooky, young apprentice. Like my youth."},
+  {"id": "starfire_retired_wizard_2", "potion": "starfire_elixir", "archetype": "retired_wizard", "hints": ["hint_warm", "hint_cool", "hint_grow", "hint_sleep"], "text": "I need warmth, a cool head, growth and sleep. Or was it soup?"},
+  {"id": "starfire_retired_wizard_3", "potion": "starfire_elixir", "archetype": "retired_wizard", "hints": ["hint_fire", "hint_cold", "hint_fresh", "hint_curse"], "text": "Fire, cold, fresh air and a curse. The recipe of my wedding day."},
+
+  {"id": "duskbloom_gossip_granny_1", "potion": "duskbloom_syrup", "archetype": "gossip_granny", "hints": ["hint_heal", "hint_sleep"], "text": "Edna's hex gave me warts, dearie. Heal them while I sleep, please."},
+  {"id": "duskbloom_gossip_granny_2", "potion": "duskbloom_syrup", "archetype": "gossip_granny", "hints": ["hint_curse", "hint_grow"], "text": "My hydrangeas are cursed, love. Make them grow back by morning."},
+  {"id": "duskbloom_gossip_granny_3", "potion": "duskbloom_syrup", "archetype": "gossip_granny", "hints": ["hint_fresh", "hint_spooky"], "text": "Something to keep me fresh at Edna's spooky seance, dearie."},
+
+  {"id": "panacea_haughty_noble_1", "potion": "panacea", "archetype": "haughty_noble", "hints": ["hint_warm", "hint_calm", "hint_heal", "hint_sleep"], "text": "One wants warmth, calm, healing and sleep. All at once. Obviously."},
+  {"id": "panacea_haughty_noble_2", "potion": "panacea", "archetype": "haughty_noble", "hints": ["hint_curse", "hint_cold", "hint_grow", "hint_courage"], "text": "One is cursed, cold and must grow some courage. Fix all of it."},
+  {"id": "panacea_haughty_noble_3", "potion": "panacea", "archetype": "haughty_noble", "hints": ["hint_fresh", "hint_cool", "hint_brave", "hint_spooky"], "text": "Fresh, cool, brave and a little spooky. One is hosting a ball."},
+
+  {"id": "hushfire_busy_baker_1", "potion": "hushfire_tonic", "archetype": "busy_baker", "hints": ["hint_fire", "hint_calm", "hint_warm"], "text": "Oven fire's too wild! I need calm hands and warm buns! Quick!"},
+  {"id": "hushfire_busy_baker_2", "potion": "hushfire_tonic", "archetype": "busy_baker", "hints": ["hint_courage", "hint_cool"], "text": "Need courage for the cake judges, and a cool head! Hurry!"},
+  {"id": "hushfire_busy_baker_3", "potion": "hushfire_tonic", "archetype": "busy_baker", "hints": ["hint_cold", "hint_brave"], "text": "My hands are cold and I'm not brave! Help! The pies!"}
 ]

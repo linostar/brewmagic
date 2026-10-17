@@ -201,7 +201,7 @@ One upgrade per station: exactly one entry for each of `"stir"`, `"pour"`, `"mor
 - **I9** For every potion and every 2-3 ingredient brew (all ingredients), distance >= 3 implies some essence overshoots.
   (With the current data, all brews total >= 4 and all targets total <= 6. A brew without an overshoot would be at most 2 away.)
 - **I10** Coverage. Every (potion, archetype) pair that a day customer without a pinned `request` can ask for has
-  >= 3 requests, and every potion has requests in >= 2 voices. Every essence has >= 5 misbrews, each with its fixed effect.
+  >= 3 requests. Every essence has >= 5 misbrews, each with its fixed effect.
   Every archetype has >= 3 lines for every grade. Potions with `unlock_day == 1` have `steps == ["stir", "pour"]`
   and day-1 ingredients have `grind == false` (day 1 teaches only Stir and Pour). At least one potion with
   `unlock_day == 2` lists `"mortar"` (the Mortar is introduced on day 2). The Bellows first appears on day 4: at least

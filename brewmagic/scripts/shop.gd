@@ -1,7 +1,8 @@
 class_name Shop
 extends Control
-## The shop shift (flow SHOP): runs the ShiftConfig of story day n (Shift.story(n),
-## n from Game.flow_args["day"], default Game.day): its customers in order, its
+## The shop shift (flow SHOP): runs the ShiftConfig of story day n on the story path
+## of Game.flags (Shift.story(n, flags), n from Game.flow_args["day"], default
+## Game.day): its customers in order, its
 ## shelf, its patience scale, starting from the saved coins and stock (Game). Layout per CLAUDE.md "Shop scene
 ## layout": the 270x480 Stage sits at the bottom of the ScreenFit column (extra
 ## height on tall phones goes above it, covered by shop_ceiling copies stacked up
@@ -63,6 +64,8 @@ const STAGE_SIZE := Vector2(270, 480)
 const POT_CAPACITY := 3
 const MIN_BREW := 2
 const SHELF_SPACING := 42.0
+## Gap at each end of a shelf too wide for the row (it scrolls).
+const SHELF_MARGIN := 4.0
 ## Stage-space point where flying ingredients land (the liquid surface).
 const POT_MOUTH := Vector2(135, 288)
 ## Stage-space rect where a dragged ingredient counts as dropped into the cauldron.
@@ -175,6 +178,11 @@ var _rng := RandomNumberGenerator.new()
 ## "<kind>/<key>" -> the line picked last time, so the next pick avoids it.
 var _last_lines: Dictionary[String, String] = {}
 var _shelf_items: Dictionary[String, ShelfItem] = {}
+## Each shelf item's x with the shelf unscrolled.
+var _shelf_x: Dictionary[String, float] = {}
+## How far the shelf is scrolled (0 = its left end shows) and the most it can be.
+var shelf_scroll := 0.0
+var _shelf_scroll_max := 0.0
 var _brewing := false
 var _brew := Vector4i.ZERO
 var _tier := Brew.Grade.MISBREW
@@ -266,7 +274,7 @@ func _ready() -> void:
 	_mode_help.pressed.connect(close_mode_help)
 	_modal_dim.gui_input.connect(_on_modal_dim_input)
 	var number := int(_game.flow_args.get("day", _game.day))
-	shift = Shift.story(number)
+	shift = Shift.story(number, _game.flags)
 	if shift == null:
 		# The title screen is the only safe place to go; the player sees why there.
 		_game.abort_to(GameState.Flow.TITLE, "Day %d is missing from data/days.json; the shop cannot open." % number)
@@ -524,25 +532,67 @@ func _fit() -> void:
 	print("[Shop] Stage at %s, %d ceiling copies above it" % [stage_rect.position, copies])
 
 
+## Lays the shelf out: centred when it fits the row, else from SHELF_MARGIN on and
+## scrollable (sideways drags on the items, keyboard focus reveals the focused one).
 func _build_shelf() -> void:
 	var ids := stock.keys()
-	var left := (STAGE_SIZE.x - ids.size() * SHELF_SPACING) / 2.0 + (SHELF_SPACING - ShelfItem.ITEM_SIZE.x) / 2.0
+	var width := ids.size() * SHELF_SPACING
+	var left := (STAGE_SIZE.x - width) / 2.0 + (SHELF_SPACING - ShelfItem.ITEM_SIZE.x) / 2.0
+	if width > STAGE_SIZE.x:
+		left = SHELF_MARGIN
+		_shelf_scroll_max = SHELF_MARGIN * 2.0 + (ids.size() - 1) * SHELF_SPACING + ShelfItem.ITEM_SIZE.x - STAGE_SIZE.x
+		# Items scrolled past the row's ends are hidden and cannot be tapped.
+		_shelf_row.clip_contents = true
 	var layout: Array[String] = []
 	for i in ids.size():
 		var id: String = ids[i]
 		var item := SHELF_ITEM_SCENE.instantiate() as ShelfItem
 		item.setup(Content.ingredient(id), stock[id])
 		item.position = Vector2(roundf(left + i * SHELF_SPACING), 0.0)
+		item.scrollable = _shelf_scroll_max > 0.0
 		item.chosen.connect(_on_item_chosen)
 		item.dropped.connect(_on_item_dropped)
+		item.swiped.connect(_scroll_shelf_by)
+		item.focus_entered.connect(_on_shelf_item_focused.bind(item))
 		_shelf_row.add_child(item)
+		_shelf_x[id] = item.position.x
 		# Down from any shelf item goes to Brew (the items share a row, so Godot would pick a neighbour).
 		item.focus_neighbor_bottom = item.get_path_to(_brew_button)
 		_shelf_items[id] = item
 		layout.append("%s@%s" % [id, item.position + _shelf_row.position + ShelfItem.ITEM_SIZE / 2.0])
 	if not ids.is_empty():
 		_brew_button.focus_neighbor_top = _brew_button.get_path_to(_shelf_items[ids[floori((ids.size() - 1) / 2.0)]])
-	print("[Shop] Shelf (stage coordinates): %s, brew@%s" % [", ".join(layout), _brew_button.position + _brew_button.size / 2.0])
+	print("[Shop] Shelf (stage coordinates): %s, brew@%s%s" % [", ".join(layout), _brew_button.position + _brew_button.size / 2.0,
+		(", scrolls %d" % _shelf_scroll_max) if _shelf_scroll_max > 0.0 else ""])
+
+
+## Scrolls the shelf `dx` units (positive moves the items right), within 0.._shelf_scroll_max.
+func _scroll_shelf_by(dx: float) -> void:
+	set_shelf_scroll(shelf_scroll - dx)
+
+
+## Scrolls the shelf so `scroll` units of it are left of the row (clamped to its range).
+func set_shelf_scroll(scroll: float) -> void:
+	shelf_scroll = clampf(scroll, 0.0, _shelf_scroll_max)
+	for id in _shelf_items:
+		Juice.reset_shake(_shelf_items[id])
+		_shelf_items[id].position = Vector2(roundf(_shelf_x[id] - shelf_scroll), 0.0)
+
+
+## Keyboard focus on a shelf item scrolls it into view. A hidden focus (the shop's own
+## grab_focus(true) when a customer arrives) leaves the shelf where the thumb put it.
+func _on_shelf_item_focused(item: ShelfItem) -> void:
+	if item.has_focus(true):
+		reveal_shelf_item(item)
+
+
+## Scrolls the shelf just enough to show all of `item` (keyboard focus, tests).
+func reveal_shelf_item(item: ShelfItem) -> void:
+	var x := _shelf_x[item.ingredient.id] - shelf_scroll
+	if x < SHELF_MARGIN:
+		set_shelf_scroll(shelf_scroll + x - SHELF_MARGIN)
+	elif x + ShelfItem.ITEM_SIZE.x > STAGE_SIZE.x - SHELF_MARGIN:
+		set_shelf_scroll(shelf_scroll + x + ShelfItem.ITEM_SIZE.x - STAGE_SIZE.x + SHELF_MARGIN)
 
 
 ## Lets the next customer in when the line has room: right away (after
