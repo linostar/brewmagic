@@ -205,10 +205,9 @@ func _refresh() -> void:
 		var price := card.get_node("Price") as HBoxContainer
 		price.visible = not maxed
 		(price.get_node("Amount") as Label).text = str(cost)
-		if maxed:
-			text.text = "%s (max level)\n%s: x%.2f forgiving" % [upgrade.name, upgrade.station.capitalize(), Economy.upgrade_tolerance(upgrade, level)]
-		else:
-			text.text = "%s (level %d of %d)\n%s: x%.2f -> x%.2f forgiving" % [upgrade.name, level, upgrade.max_level(), upgrade.station.capitalize(), Economy.upgrade_tolerance(upgrade, level), Economy.upgrade_tolerance(upgrade, level + 1)]
+		# Name, then what owning the next level (or the top one) does: "Stir +25% easier".
+		var easier := roundi((Economy.upgrade_tolerance(upgrade, level if maxed else level + 1) - 1.0) * 100.0)
+		text.text = "%s\n%s +%d%% easier%s" % [upgrade.name, upgrade.station.capitalize(), easier, " (max)" if maxed else ""]
 		var short := not maxed and cost > _game.coins
 		card.disabled = maxed
 		card.modulate = UNAFFORDABLE_TINT if short else Color.WHITE

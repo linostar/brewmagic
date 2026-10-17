@@ -2195,10 +2195,11 @@ func _test_market_purchases() -> void:
 	await _tap(market.get_node("Column/Shop/Tabs/UpgradesTab") as Button)
 	_check((market.get_node("Column/Shop/UpgradeList") as Control).visible and not (market.get_node("Column/Shop/StockGrid") as Control).visible, "the Upgrades tab shows the upgrades", "hidden")
 	var card := market.upgrade_card(ladle.id)
+	_check((card.get_node("Text") as Label).text == "Balanced Ladle\nStir +25% easier", "an upgrade card shows its name and what the next level does", (card.get_node("Text") as Label).text)
 	for level in ladle.max_level():
 		await _tap(card)
 		_check(_game.upgrades.get("stir") == level + 1, "a tap buys stir level %d" % (level + 1), str(_game.upgrades))
-	_check(_game.coins == 0 and card.disabled and "max level" in (card.get_node("Text") as Label).text and _read_save().get("upgrades") == {"stir": 2.0}, "the top level is disabled and saved", "%d %s %s" % [_game.coins, card.disabled, _read_save().get("upgrades")])
+	_check(_game.coins == 0 and card.disabled and (card.get_node("Text") as Label).text == "Balanced Ladle\nStir +50% easier (max)" and _read_save().get("upgrades") == {"stir": 2.0}, "the top level is disabled and saved", "%d %s %s" % [_game.coins, card.disabled, _read_save().get("upgrades")])
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
 	_game.new_game()
