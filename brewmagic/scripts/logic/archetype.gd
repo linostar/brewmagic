@@ -3,7 +3,7 @@ extends Resource
 ## One customer personality from data/archetypes.json (fields as in data/SCHEMA.md). Built by Content.
 
 ## The reaction grades every archetype has lines for, in data order.
-const GRADES: Array[String] = ["perfect", "good", "meh", "misbrew", "stormed_off"]
+const GRADES: Array[String] = ["perfect", "good", "meh", "misbrew", "stormed_off", "refused"]
 
 var id := ""
 var name := ""

@@ -19,6 +19,8 @@ const SPEECH_BUBBLE_SCENE := preload("res://scenes/speech_bubble.tscn")
 const POTION_COLOR := Color("#f07c2c")
 ## One synthetic input frame for the station streams.
 const FRAME := 1.0 / 60.0
+## Frames per Mortar scrub stroke in the tests (0.3 s).
+const SCRUB_FRAMES := 18
 ## A station-local point low in the station, where a thumb holds to pour.
 const POUR_HOLD_POINT := Vector2(135, 250)
 const BASE_WINDOW := Vector2i(270, 480)
@@ -76,6 +78,7 @@ func _tests() -> Array[Callable]:
 		_test_brew_gesture_quality,
 		_test_brew_final_grade,
 		_test_stir_perfect,
+		_test_stir_hold_then_stir,
 		_test_stir_sloppy,
 		_test_stir_idle_and_wiggle,
 		_test_stir_tolerance_scale,
@@ -88,6 +91,7 @@ func _tests() -> Array[Callable]:
 		_test_mortar_sloppy,
 		_test_mortar_idle_and_wiggle,
 		_test_mortar_gentle,
+		_test_mortar_lift_ends_stroke,
 		_test_mortar_ghost_demo,
 		_test_bellows_perfect,
 		_test_bellows_sloppy,
@@ -138,6 +142,8 @@ func _tests() -> Array[Callable]:
 		_test_shop_customer_look,
 		_test_shop_queue,
 		_test_shop_queue_double_storm,
+		_test_shop_refuse,
+		_test_shop_refuse_ends_day,
 		_test_bubble_blips,
 		_test_audio_unlock_and_voices,
 		_test_shop_mortar_and_bellows,
@@ -375,6 +381,25 @@ func _test_stir_perfect() -> void:
 	stir.free()
 
 
+## Touching down and resting 1 s (with touch jitter) before stirring at the tempo
+## does not slow the first rotation: every rotation scores Perfect.
+func _test_stir_hold_then_stir() -> void:
+	var stir := _add_station(STIR_SCENE) as Stir
+	var results := _collect_finished(stir)
+	stir.begin({"color": POTION_COLOR, "tempo": 0.8})
+	stir.feed(_touch(Stir.CENTRE + Vector2(Stir.RING_RADIUS, 0), true))
+	for i in 60:
+		stir.advance(FRAME)
+		stir.feed(_drag(Stir.CENTRE + Vector2.from_angle(0.02 * sin(i * 1.3)) * Stir.RING_RADIUS))
+	var frames := ceili(Stir.ROTATIONS / 0.8 / FRAME) + 2
+	for i in range(1, frames + 1):
+		stir.advance(FRAME)
+		stir.feed(_drag(Stir.CENTRE + Vector2.from_angle(i * FRAME * 0.8 * TAU) * Stir.RING_RADIUS))
+	var scores := stir.rotation_scores()
+	_check(results.size() == 1 and scores.size() == Stir.ROTATIONS and scores.all(func(score: float) -> bool: return score >= Station.PERFECT_QUALITY), "stir: resting before the first circle does not count against it", str(scores))
+	stir.free()
+
+
 ## Twice the tempo with a wobbling radius scores below Good.
 func _test_stir_sloppy() -> void:
 	var stir := _add_station(STIR_SCENE) as Stir
@@ -490,8 +515,8 @@ func _test_pour_tolerance_scale() -> void:
 	_check(qualities[1] > qualities[0] and qualities[1] >= Station.PERFECT_QUALITY, "pour tolerance scale widens", str(qualities))
 
 
-## Steady circles at exactly the target speed grind to full fineness and score
-## Perfect; feedback every turn; the brew's grind ingredients sit in the bowl.
+## Scrubbing mark to mark grinds to full fineness and scores Perfect; a cue per
+## stroke; the brew's grind ingredients sit in the bowl.
 func _test_mortar_perfect() -> void:
 	var mortar := _add_station(MORTAR_SCENE) as Mortar
 	var results := _collect_finished(mortar)
@@ -499,26 +524,28 @@ func _test_mortar_perfect() -> void:
 	mortar.feedback.connect(func(kind: StringName) -> void: cues.append(kind))
 	mortar.begin({"color": POTION_COLOR, "ingredients": ["moonmoss"]})
 	_check(mortar.get_node("Bowl/Pieces").get_child_count() == 1, "mortar shows its ingredient in the bowl", str(mortar.get_node("Bowl/Pieces").get_child_count()))
-	_circles(mortar, Mortar.CENTRE, Mortar.RING_RADIUS, Mortar.DEFAULT_SPEED, Mortar.TURNS, 0.0)
+	_scrub(mortar, Mortar.MARK_X, Mortar.STROKES)
 	_check(results.size() == 1, "mortar perfect finishes once", str(results))
 	_check(not results.is_empty() and results[0] >= Station.PERFECT_QUALITY, "mortar perfect quality", str(results))
-	_check(cues.count(&"mortar_turn") == Mortar.TURNS and cues.back() == &"station_success", "mortar feedback every turn", str(cues))
-	_check(is_equal_approx(mortar.fineness, 1.0) and mortar.turn_scores().size() == Mortar.TURNS, "mortar ground to full fineness", "%.2f %s" % [mortar.fineness, mortar.turn_scores()])
+	_check(cues.count(&"mortar_stroke") == Mortar.STROKES and cues.back() == &"station_success", "mortar feedback every stroke", str(cues))
+	_check(is_equal_approx(mortar.fineness, 1.0) and mortar.stroke_scores().size() == Mortar.STROKES, "mortar ground to full fineness", "%.2f %s" % [mortar.fineness, mortar.stroke_scores()])
 	_check(not mortar.is_running(), "mortar stops after finishing", "still running")
 	mortar.free()
 
 
-## Grinding at 2.5x the speed scores below Good.
+## Turning well short of the marks, or well past them, scores below Good.
 func _test_mortar_sloppy() -> void:
-	var mortar := _add_station(MORTAR_SCENE) as Mortar
-	var results := _collect_finished(mortar)
-	mortar.begin({"color": POTION_COLOR})
-	_circles(mortar, Mortar.CENTRE, Mortar.RING_RADIUS, Mortar.DEFAULT_SPEED * 2.5, Mortar.TURNS, 0.0)
-	_check(results.size() == 1 and results[0] < Station.ASSIST_QUALITY, "mortar too fast scores below Good", str(results))
-	mortar.free()
+	for reach: float in [Mortar.MARK_X - 20.0, Mortar.MARK_X + 20.0]:
+		var mortar := _add_station(MORTAR_SCENE) as Mortar
+		var results := _collect_finished(mortar)
+		mortar.begin({"color": POTION_COLOR})
+		_scrub(mortar, reach, Mortar.STROKES)
+		_check(results.size() == 1 and results[0] < Station.ASSIST_QUALITY, "mortar turning %+.0f from the marks scores below Good" % (reach - Mortar.MARK_X), str(results))
+		mortar.free()
 
 
-## No touches never finish; wiggling back and forth grinds nothing.
+## No touches never finish; small back-and-forth wiggles (shorter than MIN_STROKE)
+## grind nothing.
 func _test_mortar_idle_and_wiggle() -> void:
 	var mortar := _add_station(MORTAR_SCENE) as Mortar
 	var results := _collect_finished(mortar)
@@ -526,15 +553,33 @@ func _test_mortar_idle_and_wiggle() -> void:
 	for i in 1800:
 		mortar.advance(FRAME)
 	_check(results.is_empty() and mortar.is_running(), "mortar idle does not finish", str(results))
-	mortar.feed(_touch(Mortar.CENTRE + Vector2(Mortar.RING_RADIUS, 0), true))
+	mortar.feed(_touch(Vector2(Mortar.CENTRE.x, Mortar.RAIL_Y), true))
 	for i in 600:
 		mortar.advance(FRAME)
-		mortar.feed(_drag(Mortar.CENTRE + Vector2.from_angle(sin(i * 0.1) * 2.5) * Mortar.RING_RADIUS))
-	_check(results.is_empty() and mortar.turn_scores().is_empty() and mortar.fineness < 0.25, "mortar wiggle completes no turn", "%s %.2f" % [mortar.turn_scores(), mortar.fineness])
+		mortar.feed(_drag(Vector2(Mortar.CENTRE.x + sin(i * 0.2) * Mortar.MIN_STROKE * 0.4, Mortar.RAIL_Y)))
+	mortar.feed(_touch(Vector2(Mortar.CENTRE.x, Mortar.RAIL_Y), false))
+	_check(results.is_empty() and mortar.stroke_scores().is_empty() and is_zero_approx(mortar.fineness), "mortar wiggle counts no stroke", "%s %.2f" % [mortar.stroke_scores(), mortar.fineness])
 	mortar.free()
 
 
-## Grinding 35% too fast: not Perfect normally, Perfect with Gentle mode's wider window.
+## Lifting the finger ends the stroke where it turned: one mark-to-mark drag and
+## a lift count one Perfect stroke.
+func _test_mortar_lift_ends_stroke() -> void:
+	var mortar := _add_station(MORTAR_SCENE) as Mortar
+	mortar.begin({"color": POTION_COLOR})
+	var left := Mortar.CENTRE.x - Mortar.MARK_X
+	var right := Mortar.CENTRE.x + Mortar.MARK_X
+	mortar.feed(_touch(Vector2(left, Mortar.RAIL_Y), true))
+	for frame in range(1, SCRUB_FRAMES + 1):
+		mortar.advance(FRAME)
+		mortar.feed(_drag(Vector2(lerpf(left, right, float(frame) / SCRUB_FRAMES), Mortar.RAIL_Y)))
+	_check(mortar.stroke_scores().is_empty(), "mortar: a stroke still under way has no score", str(mortar.stroke_scores()))
+	mortar.feed(_touch(Vector2(right, Mortar.RAIL_Y), false))
+	_check(mortar.stroke_scores() == ([1.0] as Array[float]), "mortar: lifting the finger ends the stroke at the mark", str(mortar.stroke_scores()))
+	mortar.free()
+
+
+## Turning 8 past the marks: not Perfect normally, Perfect with Gentle mode's wider window.
 func _test_mortar_gentle() -> void:
 	var qualities: Array[float] = []
 	for scale: float in [1.0, GameState.GENTLE_TOLERANCE_SCALE]:
@@ -542,25 +587,25 @@ func _test_mortar_gentle() -> void:
 		var results := _collect_finished(mortar)
 		mortar.tolerance_scale = scale
 		mortar.begin({"color": POTION_COLOR})
-		_circles(mortar, Mortar.CENTRE, Mortar.RING_RADIUS, Mortar.DEFAULT_SPEED * 1.35, Mortar.TURNS, 0.0)
+		_scrub(mortar, Mortar.MARK_X + 8.0, Mortar.STROKES)
 		qualities.append(results[0] if results.size() == 1 else -1.0)
 		mortar.free()
-	_check(qualities[0] >= 0.0 and qualities[0] < Station.PERFECT_QUALITY, "mortar 35% fast is not Perfect", str(qualities))
-	_check(qualities[1] > qualities[0] and qualities[1] >= Station.PERFECT_QUALITY, "mortar Gentle widens the band", str(qualities))
+	_check(qualities[0] >= 0.0 and qualities[0] < Station.PERFECT_QUALITY, "mortar 8 past the marks is not Perfect", str(qualities))
+	_check(qualities[1] > qualities[0] and qualities[1] >= Station.PERFECT_QUALITY, "mortar Gentle widens the marks", str(qualities))
 
 
-## The ghost pestle circles the opening at the target speed, fades after the first
-## touch; Assist shows no ghost.
+## The ghost pestle scrubs from mark to mark, fades after the first touch; Assist
+## shows no ghost.
 func _test_mortar_ghost_demo() -> void:
 	var mortar := _add_station(MORTAR_SCENE) as Mortar
 	mortar.begin({"color": POTION_COLOR})
 	var ghost := mortar.ghost()
 	var start := ghost.position
-	for i in roundi(0.5 / Mortar.DEFAULT_SPEED / FRAME):
+	for i in roundi(Mortar.GHOST_STROKE_TIME / FRAME):
 		mortar.advance(FRAME)
 	_check(ghost.visible and is_equal_approx(ghost.modulate.a, Mortar.GHOST_ALPHA), "mortar ghost demonstrates", str(ghost.modulate.a))
-	_check(ghost.position.distance_to(start) > Mortar.SURFACE_RADII.y, "mortar ghost moves half a turn", "%s -> %s" % [start, ghost.position])
-	mortar.feed(_touch(Mortar.CENTRE + Vector2(Mortar.RING_RADIUS, 0), true))
+	_check(ghost.position.x - start.x > Mortar.SURFACE_RADII.x, "mortar ghost scrubs from one rim to the other", "%s -> %s" % [start, ghost.position])
+	mortar.feed(_touch(Vector2(Mortar.CENTRE.x, Mortar.RAIL_Y), true))
 	for i in 30:
 		mortar.advance(FRAME)
 	_check(is_zero_approx(ghost.modulate.a), "mortar ghost fades after the first touch", str(ghost.modulate.a))
@@ -1076,7 +1121,7 @@ func _test_shop_controls_size_and_zone() -> void:
 		for id in _exact_recipe(shop.customer.potion, shop.stock):
 			await _tap(shop.shelf_item(id))
 		var pause := shop.get_node("Column/Hud/PauseButton") as Button
-		var play: Array[Control] = [shop.brew_button(), shop.slot_button(0), shop.slot_button(1), shop.slot_button(2), shop.get_node("Column/Stage/SkipButton") as Control, pause]
+		var play: Array[Control] = [shop.brew_button(), shop.get_node("Column/Stage/RefuseButton") as Control, shop.slot_button(0), shop.slot_button(1), shop.slot_button(2), shop.get_node("Column/Stage/SkipButton") as Control, pause]
 		for item in shop.get_node("Column/Stage/ShelfItems").get_children():
 			play.append(item as Control)
 		var pause_buttons: Array[Control] = []
@@ -1801,6 +1846,83 @@ func _test_shop_queue() -> void:
 	await _close_shop()
 
 
+## Refuse: disabled with no customer at the counter and while brewing; a tap sends
+## the waiting customer away (the pot's ingredients back to stock, -1 reputation,
+## no pay, no stamp, a refused line) and the queue steps forward; Enter on the
+## focused button refuses too; the summary counts the refusals.
+func _test_shop_refuse() -> void:
+	var shop := await _open_shop()
+	var refuse := shop.get_node("Column/Stage/RefuseButton") as Button
+	_check(shop.customer == null and refuse.disabled, "refuse: disabled with no customer at the counter", "customer %s, disabled %s" % [shop.customer, refuse.disabled])
+	var full := await _until(func() -> bool: return shop.queue.size() == 2 and shop.customer != null and shop.customer.state == Customer.State.WAIT_ORDER, FLOW_FRAMES * 3)
+	_check(full and not refuse.disabled, "refuse: enabled while the counter customer waits for an order", "queue %d, disabled %s" % [shop.queue.size(), refuse.disabled])
+	if not full:
+		await _close_shop()
+		return
+	_refill_patience(shop)
+	shop.open_pause()
+	var paused_off := refuse.disabled
+	shop.close_pause()
+	_check(paused_off and not refuse.disabled, "refuse: disabled while paused, enabled again on resume", "paused %s, resumed disabled %s" % [paused_off, refuse.disabled])
+	var counter := shop.customer
+	var next := shop.queue[0]
+	var stock := shop.stock.duplicate()
+	var coins := shop.coins
+	await _tap(shop.shelf_item(_exact_recipe(counter.potion, shop.stock)[0]))
+	await _tap(refuse)
+	var bubble := shop.get_node("Column/Stage/Bubble") as SpeechBubble
+	_check(shop.refused == 1 and shop.reputation == Economy.REFUSED_REPUTATION and shop.coins == coins and shop.served == 0, "refuse: -1 reputation, no pay", "refused %d rep %d coins %d" % [shop.refused, shop.reputation, shop.coins])
+	_check(shop.pot.is_empty() and shop.stock == stock, "refuse: the pot's ingredients go back to stock", "%s %s" % [shop.pot, shop.stock])
+	_check(bubble.text in counter.archetype.reactions["refused"] and not (shop.get_node("Column/Stage/Stamp") as Control).visible and refuse.disabled, "refuse: a refused line, no stamp, the button disabled", "'%s'" % bubble.text)
+	await _skip_lines(shop)
+	_check(await _until(func() -> bool: return shop.customer == next and next.state == Customer.State.WAIT_ORDER, FLOW_FRAMES), "refuse: the next customer steps up", "customer %s" % shop.customer)
+	_refill_patience(shop)
+	refuse.grab_focus()
+	await _action(&"ui_accept")
+	_check(shop.refused == 2 and shop.reputation == 2 * Economy.REFUSED_REPUTATION, "refuse: Enter on the focused button refuses", "refused %d" % shop.refused)
+	await _skip_lines(shop)
+	var third := await _until(func() -> bool: return shop.customer != null and shop.customer.state == Customer.State.WAIT_ORDER, FLOW_FRAMES * 3)
+	_check(third, "refuse: the third customer comes to the counter", "customer %s" % shop.customer)
+	if third:
+		_game.assist_mode = true
+		for id in _exact_recipe(shop.customer.potion, shop.stock):
+			await _tap(shop.shelf_item(id))
+		await _tap(shop.brew_button())
+		await _until(func() -> bool: return shop.station != null and shop.station.is_running(), FLOW_FRAMES)
+		_check(refuse.disabled, "refuse: disabled while brewing", "enabled")
+	var result := shop.day_result()
+	_check(result.get("refused") == 2, "refuse: the day's result counts refusals", str(result))
+	_game.goto(GameState.Flow.SUMMARY, result)
+	await _game.transition_finished
+	var money := (current_scene.get_node("Column/Card/List/Money") as Label).text
+	_check("Refused: 2" in money, "refuse: the summary shows the refusals", money)
+	await _close_shop()
+
+
+## Refuse is disabled while the counter customer storms off; refusing every other
+## customer ends the day with the summary counting the storm-off and the refusals.
+func _test_shop_refuse_ends_day() -> void:
+	var shop := await _open_shop()
+	var refuse := shop.get_node("Column/Stage/RefuseButton") as Button
+	var count := shop.shift.customers.size()
+	if not await _wait_for_order(shop, "refuse day"):
+		await _close_shop()
+		return
+	shop.customer.patience_left = 0.1
+	var storming := await _until(func() -> bool: return shop.customer != null and shop.customer.state == Customer.State.STORMING, FLOW_FRAMES)
+	_check(storming and refuse.disabled, "refuse: disabled while the customer storms off", "storming %s disabled %s" % [storming, refuse.disabled])
+	for n in count - 1:
+		if not await _wait_for_order(shop, "refuse day customer %d" % (n + 2)):
+			await _close_shop()
+			return
+		_refill_patience(shop)
+		await _tap(refuse)
+	_check(await _until(func() -> bool: return _game.state == GameState.Flow.SUMMARY and not _game.is_transitioning(), FLOW_FRAMES * 2), "refuse: refusing the last customer ends the day", str(_game.state))
+	var result := _game.flow_args
+	_check(result.get("refused") == count - 1 and result.get("stormed_off") == 1 and result.get("served") == 0 and result.get("reputation") == Economy.STORMED_OFF_REPUTATION + (count - 1) * Economy.REFUSED_REPUTATION, "refuse: the day's summary counts the storm-off and every refusal", str(result))
+	await _close_shop()
+
+
 ## Both queued customers storming off within one aside hold: the second aside
 ## still puts the counter customer's request back afterwards.
 func _test_shop_queue_double_storm() -> void:
@@ -1898,7 +2020,7 @@ func _test_shop_mortar_and_bellows() -> void:
 			if station is Mortar:
 				var pieces := station.get_node("Bowl/Pieces").get_children()
 				_check(pieces.size() == recipe.filter(func(id: String) -> bool: return Content.ingredient(id).grind).size() and pieces.size() > 0, "mortar shows the brew's grind ingredients", str(pieces.size()))
-				await _drive_circles(station, Mortar.CENTRE, Mortar.RING_RADIUS, Mortar.DEFAULT_SPEED)
+				await _drive_scrub(station as Mortar)
 			elif station is Bellows:
 				var bellows := station as Bellows
 				while bellows.is_running():
@@ -2255,7 +2377,7 @@ func _test_morning_missing_day_returns_to_title() -> void:
 func _test_loop_screens_size_and_zone() -> void:
 	var screens: Array[Array] = [
 		[GameState.Flow.MORNING, {}, ["Column/OpenShopButton"]],
-		[GameState.Flow.SUMMARY, {"day": 1, "title": "Test", "customers": 3, "served": 2, "stormed_off": 1, "grades": [1, 1, 0, 0], "earned": 20, "tips": 2, "reputation": 1, "coins": 42}, ["Column/ContinueButton"]],
+		[GameState.Flow.SUMMARY, {"day": 1, "title": "Test", "customers": 3, "served": 2, "stormed_off": 1, "refused": 1, "grades": [1, 1, 0, 0], "earned": 20, "tips": 2, "reputation": 1, "coins": 42}, ["Column/ContinueButton"]],
 		[GameState.Flow.MARKET, {}, ["Column/Shop/Tabs/StockTab", "Column/Shop/Tabs/UpgradesTab", "Column/Shop/NextDayButton"]],
 		[GameState.Flow.TITLE, {}, ["Column/OpenShopButton", "Column/NewGameButton"]],
 	]
@@ -2620,6 +2742,41 @@ func _circles(station: Station, centre: Vector2, radius: float, tps: float, turn
 		station.advance(FRAME)
 		station.feed(_drag(centre + Vector2.from_angle(i * FRAME * tps * TAU) * (radius + wobble * sin(i * 0.9))))
 	station.feed(_touch(start, false))
+
+
+## The x of each turn-around for `strokes` scrubs `reach` either side of the
+## mortar's centre line, starting at the left (where the finger touches down).
+func _scrub_points(reach: float, strokes: int) -> Array[float]:
+	var points: Array[float] = [Mortar.CENTRE.x - reach]
+	for i in strokes:
+		points.append(Mortar.CENTRE.x + (reach if i % 2 == 0 else -reach))
+	return points
+
+
+## Scrubs `strokes` strokes turning `reach` either side of the mortar's centre line,
+## SCRUB_FRAMES frames per stroke, then lifts the finger.
+func _scrub(mortar: Mortar, reach: float, strokes: int) -> void:
+	var points := _scrub_points(reach, strokes)
+	mortar.feed(_touch(Vector2(points[0], Mortar.RAIL_Y), true))
+	for i in range(1, points.size()):
+		for frame in range(1, SCRUB_FRAMES + 1):
+			mortar.advance(FRAME)
+			mortar.feed(_drag(Vector2(lerpf(points[i - 1], points[i], float(frame) / SCRUB_FRAMES), Mortar.RAIL_Y)))
+	mortar.feed(_touch(Vector2(points.back(), Mortar.RAIL_Y), false))
+
+
+## Scrubs mark to mark through the running game loop (one drag per rendered frame)
+## until the station finishes.
+func _drive_scrub(mortar: Mortar) -> void:
+	var points := _scrub_points(Mortar.MARK_X, Mortar.STROKES)
+	mortar.feed(_touch(Vector2(points[0], Mortar.RAIL_Y), true))
+	for i in range(1, points.size()):
+		for frame in range(1, SCRUB_FRAMES + 1):
+			await process_frame
+			if not mortar.is_running():
+				return
+			mortar.feed(_drag(Vector2(lerpf(points[i - 1], points[i], float(frame) / SCRUB_FRAMES), Mortar.RAIL_Y)))
+	mortar.feed(_touch(Vector2(points.back(), Mortar.RAIL_Y), false))
 
 
 ## Drags circles around `centre` at `tps` through the running game loop (one drag

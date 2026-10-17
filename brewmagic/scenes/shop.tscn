@@ -211,6 +211,17 @@ accessibility_name = "Brew"
 disabled = true
 text = "Brew!"
 
+[node name="RefuseButton" type="Button" parent="Column/Stage"]
+layout_mode = 0
+offset_left = 6.0
+offset_top = 424.0
+offset_right = 84.0
+offset_bottom = 470.0
+pivot_offset = Vector2(39, 23)
+accessibility_name = "Refuse this customer"
+disabled = true
+text = "Refuse"
+
 [node name="StationHost" type="Control" parent="Column/Stage"]
 anchors_preset = 0
 offset_top = 192.0

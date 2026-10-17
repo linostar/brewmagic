@@ -97,8 +97,8 @@ freshness (`fresh`). gloom: sleep (`sleep`, `slept`), curses (`curse`), spooky (
 | `parts.head` | string | `"round" \| "long" \| "square"` | |
 | `parts.hair` | string | `"witch_hat" \| "straw_hat" \| "curly" \| "bald_beard"` | |
 | `parts.accessory` | string | `"none" \| "goat" \| "lantern"` | |
-| `reactions` | object | keys exactly `perfect`, `good`, `meh`, `misbrew`, `stormed_off` | |
-| `reactions.<grade>` | array of string | >= 3 entries, each **bubble** | One line is picked at random, avoiding the one used last for that archetype and grade. `misbrew` is the customer's own reaction; the absurd effect line comes from `misbrews.json`. `stormed_off` is said when patience runs out. |
+| `reactions` | object | keys exactly `perfect`, `good`, `meh`, `misbrew`, `stormed_off`, `refused` | |
+| `reactions.<grade>` | array of string | >= 3 entries, each **bubble** | One line is picked at random, avoiding the one used last for that archetype and grade. `misbrew` is the customer's own reaction; the absurd effect line comes from `misbrews.json`. `stormed_off` is said when patience runs out; `refused` when the shop refuses the customer (the Refuse button). |
 
 ## requests.json
 | field | type | range / enum | notes |

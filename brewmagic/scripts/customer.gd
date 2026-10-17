@@ -171,6 +171,12 @@ func receive() -> void:
 	_patience_row.hide()
 
 
+## Refused by the shop: patience stops, its row hides, and it slumps as for a Meh.
+func turn_away() -> void:
+	_patience_row.hide()
+	react(Brew.Grade.MEH)
+
+
 ## Reacts to a finished brew: a happy hop for Perfect and Good, a slump for Meh,
 ## the misbrew effect for a Misbrew (`misbrew_effect` from Content.MISBREW_EFFECTS).
 func react(grade: Brew.Grade, misbrew_effect := "") -> void:
