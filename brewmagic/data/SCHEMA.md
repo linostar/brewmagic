@@ -221,6 +221,9 @@ One upgrade per station: exactly one entry for each of `"stir"`, `"pour"`, `"mor
 - **I14** Endings: exactly the three ids above, every page fits, every `cast` id is a known archetype. The texts
   match the rule under "Story": only `charming_chaos` refuses the licence, and `cosy_corner` claims nothing about
   which arcs went well (it covers every granted licence short of Guild Master).
+- **I15** Patience. On every flag path, every customer of day N still has 33 seconds at the counter (enough for a
+  multi-station brew) after waiting one brew (25 s) in line, where patience drains at `Customer.QUEUE_PATIENCE_RATE`
+  (0.5): `patience_seconds * patience_scale - 25 * 0.5 >= 33`. The third in line waits two brews and can still storm off.
 
 ## Current content (days 1-7)
 | ingredient | essence | day | flags | price |
@@ -266,7 +269,7 @@ Cordial, ember_pepper + nightshade_cap is Good).
 ## Story: the Guild Fair
 The shop has one week before the Alchemists' Guild Fair, where the Guild decides whether it gets a licence. Days
 3-7 each add one element: day 3 the Guild and its story (Inspector Quill's inspection, the first story visitors, among them the Hooded Stranger, and five new potions), day 4 the Bellows,
-cinderroot and Madame Vexley's rival shop across the street, day 5 a rush (more customers, `patience_scale` 0.75),
+cinderroot and Madame Vexley's rival shop across the street, day 5 a rush (more customers; `patience_scale` 1.0 since I15 counts the wait in line),
 day 6 three rare ingredients and four rare potions, day 7 the Guild Fair finale.
 
 Three story characters (archetypes with a fixed `look`), each with 3 beats. A beat's outcome is stored as the flag

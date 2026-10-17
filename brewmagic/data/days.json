@@ -72,7 +72,7 @@
       {"when": {"quill.inspection": ["great"]}, "text": "Market day! The inspector speaks well of you. Brew fast, smile faster."},
       {"when": {"quill.inspection": ["poor", "refused", "stormed_off"]}, "text": "Market day rush! Word is the Guild inspector is coming back. Look sharp."}
     ],
-    "patience_scale": 0.75,
+    "patience_scale": 1.0,
     "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4, "cinderroot": 5 },
     "customers": [
       { "archetype": "busy_baker", "potion": "hearthglow_tonic" },

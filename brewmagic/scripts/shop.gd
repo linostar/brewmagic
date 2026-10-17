@@ -74,8 +74,6 @@ const STAGE_SIZE := Vector2(270, 480)
 const POT_CAPACITY := Brew.MAX_INGREDIENTS
 const MIN_BREW := Brew.MIN_INGREDIENTS
 const SHELF_SPACING := 42.0
-## Gap at each end of a shelf too wide for the row (it scrolls).
-const SHELF_MARGIN := 4.0
 ## Stage-space point where flying ingredients land (the liquid surface).
 const POT_MOUTH := Vector2(135, 288)
 ## Stage-space rect where a dragged ingredient counts as dropped into the cauldron.
@@ -190,11 +188,10 @@ var _rng := RandomNumberGenerator.new()
 ## "<kind>/<key>" -> the line picked last time, so the next pick avoids it.
 var _last_lines: Dictionary[String, String] = {}
 var _shelf_items: Dictionary[String, ShelfItem] = {}
-## Each shelf item's x with the shelf unscrolled.
-var _shelf_x: Dictionary[String, float] = {}
-## How far the shelf is scrolled (0 = its left end shows) and the most it can be.
-var shelf_scroll := 0.0
-var _shelf_scroll_max := 0.0
+## The ingredient ids on each shelf page (one page when the shelf fits the row).
+var _shelf_pages: Array[Array] = []
+## The shelf page showing.
+var shelf_page := 0
 var _brewing := false
 var _brew := Vector4i.ZERO
 var _tier := Brew.Grade.MISBREW
@@ -238,6 +235,9 @@ var _day_over := false
 @onready var _slots: Array[Button] = [$Column/Stage/Slots/Slot0, $Column/Stage/Slots/Slot1, $Column/Stage/Slots/Slot2]
 @onready var _essences: HBoxContainer = $Column/Stage/Essences
 @onready var _shelf_row: Control = $Column/Stage/ShelfItems
+@onready var _shelf_prev: PageArrow = $Column/Stage/ShelfPrev
+@onready var _shelf_next: PageArrow = $Column/Stage/ShelfNext
+@onready var _shelf_page_label: Label = $Column/Stage/ShelfPage
 @onready var _brew_button: Button = $Column/Stage/BrewButton
 @onready var _refuse_button: Button = $Column/Stage/RefuseButton
 @onready var _codex_button: Button = $Column/Stage/CodexButton
@@ -277,6 +277,10 @@ func _ready() -> void:
 	_brew_button.pressed.connect(_on_brew_pressed)
 	_refuse_button.pressed.connect(refuse_customer)
 	_codex_button.pressed.connect(open_codex)
+	_shelf_prev.pressed.connect(turn_shelf.bind(-1))
+	_shelf_next.pressed.connect(turn_shelf.bind(1))
+	_shelf_prev.stepped_past.connect(_step_past_shelf_arrow.bind(-1))
+	_shelf_next.stepped_past.connect(_step_past_shelf_arrow.bind(1))
 	_narrow_margins(_refuse_button)
 	for i in _slots.size():
 		_slots[i].pressed.connect(_on_slot_pressed.bind(i))
@@ -577,67 +581,103 @@ func _fit() -> void:
 	print("[Shop] Stage at %s, %d ceiling copies above it" % [stage_rect.position, copies])
 
 
-## Lays the shelf out: centred when it fits the row, else from SHELF_MARGIN on and
-## scrollable (sideways drags on the items, keyboard focus reveals the focused one).
+## Lays the shelf out. When every item fits the row it is centred and has no
+## arrows; else it is split into pages of as many whole items as fit between the
+## ShelfPrev and ShelfNext arrows, each page centred between them, and one page
+## shows at a time. Items keep their page and place all shift (an item out of
+## stock stays), so pages never reflow.
 func _build_shelf() -> void:
-	var ids := stock.keys()
-	var width := ids.size() * SHELF_SPACING
-	var left := (STAGE_SIZE.x - width) / 2.0 + (SHELF_SPACING - ShelfItem.ITEM_SIZE.x) / 2.0
-	if width > STAGE_SIZE.x:
-		left = SHELF_MARGIN
-		_shelf_scroll_max = SHELF_MARGIN * 2.0 + (ids.size() - 1) * SHELF_SPACING + ShelfItem.ITEM_SIZE.x - STAGE_SIZE.x
-		# Items scrolled past the row's ends are hidden and cannot be tapped.
-		_shelf_row.clip_contents = true
+	var ids: Array = stock.keys()
+	var left_end := 0.0
+	var span := STAGE_SIZE.x
+	var per_page := ids.size()
+	if ids.size() * SHELF_SPACING > STAGE_SIZE.x:
+		left_end = _shelf_prev.position.x + _shelf_prev.size.x
+		span = _shelf_next.position.x - left_end
+		per_page = floori((span - ShelfItem.ITEM_SIZE.x) / SHELF_SPACING) + 1
+	for start in range(0, maxi(ids.size(), 1), maxi(per_page, 1)):
+		_shelf_pages.append(ids.slice(start, start + per_page))
+	var paged := _shelf_pages.size() > 1
+	_shelf_prev.visible = paged
+	_shelf_next.visible = paged
+	_shelf_page_label.visible = paged
 	var layout: Array[String] = []
-	for i in ids.size():
-		var id: String = ids[i]
-		var item := SHELF_ITEM_SCENE.instantiate() as ShelfItem
-		item.setup(Content.ingredient(id), stock[id])
-		item.position = Vector2(roundf(left + i * SHELF_SPACING), 0.0)
-		item.scrollable = _shelf_scroll_max > 0.0
-		item.chosen.connect(_on_item_chosen)
-		item.dropped.connect(_on_item_dropped)
-		item.swiped.connect(_scroll_shelf_by)
-		item.focus_entered.connect(_on_shelf_item_focused.bind(item))
-		_shelf_row.add_child(item)
-		_shelf_x[id] = item.position.x
-		# Down from any shelf item goes to Brew (the items share a row, so Godot would pick a neighbour).
-		item.focus_neighbor_bottom = item.get_path_to(_brew_button)
-		_shelf_items[id] = item
-		layout.append("%s@%s" % [id, item.position + _shelf_row.position + ShelfItem.ITEM_SIZE / 2.0])
-	if not ids.is_empty():
-		_brew_button.focus_neighbor_top = _brew_button.get_path_to(_shelf_items[ids[floori((ids.size() - 1) / 2.0)]])
+	for page in _shelf_pages:
+		var left := left_end + (span - (page.size() - 1) * SHELF_SPACING - ShelfItem.ITEM_SIZE.x) / 2.0
+		for i in page.size():
+			var id: String = page[i]
+			var item := SHELF_ITEM_SCENE.instantiate() as ShelfItem
+			item.setup(Content.ingredient(id), stock[id])
+			item.position = Vector2(roundf(left + i * SHELF_SPACING), 0.0)
+			item.chosen.connect(_on_item_chosen)
+			item.dropped.connect(_on_item_dropped)
+			_shelf_row.add_child(item)
+			# Down from any shelf item goes to Brew (the items share a row, so Godot would pick a neighbour).
+			item.focus_neighbor_bottom = item.get_path_to(_brew_button)
+			# A page's end items lead onto its arrows (which lead on to the next page).
+			if paged and i == 0:
+				item.focus_neighbor_left = item.get_path_to(_shelf_prev)
+			if paged and i == page.size() - 1:
+				item.focus_neighbor_right = item.get_path_to(_shelf_next)
+			_shelf_items[id] = item
+			layout.append("%s@%s" % [id, item.position + _shelf_row.position + ShelfItem.ITEM_SIZE / 2.0])
+	set_shelf_page(0)
 	print("[Shop] Shelf (stage coordinates): %s, brew@%s%s" % [", ".join(layout), _brew_button.position + _brew_button.size / 2.0,
-		(", scrolls %d" % _shelf_scroll_max) if _shelf_scroll_max > 0.0 else ""])
+		(", %d pages of %d" % [_shelf_pages.size(), per_page]) if paged else ""])
 
 
-## Scrolls the shelf `dx` units (positive moves the items right), within 0.._shelf_scroll_max.
-func _scroll_shelf_by(dx: float) -> void:
-	set_shelf_scroll(shelf_scroll - dx)
+## Shows shelf page `page` (clamped) and hides the others: the arrows disable at
+## the ends (no wrap), the label reads "N/M", and the arrows and Brew lead
+## keyboard focus onto this page's items.
+func set_shelf_page(page: int) -> void:
+	shelf_page = clampi(page, 0, _shelf_pages.size() - 1)
+	for p in _shelf_pages.size():
+		for id: String in _shelf_pages[p]:
+			_shelf_items[id].visible = p == shelf_page
+	var shown: Array = _shelf_pages[shelf_page]
+	if shown.is_empty():
+		return
+	var first := _shelf_items[shown[0]]
+	var last := _shelf_items[shown[-1]]
+	_brew_button.focus_neighbor_top = _brew_button.get_path_to(_shelf_items[shown[floori((shown.size() - 1) / 2.0)]])
+	_shelf_prev.focus_neighbor_right = _shelf_prev.get_path_to(first)
+	_shelf_next.focus_neighbor_left = _shelf_next.get_path_to(last)
+	_shelf_prev.disabled = shelf_page == 0
+	_shelf_next.disabled = shelf_page == _shelf_pages.size() - 1
+	_shelf_page_label.text = "%d/%d" % [shelf_page + 1, _shelf_pages.size()]
+	_shelf_page_label.accessibility_name = "Ingredients page %d of %d" % [shelf_page + 1, _shelf_pages.size()]
 
 
-## Scrolls the shelf so `scroll` units of it are left of the row (clamped to its range).
-func set_shelf_scroll(scroll: float) -> void:
-	shelf_scroll = clampf(scroll, 0.0, _shelf_scroll_max)
-	for id in _shelf_items:
-		Juice.reset_shake(_shelf_items[id])
-		_shelf_items[id].position = Vector2(roundf(_shelf_x[id] - shelf_scroll), 0.0)
+## Turns the shelf `step` pages (an arrow's tap or Enter), with a squash on the
+## arrow and the items that come into view.
+func turn_shelf(step: int) -> void:
+	var to := clampi(shelf_page + step, 0, _shelf_pages.size() - 1)
+	var arrow := _shelf_next if step > 0 else _shelf_prev
+	Juice.squash(arrow, 0.2)
+	if to == shelf_page:
+		return
+	set_shelf_page(to)
+	for id: String in _shelf_pages[shelf_page]:
+		Juice.squash(_shelf_items[id], 0.12)
+	print("[Shop] Shelf page %d/%d: %s" % [shelf_page + 1, _shelf_pages.size(), ", ".join(_shelf_pages[shelf_page])])
 
 
-## Keyboard focus on a shelf item scrolls it into view. A hidden focus (the shop's own
-## grab_focus(true) when a customer arrives) leaves the shelf where the thumb put it.
-func _on_shelf_item_focused(item: ShelfItem) -> void:
-	if item.has_focus(true):
-		reveal_shelf_item(item)
+## Focus moved on past an arrow (ui_left on Prev, ui_right on Next): turns the
+## page and focuses the item next to that arrow on the new page.
+func _step_past_shelf_arrow(step: int) -> void:
+	if (_shelf_prev if step < 0 else _shelf_next).disabled:
+		return
+	turn_shelf(step)
+	var shown: Array = _shelf_pages[shelf_page]
+	_shelf_items[shown[-1] if step < 0 else shown[0]].grab_focus()
 
 
-## Scrolls the shelf just enough to show all of `item` (keyboard focus, tests).
-func reveal_shelf_item(item: ShelfItem) -> void:
-	var x := _shelf_x[item.ingredient.id] - shelf_scroll
-	if x < SHELF_MARGIN:
-		set_shelf_scroll(shelf_scroll + x - SHELF_MARGIN)
-	elif x + ShelfItem.ITEM_SIZE.x > STAGE_SIZE.x - SHELF_MARGIN:
-		set_shelf_scroll(shelf_scroll + x + ShelfItem.ITEM_SIZE.x - STAGE_SIZE.x + SHELF_MARGIN)
+## Turns the shelf to the page holding `item` (tests reach every item this way).
+func show_shelf_item(item: ShelfItem) -> void:
+	for p in _shelf_pages.size():
+		if item.ingredient.id in _shelf_pages[p]:
+			set_shelf_page(p)
+			return
 
 
 ## Lets the next customer in when the line has room: right away (after
@@ -742,16 +782,21 @@ func _on_customer_arrived() -> void:
 
 
 ## Gives keyboard focus to the next thing to do: the running station's Assist
-## button, else the first shelf item in stock. The focus ring shows once the
-## player navigates by keyboard.
+## button, else the first shelf item in stock on the page showing (the page stays
+## where the thumb left it), else a shelf arrow that can turn the page. The focus
+## ring shows once the player navigates by keyboard.
 func _focus_play() -> void:
 	if station != null:
 		if station.assist_button() != null:
 			station.assist_button().grab_focus(true)
 		return
-	for item: ShelfItem in _shelf_items.values():
-		if not item.disabled:
-			item.grab_focus(true)
+	var choices: Array[Button] = []
+	for id: String in _shelf_pages[shelf_page]:
+		choices.append(_shelf_items[id])
+	choices.append_array([_shelf_next, _shelf_prev])
+	for choice in choices:
+		if choice.visible and not choice.disabled:
+			choice.grab_focus(true)
 			return
 
 
@@ -955,6 +1000,8 @@ func _show_station_layer(on: bool) -> void:
 	# The shelf and Brew stay visible under the dim; keep keyboard focus off them.
 	var behavior := Control.FOCUS_BEHAVIOR_DISABLED if on else Control.FOCUS_BEHAVIOR_INHERITED
 	_shelf_row.focus_behavior_recursive = behavior
+	_shelf_prev.focus_behavior_recursive = behavior
+	_shelf_next.focus_behavior_recursive = behavior
 	_brew_button.focus_behavior_recursive = behavior
 	_refuse_button.focus_behavior_recursive = behavior
 	_codex_button.focus_behavior_recursive = behavior
