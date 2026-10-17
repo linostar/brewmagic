@@ -81,6 +81,8 @@ var stock: Dictionary[String, int] = {}
 var upgrades: Dictionary[String, int] = {}
 ## Filled in plan step 7.
 var codex: Dictionary = {}
+## The story's flags (Story): each beat's outcome under "<character>.<beat>", the ending
+## reached (Story.ENDING_FLAG) and the Rush Hour unlock (Story.RUSH_HOUR_FLAG).
 var flags: Dictionary = {}
 ## Filled in plan step 8.
 var rush_best := 0
@@ -269,14 +271,19 @@ func continue_game() -> void:
 	goto(Flow.MARKET if at_market else Flow.MORNING)
 
 
-## The shop's end of day: commits the day's coins, stock and reputation change,
-## moves on to the next day (its market opens when that day exists), saves, and
-## shows the summary with `result` (Shop.day_result()).
-func finish_day(result: Dictionary, coins_now: int, stock_now: Dictionary[String, int], reputation_change: int) -> void:
+## The shop's end of day: commits the day's coins, stock, reputation change and story
+## beat outcomes (flag -> Story outcome, into flags), moves on to the next day (its
+## market opens when that day exists), saves, and shows the summary with `result`
+## (Shop.day_result()).
+func finish_day(result: Dictionary, coins_now: int, stock_now: Dictionary[String, int], reputation_change: int, story_outcomes: Dictionary[String, String] = {}) -> void:
 	coins = coins_now
 	for id in stock_now:
 		stock[id] = stock_now[id]
 	reputation += reputation_change
+	for flag in story_outcomes:
+		flags[flag] = story_outcomes[flag]
+	if not story_outcomes.is_empty():
+		print("[Game] Story beats of day %d: %s" % [int(result["day"]), story_outcomes])
 	day = int(result["day"]) + 1
 	at_market = day <= Content.days().size()
 	print("[Game] Day %d finished: %d coins, reputation %d, next day %d%s" % [day - 1, coins, reputation, day, " (market open)" if at_market else " (story over)"])
@@ -342,8 +349,8 @@ func save_game() -> void:
 		DirAccess.remove_absolute(temp)
 		_report_error("Could not replace save '%s' with '%s': %s; the save is unchanged" % [save_path, temp, error_string(replaced)])
 		return
-	print("[Game] Saved to %s: day %d%s, %d coins, reputation %d, upgrades %s, assist %s, gentle %s" % [
-		save_path, day, " (market)" if at_market else "", coins, reputation, upgrades, assist_mode, gentle_mode])
+	print("[Game] Saved to %s: day %d%s, %d coins, reputation %d, upgrades %s, flags %s, assist %s, gentle %s" % [
+		save_path, day, " (market)" if at_market else "", coins, reputation, upgrades, flags, assist_mode, gentle_mode])
 
 
 ## Loads save_path into progress and settings. A missing save starts fresh silently
@@ -377,8 +384,8 @@ func load_game() -> void:
 		gentle_mode = false
 		_discard_save("corrupt (%s)" % problem)
 		return
-	print("[Game] Loaded save from %s: day %d%s, %d coins, reputation %d, stock %s, upgrades %s, assist %s, gentle %s" % [
-		save_path, day, " (market)" if at_market else "", coins, reputation, stock, upgrades, assist_mode, gentle_mode])
+	print("[Game] Loaded save from %s: day %d%s, %d coins, reputation %d, stock %s, upgrades %s, flags %s, assist %s, gentle %s" % [
+		save_path, day, " (market)" if at_market else "", coins, reputation, stock, upgrades, flags, assist_mode, gentle_mode])
 
 
 ## Where a corrupt save is moved: save.json -> save.corrupt.json.
@@ -494,6 +501,9 @@ func _apply_save(data: Variant) -> String:
 			return "upgrade level of '%s' is not 0..%d" % [station, top]
 		upgrades[str(station)] = int(level)
 	codex = saved["codex"]
+	var flags_problem := Story.flags_problem(saved["flags"])
+	if flags_problem != "":
+		return flags_problem
 	flags = saved["flags"]
 	var settings: Dictionary = saved["settings"]
 	if settings.size() != SETTINGS_KEYS.size() or not SETTINGS_KEYS.all(func(key: String) -> bool: return typeof(settings.get(key)) == TYPE_BOOL):

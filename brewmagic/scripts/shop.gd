@@ -49,6 +49,11 @@ extends Control
 ## Any tap (on the panel or the dim around it), Enter or ui_cancel (its shortcut)
 ## closes it and focus goes back to the "?".
 ##
+## Story beats: a visitor whose day entry is a story beat (Customer.visit) records its
+## outcome (Story: great, poor, refused or stormed_off) in story_outcomes and says the
+## beat's own line for it instead of an archetype reaction; the day's end commits the
+## outcomes to Game.flags (Game.finish_day), so a quit mid-shift records none.
+##
 ## Grade stamp: a served customer gets a stamp on the counter front (the grade in
 ## words, its colour and its own icon) while "+pay" flies to the coin counter with
 ## the coins; a customer storming off gets none.
@@ -153,6 +158,8 @@ var stormed_off := 0
 var refused := 0
 ## The grade of every served customer, in order.
 var grades: Array[Brew.Grade] = []
+## Today's story beat outcomes: flag -> Story outcome (Game.finish_day records them in Game.flags).
+var story_outcomes: Dictionary[String, String] = {}
 ## The customer at the counter (or walking up to it), or null when the line is empty.
 var customer: Customer
 ## The customers queued behind it, in line order (place 1, 2, ...).
@@ -637,6 +644,7 @@ func _spawn_next_customer() -> void:
 	var visitor := CUSTOMER_SCENE.instantiate() as Customer
 	visitor.setup(who, wants, says, who.patience_seconds * shift.patience_scale, look)
 	visitor.number = _next_customer
+	visitor.visit = spec
 	visitor.arrived.connect(_on_customer_arrived)
 	visitor.patience_ran_out.connect(_on_patience_ran_out.bind(visitor))
 	visitor.left.connect(_on_customer_left.bind(visitor))
@@ -662,6 +670,18 @@ func _pick_request(potion_id: String, archetype_id: String) -> RequestLine:
 	for line in lines:
 		texts.append(line.id)
 	return Content.request(_pick("request/%s/%s" % [potion_id, archetype_id], texts))
+
+
+## The line `who` says for reaction `key` (a grade of Archetype.GRADES, "stormed_off" or
+## "refused") whose story outcome is `outcome` (Story.OUTCOMES). A story beat records the
+## outcome under its flag (story_outcomes, committed with the day) and says its own line;
+## anyone else says one of its archetype's lines.
+func _reaction_line(who: Customer, key: String, outcome: String) -> String:
+	if who.visit != null and who.visit.beat != "":
+		story_outcomes[who.visit.flag()] = outcome
+		print("[Shop] Story beat %s: %s" % [who.visit.flag(), outcome])
+		return who.visit.lines[outcome]
+	return _pick("reaction/%s/%s" % [who.archetype.id, key], who.archetype.reactions[key])
 
 
 ## A random entry of `options`, avoiding the one picked last time for `key` when there is a choice.
@@ -1002,7 +1022,7 @@ func _deliver(grade: Brew.Grade, quality: float) -> void:
 	_update_hud()
 	_show_stamp(grade)
 	var grade_key: String = Archetype.GRADES[grade]
-	var reaction := _pick("reaction/%s/%s" % [customer.archetype.id, grade_key], customer.archetype.reactions[grade_key])
+	var reaction := _reaction_line(customer, grade_key, Story.outcome_for(grade))
 	if grade == Brew.Grade.MISBREW:
 		var essence := Brew.misbrew_essence(_brew, wants.target)
 		var effect: String = Content.MISBREW_EFFECTS[essence] if essence >= 0 else ""
@@ -1099,8 +1119,7 @@ func _on_patience_ran_out(who: Customer) -> void:
 		_focus_play()
 	print("[Shop] Customer %d/%d (%s) stormed off: reputation %+d" % [customer.number, shift.customers.size(), customer.archetype.id, Economy.STORMED_OFF_REPUTATION])
 	Juice.shake(_stage, 2.0, 0.3)
-	var lines := customer.archetype.reactions["stormed_off"]
-	_say(_pick("reaction/%s/stormed_off" % customer.archetype.id, lines), STORMED_HOLD, _send_off.bind(customer))
+	_say(_reaction_line(customer, "stormed_off", Story.STORMED_OFF), STORMED_HOLD, _send_off.bind(customer))
 
 
 ## Gives `button` copies of its theme styles with NARROW_MARGIN side margins, so a
@@ -1136,7 +1155,7 @@ func refuse_customer() -> void:
 	_update_hud()
 	Juice.squash(_refuse_button, 0.2)
 	print("[Shop] Refused customer %d/%d (%s): reputation %+d" % [who.number, shift.customers.size(), who.archetype.id, Economy.REFUSED_REPUTATION])
-	_say(_pick("reaction/%s/refused" % who.archetype.id, who.archetype.reactions["refused"]), REACTION_HOLD, _send_off.bind(who))
+	_say(_reaction_line(who, "refused", Story.REFUSED), REACTION_HOLD, _send_off.bind(who))
 	_focus_play()
 
 
@@ -1147,7 +1166,7 @@ func _storm_off_queue(who: Customer) -> void:
 	reputation += Economy.STORMED_OFF_REPUTATION
 	queue.erase(who)
 	print("[Shop] Customer %d/%d (%s) stormed off from the queue: reputation %+d" % [who.number, shift.customers.size(), who.archetype.id, Economy.STORMED_OFF_REPUTATION])
-	_say_aside(_pick("reaction/%s/stormed_off" % who.archetype.id, who.archetype.reactions["stormed_off"]), who)
+	_say_aside(_reaction_line(who, "stormed_off", Story.STORMED_OFF), who)
 	who.leave()
 	_close_up_line()
 
@@ -1210,7 +1229,7 @@ func _end_day() -> void:
 		remove_from_pot(0)
 	var result := day_result()
 	print("[Shop] Day %d done: %s" % [shift.day, result])
-	_game.finish_day(result, coins, stock, reputation)
+	_game.finish_day(result, coins, stock, reputation, story_outcomes)
 
 
 func _update_hud() -> void:

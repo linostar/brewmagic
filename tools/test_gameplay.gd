@@ -148,6 +148,8 @@ func _tests() -> Array[Callable]:
 		_test_audio_unlock_and_voices,
 		_test_shop_mortar_and_bellows,
 		_test_shop_shelf_scrolls,
+		_test_story_rules,
+		_test_shop_story_beats,
 	]
 
 
@@ -2107,8 +2109,7 @@ func _test_save_round_trip() -> void:
 	_game.reputation = -4
 	_game.stock = {"ember_pepper": 2, "moonmoss": 0}
 	_game.upgrades = {"stir": 1, "pour": 2}
-	_game.codex = {"words": ["hint_warmth"]}
-	_game.flags = {"goat_trusts_you": true}
+	_game.flags = {"quill.inspection": "great", "vexley.opening": "refused", "ending": "cosy_corner", "rush_hour_unlocked": true}
 	_game.rush_best = 7
 	_game.assist_mode = true
 	_game.gentle_mode = true
@@ -2120,7 +2121,7 @@ func _test_save_round_trip() -> void:
 	_game.load_game()
 	_check(_game.day == 2 and _game.at_market and _game.coins == 33 and _game.reputation == -4 and _game.rush_best == 7, "save round trip: day, market, coins, reputation, Rush best", "%d %s %d %d %d" % [_game.day, _game.at_market, _game.coins, _game.reputation, _game.rush_best])
 	_check(_game.stock == ({"ember_pepper": 2, "moonmoss": 0} as Dictionary[String, int]) and _game.upgrades == ({"stir": 1, "pour": 2} as Dictionary[String, int]), "save round trip: stock and upgrades", "%s %s" % [_game.stock, _game.upgrades])
-	_check(str(_game.codex) == str({"words": ["hint_warmth"]}) and str(_game.flags) == str({"goat_trusts_you": true}), "save round trip: codex and flags", "%s %s" % [_game.codex, _game.flags])
+	_check(_game.flags.recursive_equal({"quill.inspection": "great", "vexley.opening": "refused", "ending": "cosy_corner", "rush_hour_unlocked": true}, 1), "save round trip: story flags", str(_game.flags))
 	_check(_game.assist_mode and _game.gentle_mode and _game.reported_errors.size() == errors, "save round trip: settings, no errors", "%s %s" % [_game.assist_mode, _game.gentle_mode])
 	_game.rush_best = 7
 	_game.new_game()
@@ -2157,6 +2158,10 @@ func _test_save_missing_and_corrupt() -> void:
 		"version 0": JSON.stringify(_with(good, "version", 0)),
 		"huge reputation": JSON.stringify(_with(good, "reputation", 1e300)),
 		"huge rush_best": JSON.stringify(_with(good, "rush_best", GameState.SAVE_SCORE_MAX + 1)),
+		"unknown story flag": JSON.stringify(_with(good, "flags", {"goat_trusts_you": true})),
+		"bad beat outcome": JSON.stringify(_with(good, "flags", {"quill.inspection": "splendid"})),
+		"unknown ending": JSON.stringify(_with(good, "flags", {"ending": "happily_ever_after"})),
+		"rush unlock not a bool": JSON.stringify(_with(good, "flags", {"rush_hour_unlocked": "yes"})),
 	}
 	var error_label := _game.get_node("Fade/ErrorLabel") as Label
 	for case in cases:
@@ -2575,6 +2580,81 @@ func _until(condition: Callable, frames: int) -> bool:
 			return true
 		await process_frame
 	return condition.call()
+
+
+## Story rules (Story): outcomes per grade, flag conditions (an unrecorded flag counts
+## as refused), conditioned customers and morning notes, the beat and final flags, and
+## the saved-flags validation.
+func _test_story_rules() -> void:
+	var outcomes: Array[String] = []
+	for grade: Brew.Grade in [Brew.Grade.PERFECT, Brew.Grade.GOOD, Brew.Grade.MEH, Brew.Grade.MISBREW]:
+		outcomes.append(Story.outcome_for(grade))
+	_check(outcomes == (["great", "great", "poor", "poor"] as Array[String]), "story: Perfect and Good are great, Meh and Misbrew poor", str(outcomes))
+	var when: Dictionary[String, PackedStringArray] = {"quill.inspection": PackedStringArray(["great"])}
+	_check(Story.matches(when, {"quill.inspection": "great"}) and not Story.matches(when, {"quill.inspection": "poor"}) and not Story.matches(when, {}), "story: a condition matches its outcomes only; unrecorded is refused", "")
+	_check(Story.matches({} as Dictionary[String, PackedStringArray], {}), "story: no condition always matches", "")
+	var day4 := Content.day(4)
+	var helped := Story.customers_of(day4, {"stranger.first_sneeze": "great"})
+	var not_helped := Story.customers_of(day4, {"stranger.first_sneeze": "poor"})
+	_check(helped.size() == not_helped.size() + 1 and helped[-1].archetype == "goat_farmer", "story: a great first sneeze sends the goat farmer on day 4", "%d vs %d" % [helped.size(), not_helped.size()])
+	var day5 := Content.day(5)
+	var audit_great := Story.customers_of(day5, {"quill.inspection": "great"}).filter(func(c: DayCustomer) -> bool: return c.flag() == "quill.audit")
+	var audit_retest := Story.customers_of(day5, {"quill.inspection": "stormed_off"}).filter(func(c: DayCustomer) -> bool: return c.flag() == "quill.audit")
+	_check(audit_great.size() == 1 and audit_retest.size() == 1 and audit_great[0].potion != audit_retest[0].potion, "story: Quill's audit asks for a different potion after a poor inspection", "%s / %s" % [audit_great.map(func(c: DayCustomer) -> String: return c.potion), audit_retest.map(func(c: DayCustomer) -> String: return c.potion)])
+	_check(Story.morning_note(day5, {"quill.inspection": "great"}) != Story.morning_note(day5, {"quill.inspection": "poor"}) and Story.morning_note(Content.day(3), {}) == Content.day(3).morning_note, "story: morning notes follow the flags, else the day's note", Story.morning_note(day5, {}))
+	_check(Story.beat_flags().size() == 9 and Story.final_flags() == PackedStringArray(["vexley.fair", "stranger.fair", "quill.fair"]), "story: nine beats, three final ones on day 7", "%s / %s" % [Story.beat_flags(), Story.final_flags()])
+	var problems := PackedStringArray()
+	for bad: Dictionary in [{"nobody.waves": "great"}, {"quill.inspection": "splendid"}, {"ending": "the_end"}, {"rush_hour_unlocked": 1}, {"quill.inspection": 3}]:
+		if Story.flags_problem(bad) == "":
+			problems.append(str(bad))
+	_check(problems.is_empty() and Story.flags_problem({"quill.inspection": "great", "ending": "guild_master", "rush_hour_unlocked": true}) == "", "story: saved flags are validated", str(problems))
+
+
+## Story beats in the shop (day 3, Assist): a story character wears its fixed look;
+## Quill's inspection served Meh records quill.inspection = poor and he says the beat's
+## poor line; the Stranger storming off records stranger.first_sneeze = stormed_off with
+## the beat's line; the day's end commits both to Game.flags and the save.
+func _test_shop_story_beats() -> void:
+	_game.new_game()
+	_game.assist_mode = true
+	for item in Content.ingredients_unlocked_by(3):
+		_game.stock[item.id] = 9
+	_game.day = 3
+	var shop: Shop = await _goto_scene(GameState.Flow.SHOP, {"day": 3})
+	var bubble := shop.get_node("Column/Stage/Bubble") as SpeechBubble
+	var count := shop.shift.customers.size()
+	for n in count:
+		var label := "story day 3 customer %d" % (n + 1)
+		if not await _wait_for_order(shop, label):
+			break
+		_refill_patience(shop)
+		var visitor := shop.customer
+		var flag := visitor.visit.flag()
+		if flag == "quill.inspection":
+			_check(visitor.look == visitor.archetype.fixed_look and visitor.archetype.is_story(), "story: Quill wears his fixed look", visitor.look.describe())
+			_check(visitor.request.id == visitor.visit.request, "story: a beat says its pinned request", visitor.request.id)
+			if not await _serve(shop, _recipe_between(visitor.potion, shop.stock, 2, 2), label):
+				break
+			_check(shop.story_outcomes.get(flag) == "poor" and bubble.text == visitor.visit.lines["poor"], "story: a Meh brew records quill.inspection poor with the beat's line", "%s '%s'" % [shop.story_outcomes, bubble.text])
+		elif flag == "stranger.first_sneeze":
+			visitor.patience_left = 0.05
+			await _until(func() -> bool: return visitor.state == Customer.State.STORMING, FLOW_FRAMES)
+			await process_frame
+			_check(shop.story_outcomes.get(flag) == "stormed_off" and bubble.text == visitor.visit.lines["stormed_off"], "story: storming off records stranger.first_sneeze stormed_off with the beat's line", "%s '%s'" % [shop.story_outcomes, bubble.text])
+		elif not await _serve(shop, _exact_recipe(visitor.potion, shop.stock), label):
+			break
+		await _skip_lines(shop)
+	var ended := await _until(func() -> bool: return _game.state == GameState.Flow.SUMMARY and not _game.is_transitioning(), FLOW_FRAMES * 2)
+	var expected := {"quill.inspection": "poor", "stranger.first_sneeze": "stormed_off"}
+	_check(ended and _game.flags.recursive_equal(expected, 1) and expected.recursive_equal(_read_save().get("flags", {}), 1), "story: the day's beats are committed to Game.flags and saved", "%s %s" % [_game.flags, _read_save().get("flags")])
+	_game.assist_mode = false
+	_game.day = 5
+	_game.at_market = false
+	var morning: Morning = await _goto_scene(GameState.Flow.MORNING)
+	var note := (morning.get_node("Column/Card/Note") as Label).text.replace("\n", " ")
+	_check(note == Story.morning_note(Content.day(5), expected) and note != Content.day(5).morning_note, "story: the morning shows the note for the flags", note)
+	await _close_shop()
+	_game.new_game()
 
 
 ## A shelf wider than the row (day 6, ten ingredients) clips at the row's ends and
