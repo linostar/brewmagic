@@ -24,8 +24,12 @@ const MISBREW_DISTANCE := 3
 const BELLOWS_DAY := 4
 ## Beats each story character has at least (SCHEMA.md I13).
 const MIN_BEATS := 3
-## Seconds of patience every customer has at least, after the day's patience_scale (SCHEMA.md I15).
+## Seconds of patience every customer has left at the counter at least (SCHEMA.md I15).
 const MIN_PATIENCE := 33.0
+## Seconds a customer waits in line for the one brew ahead of it (a later-day multi-station brew,
+## from the order to the send-off); patience drains at Customer.QUEUE_PATIENCE_RATE meanwhile (I15).
+# ponytail: one brew is the typical wait; the third in line waits two and can still storm off from the line.
+const QUEUE_WAIT := 25.0
 
 var _failures: Array[String] = []
 var _passed := 0
@@ -449,18 +453,18 @@ func _test_i14_endings() -> void:
 	_check(problems.is_empty(), "I14 three endings whose pages fit; the licence is decided on the last day", "\n".join(problems))
 
 
-## I15: on every flag path, every customer of a day has at least MIN_PATIENCE seconds
-## (patience_seconds x the day's patience_scale), enough for a multi-station brew.
+## I15: on every flag path, every customer of a day still has MIN_PATIENCE seconds at the counter
+## (patience_seconds x the day's patience_scale) after waiting QUEUE_WAIT in line, enough for a multi-station brew.
 func _test_i15_patience() -> void:
 	var problems: Array[String] = []
 	for path in _flag_paths():
 		for spec in Content.days():
 			for customer in Story.customers_of(spec, path):
-				var patience := Content.archetype(customer.archetype).patience_seconds * spec.patience_scale
-				var problem := "%s %s: %.2f s" % [spec.id, customer.archetype, patience]
+				var patience := Content.archetype(customer.archetype).patience_seconds * spec.patience_scale - QUEUE_WAIT * Customer.QUEUE_PATIENCE_RATE
+				var problem := "%s %s: %.2f s at the counter" % [spec.id, customer.archetype, patience]
 				if patience < MIN_PATIENCE and not problem in problems:
 					problems.append(problem)
-	_check(problems.is_empty(), "I15 every customer has at least %.0f s of patience" % MIN_PATIENCE, "\n".join(problems))
+	_check(problems.is_empty(), "I15 every customer has at least %.0f s of patience at the counter after %.0f s in line" % [MIN_PATIENCE, QUEUE_WAIT], "\n".join(problems))
 
 
 ## The path enumerator covers each outcome class a condition can tell apart: two

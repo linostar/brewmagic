@@ -2,7 +2,7 @@
   {
     "id": "goat_farmer",
     "name": "Farmer Bramblewick",
-    "patience_seconds": 45,
+    "patience_seconds": 50,
     "tip_tendency": 0.2,
     "voice": { "pitch": 0.7, "timbre": "growl" },
     "speech_style": "Terse and grumpy, short sentences, blames everything on Duchess the goat, secretly adores her.",
@@ -207,7 +207,7 @@
   {
     "id": "busy_baker",
     "name": "Pip Crumbsworth",
-    "patience_seconds": 45,
+    "patience_seconds": 50,
     "tip_tendency": 0.3,
     "voice": { "pitch": 1.7, "timbre": "chirp" },
     "speech_style": "Always in a rush, breathless exclamations, bakery puns, something in the oven is always about to burn.",
@@ -372,7 +372,7 @@
   {
     "id": "quill",
     "name": "Inspector Quill",
-    "patience_seconds": 45,
+    "patience_seconds": 50,
     "tip_tendency": 0.2,
     "voice": { "pitch": 0.8, "timbre": "reed" },
     "speech_style": "Inspector of the Alchemists' Guild. Dry, precise, talks in forms, clauses and ticked boxes, scrupulously fair, a buried sense of humour.",
