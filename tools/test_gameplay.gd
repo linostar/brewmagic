@@ -32,7 +32,10 @@ const DESKTOP_16_9 := Vector2i(1920, 1080)
 const MIN_TARGET := 32.0
 const THUMB_ZONE_TOP := 0.4
 ## Real-time limit for the whole run; a test stuck on an await fails instead of hanging.
-const WATCHDOG_MSEC := 120000
+const WATCHDOG_MSEC := 240000
+## Game time runs this much faster during the story playthroughs (timers, tweens and
+## walks; Assist stations do not depend on it), so seven days fit the watchdog.
+const PLAYTHROUGH_TIME_SCALE := 4.0
 ## Frames a shop test waits for one step of the flow (a walk, a line, a station) before failing.
 const FLOW_FRAMES := 900
 
@@ -155,6 +158,8 @@ func _tests() -> Array[Callable]:
 		_test_save_v1_without_story_loads,
 		_test_story_ending_rule,
 		_test_ending_scene,
+		_test_story_playthrough_helpful,
+		_test_story_playthrough_refusing,
 	]
 
 
@@ -2828,7 +2833,7 @@ func _test_ending_scene() -> void:
 	root.size = BASE_WINDOW
 	await process_frame
 	for i in ending.pages.size():
-		var text := (screen.get_node("Column/Card/Text") as Label).text
+		var text := (screen.get_node("Column/Body/Card/Text") as Label).text
 		var cast := screen.get_node("Column/Picture/Cast").get_children().filter(func(child: Node) -> bool: return not child.is_queued_for_deletion())
 		var names := cast.map(func(figure: Customer) -> String: return figure.archetype.id)
 		_check(screen.page == i and text == "\n".join(Content.wrap_bubble(ending.pages[i])) and names == Array(ending.casts[i]), "ending: page %d shows its text and cast" % (i + 1), "%s %s" % [text, names])
@@ -2841,6 +2846,110 @@ func _test_ending_scene() -> void:
 			await _tap(next)
 	_check(await _until(func() -> bool: return _game.state == GameState.Flow.TITLE and not _game.is_transitioning(), FLOW_FRAMES), "ending: The end goes back to the title", str(_game.state))
 	_game.new_game()
+
+
+## The whole story, headless, through the real screens (taps on Open the shop, To the
+## market, Next day, The ending, Next) with Assist on, on two paths:
+## - "helpful": every customer served (Good), so every beat is great: each day's
+##   conditioned customers come, the licence is granted and with reputation >= 30 the
+##   ending is Guild Master;
+## - "refusing": every story beat refused: the beats' "not great" variants come (Quill's
+##   retest, the Stranger still hiding, Vexley's challenge), the conditioned extra
+##   customers stay away, no licence: Charming Chaos.
+## Ingredients are bought at each market with the coins earned (Game.buy_stock at the
+## day's prices), so the run also checks that the pay covers the next day.
+func _test_story_playthrough_helpful() -> void:
+	await _play_story(false, Story.GUILD_MASTER)
+
+
+func _test_story_playthrough_refusing() -> void:
+	await _play_story(true, Story.CHARMING_CHAOS)
+
+
+func _play_story(refuse_beats: bool, expected_ending: String) -> void:
+	var label := "playthrough (%s)" % ("refusing" if refuse_beats else "helpful")
+	_delete_saves()
+	_game.load_game()
+	_game.assist_mode = true
+	Engine.time_scale = PLAYTHROUGH_TIME_SCALE
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+	await _tap(current_scene.get_node("Column/OpenShopButton") as Button)
+	var finished := true
+	for number in range(1, Content.days().size() + 1):
+		if not await _until(func() -> bool: return current_scene is Morning and not _game.is_transitioning(), FLOW_FRAMES):
+			_check(false, "%s: day %d morning" % [label, number], str(current_scene))
+			finished = false
+			break
+		var expected := Shift.story(number, _game.flags).customers
+		await _tap(current_scene.get_node("Column/OpenShopButton") as Button)
+		await _until(func() -> bool: return current_scene is Shop and not _game.is_transitioning(), FLOW_FRAMES)
+		var shop := current_scene as Shop
+		var seen: Array[DayCustomer] = []
+		for n in expected.size():
+			var who := "%s day %d customer %d" % [label, number, n + 1]
+			if not await _wait_for_order(shop, who):
+				finished = false
+				break
+			_refill_patience(shop)
+			seen.append(shop.customer.visit)
+			if refuse_beats and shop.customer.visit.beat != "":
+				await _tap(shop.get_node("Column/Stage/RefuseButton") as Button)
+			elif not await _serve(shop, _exact_recipe(shop.customer.potion, shop.stock), who):
+				finished = false
+				break
+			await _skip_lines(shop)
+		if not finished:
+			break
+		_check(seen == expected, "%s: day %d brings its %d customers for the flags" % [label, number, expected.size()], "%d of %d" % [seen.size(), expected.size()])
+		if not await _until(func() -> bool: return current_scene is Summary and not _game.is_transitioning(), FLOW_FRAMES * 2):
+			_check(false, "%s: day %d summary" % [label, number], str(current_scene))
+			finished = false
+			break
+		await _tap(current_scene.get_node("Column/ContinueButton") as Button)
+		if number == Content.days().size():
+			break
+		await _until(func() -> bool: return current_scene is Market and not _game.is_transitioning(), FLOW_FRAMES)
+		_check(_buy_for_day(number + 1), "%s: day %d pay buys day %d's ingredients" % [label, number, number + 1], "%d coins, stock %s" % [_game.coins, _game.stock])
+		await _tap(current_scene.get_node("Column/Shop/NextDayButton") as Button)
+	if finished:
+		_check(await _until(func() -> bool: return current_scene is EndingScreen and not _game.is_transitioning(), FLOW_FRAMES), "%s: the last summary leads to the ending" % label, str(current_scene))
+		var screen := current_scene as EndingScreen
+		_check(screen != null and screen.ending.id == expected_ending and _game.flags.get(Story.ENDING_FLAG) == expected_ending and _game.flags.get(Story.RUSH_HOUR_FLAG) == true, "%s: reaches %s (reputation %d)" % [label, expected_ending, _game.reputation], "%s %s" % [screen.ending.id if screen != null else "-", _game.flags])
+		var beat_outcome := Story.REFUSED if refuse_beats else Story.GREAT
+		var beats_ok := Array(Story.beat_flags()).all(func(flag: String) -> bool: return _game.flags.get(flag) == beat_outcome)
+		_check(beats_ok, "%s: every beat recorded %s" % [label, beat_outcome], str(_game.flags))
+		if screen != null:
+			for i in screen.ending.pages.size():
+				await _tap(screen.get_node("Column/NextButton") as Button)
+			_check(await _until(func() -> bool: return current_scene is Title and not _game.is_transitioning(), FLOW_FRAMES), "%s: the ending returns to the title" % label, str(current_scene))
+	Engine.time_scale = 1.0
+	_game.assist_mode = false
+	_game.new_game()
+
+
+## In the market before day `number`: buys, at the day's prices, whatever the stock
+## lacks for an exact recipe for each of the day's customers on the current flags.
+## False when the coins fall short.
+func _buy_for_day(number: int) -> bool:
+	var spec := Content.day(number)
+	var pool := Content.ingredients_unlocked_by(number)
+	var needed: Dictionary[String, int] = {}
+	for customer in Shift.story(number, _game.flags).customers:
+		var target := Content.potion(customer.potion).target
+		var recipe: Array[String] = []
+		for a in pool:
+			for b in pool:
+				if recipe.is_empty() and a.essence + b.essence == target:
+					recipe = [a.id, b.id]
+		for id in recipe:
+			needed[id] = needed.get(id, 0) + 1
+	for id in needed:
+		var item := Content.ingredient(id)
+		while _game.stock.get(id, 0) < needed[id]:
+			if not _game.buy_stock(item, Economy.market_price(spec, item)):
+				return false
+	return true
 
 
 ## A version-1 save from before the story (empty codex and flags) loads unchanged.

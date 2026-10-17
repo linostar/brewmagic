@@ -20,9 +20,9 @@ var _game: GameState
 @onready var _column: Control = $Column
 @onready var _cast: Node2D = $Column/Picture/Cast
 @onready var _title: Label = $Column/Title
-@onready var _card: PanelContainer = $Column/Card
-@onready var _text: Label = $Column/Card/Text
-@onready var _page_label: Label = $Column/Page
+@onready var _card: PanelContainer = $Column/Body/Card
+@onready var _text: Label = $Column/Body/Card/Text
+@onready var _page_label: Label = $Column/Body/Page
 @onready var _next_button: Button = $Column/NextButton
 
 

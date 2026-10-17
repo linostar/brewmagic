@@ -60,26 +60,28 @@ text = "The End"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Card" type="PanelContainer" parent="Column"]
+[node name="Body" type="VBoxContainer" parent="Column"]
 layout_mode = 0
 offset_left = 12.0
 offset_top = 228.0
 offset_right = 258.0
-offset_bottom = 330.0
+offset_bottom = 380.0
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="Card" type="PanelContainer" parent="Column/Body"]
+layout_mode = 2
 pivot_offset = Vector2(123, 51)
 
-[node name="Text" type="Label" parent="Column/Card"]
+[node name="Text" type="Label" parent="Column/Body/Card"]
 layout_mode = 2
 theme_type_variation = &"DarkLabel"
 text = "Text"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Page" type="Label" parent="Column"]
-layout_mode = 0
-offset_top = 338.0
-offset_right = 270.0
-offset_bottom = 354.0
+[node name="Page" type="Label" parent="Column/Body"]
+layout_mode = 2
 text = "Page 1 of 1"
 horizontal_alignment = 1
 
