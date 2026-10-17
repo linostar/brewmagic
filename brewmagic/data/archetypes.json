@@ -2,7 +2,7 @@
   {
     "id": "goat_farmer",
     "name": "Farmer Bramblewick",
-    "patience_seconds": 40,
+    "patience_seconds": 45,
     "tip_tendency": 0.2,
     "voice": { "pitch": 0.7, "timbre": "growl" },
     "speech_style": "Terse and grumpy, short sentences, blames everything on Duchess the goat, secretly adores her.",
@@ -207,7 +207,7 @@
   {
     "id": "busy_baker",
     "name": "Pip Crumbsworth",
-    "patience_seconds": 30,
+    "patience_seconds": 45,
     "tip_tendency": 0.3,
     "voice": { "pitch": 1.7, "timbre": "chirp" },
     "speech_style": "Always in a rush, breathless exclamations, bakery puns, something in the oven is always about to burn.",
@@ -248,7 +248,7 @@
   {
     "id": "haughty_noble",
     "name": "Lady Prunella Vex",
-    "patience_seconds": 35,
+    "patience_seconds": 50,
     "tip_tendency": 0.9,
     "voice": { "pitch": 0.9, "timbre": "bell" },
     "speech_style": "Haughty and condescending, says 'one' instead of 'I', finds the shop charmingly rustic, secretly delighted by everything.",

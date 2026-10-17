@@ -221,6 +221,8 @@ One upgrade per station: exactly one entry for each of `"stir"`, `"pour"`, `"mor
 - **I14** Endings: exactly the three ids above, every page fits, every `cast` id is a known archetype. The texts
   match the rule under "Story": only `charming_chaos` refuses the licence, and `cosy_corner` claims nothing about
   which arcs went well (it covers every granted licence short of Guild Master).
+- **I15** Patience. On every flag path, every customer of day N has `patience_seconds * patience_scale >= 33` seconds
+  (enough for a multi-station brew, even in day 5's rush).
 
 ## Current content (days 1-7)
 | ingredient | essence | day | flags | price |
