@@ -14,7 +14,8 @@ extends Control
 ## at once when it is empty. Only the one at the counter is served; the queue waits
 ## in front of the window (patience draining at Customer.QUEUE_PATIENCE_RATE) and
 ## steps forward when the served one leaves. Every visitor gets a Look from
-## Look.distinct_for at the start of the day, so no two look alike. A queued
+## Look.distinct_for at the start of the day, so no two look alike; a story
+## character wears its fixed look (Archetype.fixed_look) instead. A queued
 ## customer whose patience runs out storms off from the queue (reputation as for
 ## any storm-off, its line said aside, no stamp) and the ones behind step up.
 ##
@@ -630,6 +631,9 @@ func _spawn_next_customer() -> void:
 		push_error("[Shop] Day %d customer %d (%s wants %s) cannot be set up; skipping" % [shift.day, _next_customer, spec.archetype, spec.potion])
 		_spawn_next_customer()
 		return
+	if who.is_story():
+		# A story character always wears its own look, so it is recognised on every visit.
+		look = who.fixed_look
 	var visitor := CUSTOMER_SCENE.instantiate() as Customer
 	visitor.setup(who, wants, says, who.patience_seconds * shift.patience_scale, look)
 	visitor.number = _next_customer

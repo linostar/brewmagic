@@ -424,6 +424,7 @@ func _test_i13_story_paths() -> void:
 ## conditions on one flag naming {great} and {great, poor} split its outcomes into
 ## three classes (great; poor; refused or stormed_off), so 3 paths.
 func _test_flag_paths_enumerate_conditions() -> void:
+	var real_paths := _flag_paths().size()
 	var texts := _real_texts()
 	var archetypes: Array = JSON.parse_string(texts["archetypes.json"])
 	var hero: Dictionary = (archetypes[0] as Dictionary).duplicate(true)
@@ -445,10 +446,15 @@ func _test_flag_paths_enumerate_conditions() -> void:
 	texts["days.json"] = JSON.stringify(data)
 	var errors := _load_quietly(texts)
 	var paths := _flag_paths()
-	var sizes := paths.map(func(path: Dictionary) -> int: return Story.customers_of(Content.day(2), path).size())
+	# Day 2 only depends on the new flag: each of its 3 classes once per real path.
+	var sizes: Dictionary[int, int] = {}
+	for path in paths:
+		var size := Story.customers_of(Content.day(2), path).size()
+		sizes[size] = sizes.get(size, 0) + 1
 	Content.reload()
 	var base := Content.day(2).customers.size()
-	_check(errors.is_empty() and paths.size() == 3 and sizes == [base + 2, base + 1, base], "flag paths split outcomes into the classes conditions tell apart", "%s / %s / %s" % [errors, paths, sizes])
+	var expected: Dictionary[int, int] = {base + 2: real_paths, base + 1: real_paths, base: real_paths}
+	_check(errors.is_empty() and paths.size() == 3 * real_paths and sizes == expected, "flag paths split outcomes into the classes conditions tell apart", "%s / %d paths / %s" % [errors, paths.size(), sizes])
 
 
 ## One flag path per combination of the outcome classes the data's `when` conditions

@@ -326,5 +326,131 @@
         "Understood. Filed under 'refused'. Goodnight."
       ]
     }
+  },
+  {
+    "id": "vexley",
+    "name": "Madame Vexley",
+    "patience_seconds": 50,
+    "tip_tendency": 0.6,
+    "voice": { "pitch": 1.3, "timbre": "reed" },
+    "speech_style": "Rival alchemist from across the street. Grand, theatrical, backhanded compliments, calls everyone 'darling', terribly competitive, secretly lonely.",
+    "parts": { "body": "robe", "head": "long", "hair": "beehive", "accessory": "flask" },
+    "look": { "cloth_a": "purple", "cloth_b": "red", "hair": "violet", "skin": "light" },
+    "reactions": {
+      "perfect": [
+        "Hmph. Flawless. I shall have to steal that technique, darling.",
+        "Perfect? In THIS shop? I'm almost impressed. Almost.",
+        "Exquisite. Don't tell anyone I said so. Especially me."
+      ],
+      "good": [
+        "Good. Not Vexley-good, but good. Mwah.",
+        "Respectable, darling. My cat could do better. My cat is a genius.",
+        "It works. How terribly sensible of you."
+      ],
+      "meh": [
+        "Meh. I'd say more, but pity is so unflattering on me.",
+        "Darling, this is a potion the way a puddle is a lake.",
+        "I'll drink it in private, where no one sees my standards slip."
+      ],
+      "misbrew": [
+        "Darling! My hair! Do you know how long this took?!",
+        "I'm telling the whole street. In verse.",
+        "Sabotage! Delicious, unintentional sabotage."
+      ],
+      "stormed_off": [
+        "I don't wait, darling. I make others wait. Ciao!",
+        "Time is money, and you've cost me a fortune.",
+        "My shop opens faster than your queue moves. Adieu!"
+      ],
+      "refused": [
+        "Refused? ME? How thrilling. Nobody refuses me.",
+        "Afraid of my order, darling? Wise. Very wise.",
+        "Fine. I'll brew it myself. Better, naturally."
+      ]
+    }
+  },
+  {
+    "id": "quill",
+    "name": "Inspector Quill",
+    "patience_seconds": 45,
+    "tip_tendency": 0.2,
+    "voice": { "pitch": 0.8, "timbre": "reed" },
+    "speech_style": "Inspector of the Alchemists' Guild. Dry, precise, talks in forms, clauses and ticked boxes, scrupulously fair, a buried sense of humour.",
+    "parts": { "body": "robe", "head": "square", "hair": "top_hat", "accessory": "scroll" },
+    "look": { "cloth_a": "grey", "cloth_b": "brown", "hair": "black", "skin": "medium" },
+    "reactions": {
+      "perfect": [
+        "Form 7B: exemplary. I've never ticked that box before.",
+        "Perfect. I shall underline it. Twice. In red.",
+        "Noted: flawless. The Guild will be... intrigued."
+      ],
+      "good": [
+        "Satisfactory. That is a compliment, in Guild terms.",
+        "Good. Minor deductions for flourish.",
+        "Acceptable brew. Acceptable shop. Acceptable hat."
+      ],
+      "meh": [
+        "Meh. I'll file this under 'room for improvement'.",
+        "Adequate, technically. Technically is doing a lot of work.",
+        "Noted. Sighed. Noted the sigh."
+      ],
+      "misbrew": [
+        "Incident report. Subsection: my eyebrows.",
+        "This will require a form I didn't know existed.",
+        "Clause 12 forbids explosions. You found clause 12."
+      ],
+      "stormed_off": [
+        "Punctuality is clause one. I'll see myself out.",
+        "Inspection concluded: by the clock.",
+        "I have other shops to judge. Good day."
+      ],
+      "refused": [
+        "Refused an inspector? Bold. Noted in ink.",
+        "Very well. The form has a box for this.",
+        "Declining service. I'll need that in writing."
+      ]
+    }
+  },
+  {
+    "id": "stranger",
+    "name": "Hooded Stranger",
+    "patience_seconds": 90,
+    "tip_tendency": 1.0,
+    "voice": { "pitch": 0.7, "timbre": "chirp" },
+    "speech_style": "A shy young dragon in a hood who sneezes fire. Whispery, apologetic, trails off with '...', sniffles, tips in gold, desperate not to set anything alight.",
+    "parts": { "body": "cloak", "head": "snout", "hair": "hood", "accessory": "smoke" },
+    "look": { "cloth_a": "brown", "cloth_b": "green", "hair": "black", "skin": "light" },
+    "reactions": {
+      "perfect": [
+        "Oh! It's perfect! *sniff* Nobody's been this kind to me.",
+        "Ahh... no sneeze. No sparks. Thank you, truly.",
+        "Wonderful! I could hug you. I won't. I'm... toasty."
+      ],
+      "good": [
+        "That helps. *sniff* Much better. Thank you kindly.",
+        "Good! Only a tiny puff of smoke. Sorry about the ceiling.",
+        "Thank you. I'll tip extra. I have... a lot of gold."
+      ],
+      "meh": [
+        "It's alright... *sniff* I'm still a bit tickly.",
+        "Hm. My nose is still twitchy. But thank you for trying.",
+        "Close... the smoke only comes out of one ear now."
+      ],
+      "misbrew": [
+        "Ah... ahh... sorry about your curtains.",
+        "Oh no. Oh no no. Is that... my tail?",
+        "I'll just... go. Before I sneeze on the roof."
+      ],
+      "stormed_off": [
+        "I'm so sorry... I have to go before I... ahh...",
+        "Too many people... I'll come back. Maybe.",
+        "*sniff* I'll wait in my cave. It's quieter."
+      ],
+      "refused": [
+        "Oh. That's alright. People often turn me away.",
+        "I understand... I'll ask the lake to help instead.",
+        "No trouble. I'll just... hide a bit longer."
+      ]
+    }
   }
 ]

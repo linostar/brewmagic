@@ -173,5 +173,33 @@
 
   {"id": "hushfire_busy_baker_1", "potion": "hushfire_tonic", "archetype": "busy_baker", "hints": ["hint_fire", "hint_calm", "hint_warm"], "text": "Oven fire's too wild! I need calm hands and warm buns! Quick!"},
   {"id": "hushfire_busy_baker_2", "potion": "hushfire_tonic", "archetype": "busy_baker", "hints": ["hint_courage", "hint_cool"], "text": "Need courage for the cake judges, and a cool head! Hurry!"},
-  {"id": "hushfire_busy_baker_3", "potion": "hushfire_tonic", "archetype": "busy_baker", "hints": ["hint_cold", "hint_brave"], "text": "My hands are cold and I'm not brave! Help! The pies!"}
+  {"id": "hushfire_busy_baker_3", "potion": "hushfire_tonic", "archetype": "busy_baker", "hints": ["hint_cold", "hint_brave"], "text": "My hands are cold and I'm not brave! Help! The pies!"},
+
+  {"id": "stillwater_quill_1", "potion": "stillwater_draught", "archetype": "quill", "hints": ["hint_calm"], "text": "Quill, Guild inspector. Test order: one potion of pure calm, please."},
+  {"id": "stillwater_quill_2", "potion": "stillwater_draught", "archetype": "quill", "hints": ["hint_calm"], "text": "Re-inspection. One calm potion, please. Properly, this time."},
+
+  {"id": "steamwhistle_quill_1", "potion": "steamwhistle_tonic", "archetype": "quill", "hints": ["hint_fire", "hint_cool"], "text": "Surprise audit! Something with fire in it and a cool head. Bellows, please."},
+
+  {"id": "panacea_quill_1", "potion": "panacea", "archetype": "quill", "hints": ["hint_warm", "hint_calm", "hint_heal", "hint_sleep"], "text": "The final test: warmth, calm, healing and sleep in one bottle."},
+
+  {"id": "starfire_quill_1", "potion": "starfire_elixir", "archetype": "quill", "hints": ["hint_brave", "hint_calm", "hint_grow", "hint_spooky"], "text": "Last chance. Bravery, calm, growth and something spooky. One bottle."},
+
+  {"id": "steamwhistle_vexley_1", "potion": "steamwhistle_tonic", "archetype": "vexley", "hints": ["hint_fire", "hint_cold"], "text": "I'm Vexley, your new rival. Brew me fire and cold in one, darling."},
+
+  {"id": "panacea_vexley_1", "potion": "panacea", "archetype": "vexley", "hints": ["hint_warm", "hint_calm", "hint_heal", "hint_sleep"], "text": "My cauldron exploded. I need warmth, calm, healing and sleep. Please?"},
+
+  {"id": "embermoss_vexley_1", "potion": "embermoss_elixir", "archetype": "vexley", "hints": ["hint_courage", "hint_calm", "hint_curse"], "text": "Bet you can't brew courage, calm and a curse in one go. Prove it."},
+
+  {"id": "starfire_vexley_1", "potion": "starfire_elixir", "archetype": "vexley", "hints": ["hint_brave", "hint_cool", "hint_fresh", "hint_spooky"], "text": "Our shared stall needs a showpiece: brave, cool, fresh and spooky!"},
+
+  {"id": "duskbloom_vexley_1", "potion": "duskbloom_syrup", "archetype": "vexley", "hints": ["hint_heal", "hint_curse", "hint_sleep"], "text": "One last duel, darling. Brew me healing and a curse-lifting sleep."},
+
+  {"id": "dewdrop_stranger_1", "potion": "dewdrop_balm", "archetype": "stranger", "hints": ["hint_cool", "hint_heal"], "text": "Um, hello... My throat's sore. Something cool and healing? *sniff*"},
+  {"id": "dewdrop_stranger_2", "potion": "dewdrop_balm", "archetype": "stranger", "hints": ["hint_cold", "hint_fresh"], "text": "Hello again... Something cold and fresh for my throat? Please?"},
+
+  {"id": "hushfire_stranger_1", "potion": "hushfire_tonic", "archetype": "stranger", "hints": ["hint_calm", "hint_fire"], "text": "Can I trust you? I'm a dragon. I need calm for my inner fire."},
+
+  {"id": "panacea_stranger_1", "potion": "panacea", "archetype": "stranger", "hints": ["hint_fire", "hint_warm", "hint_calm", "hint_heal", "hint_sleep"], "text": "The Fair lanterns need my fire, gently. Warm, calm, healing, sleepy?"},
+
+  {"id": "hushfire_stranger_2", "potion": "hushfire_tonic", "archetype": "stranger", "hints": ["hint_fire", "hint_cool", "hint_brave"], "text": "So many people! I'll sneeze fire! Something cool and brave, quick!"}
 ]
