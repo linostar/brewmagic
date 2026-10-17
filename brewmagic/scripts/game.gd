@@ -294,7 +294,11 @@ func finish_day(result: Dictionary, coins_now: int, stock_now: Dictionary[String
 	day = int(result["day"]) + 1
 	at_market = day <= Content.days().size()
 	print("[Game] Day %d finished: %d coins, reputation %d, next day %d%s" % [day - 1, coins, reputation, day, " (market open)" if at_market else " (story over)"])
-	save_game()
+	if story_over():
+		# Recorded now, so quitting on the last summary still keeps the ending and the unlock.
+		finish_story()
+	else:
+		save_game()
 	goto(Flow.SUMMARY, result)
 
 

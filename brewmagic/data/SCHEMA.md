@@ -263,7 +263,7 @@ Cordial, ember_pepper + nightshade_cap is Good).
 
 ## Story: the Guild Fair
 The shop has one week before the Alchemists' Guild Fair, where the Guild decides whether it gets a licence. Days
-3-7 each add one element: day 3 the Guild (Inspector Quill's first visit and five new potions), day 4 the Bellows,
+3-7 each add one element: day 3 the Guild and its story (Inspector Quill's inspection, the first story visitors, among them the Hooded Stranger, and five new potions), day 4 the Bellows,
 cinderroot and Madame Vexley's rival shop across the street, day 5 a rush (more customers, `patience_scale` 0.75),
 day 6 three rare ingredients and four rare potions, day 7 the Guild Fair finale.
 
@@ -287,4 +287,5 @@ Vexley's overflow customer on day 5. Morning notes change with the flags on days
 - `cosy_corner`: licence and at least two arcs resolved (otherwise).
 - `charming_chaos`: everything else (no licence, or only Quill's arc resolved): the village loves the shop anyway.
 
-The ending scene records the ending as `flags.ending` and sets `flags.rush_hour_unlocked` (both saved).
+When the last day ends, `Game.finish_story()` records the ending as `flags.ending` and sets `flags.rush_hour_unlocked`
+(both saved, so quitting on the last summary keeps them); the ending scene then shows it.

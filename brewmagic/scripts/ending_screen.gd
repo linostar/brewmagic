@@ -1,8 +1,9 @@
 class_name EndingScreen
 extends Control
 ## The story's ending (flow ENDING), after the last day's summary. Game.finish_story()
-## picks the ending (Story.ending), records it and unlocks Rush Hour (only once the
-## story is over: opened on its own, the scene shows the ending and records nothing). Its pages
+## (run by Game.finish_day when the last day ends) has picked the ending (Story.ending),
+## recorded it and unlocked Rush Hour; this scene shows the recorded one (opened on its
+## own, before the story is over, it shows the ending of the flags so far and records nothing). Its pages
 ## (data/endings.json) are illustrated: the page's cast stands behind the shop counter
 ## (story characters in their fixed look, villagers in a look seeded by their id),
 ## the text sits on a parchment card. Next (tap, click or Enter, focused) turns the
@@ -34,7 +35,8 @@ func _ready() -> void:
 	($Column/Picture/Counter as TextureRect).texture = Art.texture("shop", "shop_counter")
 	var id := Story.ending(_game.flags, _game.reputation)
 	if _game.story_over():
-		id = _game.finish_story()
+		# Game.finish_day recorded it when the last day ended; a save from before that records it now.
+		id = str(_game.flags.get(Story.ENDING_FLAG, "")) if _game.flags.has(Story.ENDING_FLAG) else _game.finish_story()
 	else:
 		# Only reachable outside the story flow (the scene opened on its own).
 		print("[Ending] The story is not over (day %d); showing %s without recording it" % [_game.day, id])

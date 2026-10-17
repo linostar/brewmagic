@@ -883,6 +883,8 @@ func _test_shop_last_day_storm_off() -> void:
 	_check(("Reputation: %+d" % reputation) in money and "Stormed off: 1" in money, "last day: the summary shows the storm-off and the reputation change", money)
 	var button := summary.get_node("Column/ContinueButton") as Button
 	_check(button.text == "The ending", "last day: the summary leads to the ending", button.text)
+	var recorded: Dictionary = _read_save().get("flags", {})
+	_check(recorded.has(Story.ENDING_FLAG) and recorded.get(Story.RUSH_HOUR_FLAG) == true, "last day: the ending and the Rush Hour unlock are saved before the ending scene", str(recorded))
 	await _tap(button)
 	_check(await _until(func() -> bool: return _game.state == GameState.Flow.ENDING and not _game.is_transitioning(), FLOW_FRAMES), "last day: The ending opens the ending", str(_game.state))
 	_check(_game.flags.get(Story.ENDING_FLAG) == Story.ending(_game.flags, _game.reputation) and _game.flags.get(Story.RUSH_HOUR_FLAG) == true, "last day: the ending is recorded and Rush Hour unlocked", str(_game.flags))
