@@ -185,6 +185,9 @@
   {"id": "starfire_quill_1", "potion": "starfire_elixir", "archetype": "quill", "hints": ["hint_brave", "hint_calm", "hint_grow", "hint_spooky"], "text": "Last chance. Bravery, calm, growth and something spooky. One bottle."},
 
   {"id": "steamwhistle_vexley_1", "potion": "steamwhistle_tonic", "archetype": "vexley", "hints": ["hint_fire", "hint_cold"], "text": "I'm Vexley, your new rival. Brew me fire and cold in one, darling."},
+  {"id": "steamwhistle_night_watchman_1", "potion": "steamwhistle_tonic", "archetype": "night_watchman", "hints": ["hint_fire", "hint_cool"], "text": "Bridge watch, freezing fog. Need fire in the belly, cool head. Noted."},
+  {"id": "steamwhistle_night_watchman_2", "potion": "steamwhistle_tonic", "archetype": "night_watchman", "hints": ["hint_warm", "hint_cold"], "text": "Frozen gate lock. Need warmth. And something cold. Don't ask."},
+  {"id": "steamwhistle_night_watchman_3", "potion": "steamwhistle_tonic", "archetype": "night_watchman", "hints": ["hint_courage", "hint_cool"], "text": "Troll at the toll gate. Courage for him, cool nerves for the forms."},
 
   {"id": "panacea_vexley_1", "potion": "panacea", "archetype": "vexley", "hints": ["hint_warm", "hint_calm", "hint_heal", "hint_sleep"], "text": "My cauldron exploded. I need warmth, calm, healing and sleep. Please?"},
 

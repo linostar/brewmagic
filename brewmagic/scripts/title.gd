@@ -9,6 +9,8 @@ extends Control
 ## "Continue" and NewGameButton appears under it; a new game over a saved one
 ## needs a second press within NEW_GAME_CONFIRM_TIME. Without one the main button
 ## starts a new game.
+## Once the story has been finished (Game.rush_hour_unlocked) RushButton starts a
+## Rush Hour run, with the best score under it (RushBest, "assisted" when set with Assist).
 
 const CONTENT_ERROR_MESSAGE := "Content error: %d problem(s) in data/*.json, see the log. The shop stays closed."
 const NEW_GAME_TEXT := "New game"
@@ -22,6 +24,8 @@ var _confirm_timer: SceneTreeTimer
 @onready var _banner: Label = $Column/ContentErrorBanner
 @onready var _open_button: Button = $Column/OpenShopButton
 @onready var _new_game_button: Button = $Column/NewGameButton
+@onready var _rush_button: Button = $Column/RushButton
+@onready var _rush_best: Label = $Column/RushBest
 
 
 func _ready() -> void:
@@ -30,6 +34,7 @@ func _ready() -> void:
 	_fit_column()
 	_open_button.pressed.connect(_on_open_pressed)
 	_new_game_button.pressed.connect(_on_new_game_pressed)
+	_rush_button.pressed.connect(_on_rush_pressed)
 	var content_errors := Content.errors()
 	if not content_errors.is_empty():
 		print("[Title] Content has %d problem(s); the shop stays closed" % content_errors.size())
@@ -43,6 +48,10 @@ func _ready() -> void:
 	_new_game_button.visible = resumable
 	_new_game_button.text = NEW_GAME_TEXT
 	_new_game_button.accessibility_name = "Start a new game"
+	_rush_button.visible = _game.rush_hour_unlocked
+	_rush_best.visible = _game.rush_hour_unlocked
+	_rush_best.text = "Best: %d coins%s" % [_game.rush_best, " (assisted)" if _game.rush_best_assisted else ""]
+	_rush_best.accessibility_name = "Rush Hour best: %s" % _rush_best.text.trim_prefix("Best: ")
 	# Keyboard users can press Enter straight away; the focus ring shows once they navigate.
 	_open_button.grab_focus(true)
 
@@ -65,6 +74,12 @@ func _on_open_pressed() -> void:
 		_game.continue_game()
 		return
 	_start_new_game()
+
+
+func _on_rush_pressed() -> void:
+	print("[Title] Rush Hour (best %d)" % _game.rush_best)
+	Juice.squash(_rush_button, 0.2)
+	_game.start_rush()
 
 
 ## The first press asks for a second one (the saved story would be lost).

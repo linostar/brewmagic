@@ -320,11 +320,32 @@ text = "0"
 layout_mode = 0
 offset_left = 6.0
 offset_top = 17.0
-offset_right = 96.0
+offset_right = 124.0
 offset_bottom = 31.0
 theme_override_colors/font_outline_color = Color(0.11, 0.078, 0.125, 1)
 theme_override_constants/outline_size = 4
 text = "Served 0/0"
+
+[node name="ReputationIcon" type="TextureRect" parent="Column/Hud"]
+visible = false
+layout_mode = 0
+offset_left = 6.0
+offset_top = 34.0
+offset_right = 15.0
+offset_bottom = 43.0
+mouse_filter = 2
+stretch_mode = 3
+
+[node name="Reputation" type="Label" parent="Column/Hud"]
+visible = false
+layout_mode = 0
+offset_left = 18.0
+offset_top = 31.0
+offset_right = 66.0
+offset_bottom = 45.0
+theme_override_colors/font_outline_color = Color(0.11, 0.078, 0.125, 1)
+theme_override_constants/outline_size = 4
+text = "10"
 
 [node name="AssistTag" type="Label" parent="Column/Hud"]
 visible = false

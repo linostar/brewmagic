@@ -15,8 +15,11 @@ const ITEM_SIZE := Vector2(40, 52)
 ## Where the 24x24 sprite sits so its baseline row (22) stands on the plank.
 const ICON_POSITION := Vector2(8, 15)
 const DRAG_THRESHOLD := 10.0
+## A stock that never runs out (Rush Hour): no count shows and the item never empties.
+const UNLIMITED := -1
 
 var ingredient: Ingredient
+## How many are left, or UNLIMITED.
 var stock := 0
 
 var _press_point := Vector2.ZERO
@@ -54,11 +57,12 @@ func _ready() -> void:
 
 func set_stock(count: int) -> void:
 	stock = count
+	_count.visible = count != UNLIMITED
 	_count.text = "x%d" % count
-	disabled = count <= 0
-	_icon.modulate.a = 1.0 if count > 0 else 0.35
+	disabled = count == 0
+	_icon.modulate.a = 0.35 if disabled else 1.0
 	_essences.modulate.a = _icon.modulate.a
-	accessibility_name = "%s (%s), %d left" % [ingredient.name, essence_text(), count]
+	accessibility_name = "%s (%s), %s" % [ingredient.name, essence_text(), "unlimited" if count == UNLIMITED else "%d left" % count]
 
 
 ## The ingredient's essences in words, e.g. "2 ember" or "1 frost, 1 bloom".

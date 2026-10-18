@@ -6,6 +6,8 @@ extends Node
 ## centred 270-wide gameplay column).
 ## Story flow: title -> morning -> shop -> summary -> market -> morning (next day) ...
 ## -> the last day's summary -> ending (finish_story) -> title.
+## Rush Hour (once the story is done): title -> shop (start_rush) -> results
+## (finish_rush) -> again or title.
 ## The shop commits a finished day with finish_day(); quitting mid-shift keeps the
 ## progress from before that day.
 ## Every flow change goes through goto(), which fades out, swaps the scene,
@@ -21,7 +23,7 @@ signal transition_finished(state: Flow)
 ## Emitted when the visible rect or the safe area changes (resize, rotation).
 signal screen_fit_changed
 
-enum Flow { TITLE, MORNING, SHOP, SUMMARY, MARKET, ENDING }
+enum Flow { TITLE, MORNING, SHOP, SUMMARY, MARKET, ENDING, RESULTS }
 
 ## Where the autoload lives. Scripts fetch it through this path instead of the
 ## global "Game" name, which does not exist yet when test scripts compile.
@@ -33,6 +35,7 @@ const SCENE_PATHS: Dictionary[Flow, String] = {
 	Flow.SUMMARY: "res://scenes/summary.tscn",
 	Flow.MARKET: "res://scenes/market.tscn",
 	Flow.ENDING: "res://scenes/ending_screen.tscn",
+	Flow.RESULTS: "res://scenes/results.tscn",
 }
 ## Seconds for each half of a transition (fade out, then fade in).
 const FADE_TIME := 0.18
@@ -50,7 +53,7 @@ const SAVE_PATH := "user://save.json"
 const TOOL_SAVE_PATH := "user://tool_save.json"
 ## The save format's version. Every change to the format bumps it and appends one
 ## step to save_migrations(), so saves of older versions are upgraded, not discarded.
-const SAVE_VERSION := 2
+const SAVE_VERSION := 3
 ## Upper bounds a save's numbers must respect (anything else marks it corrupt);
 ## SAVE_SCORE_MAX bounds reputation (either sign) and rush_best.
 const SAVE_COINS_MAX := 999999
@@ -62,7 +65,8 @@ const SAVE_EXACT_MAX := 9007199254740992.0
 const SAVE_KEYS: Dictionary[String, Variant.Type] = {
 	"version": TYPE_INT, "day": TYPE_INT, "at_market": TYPE_BOOL, "coins": TYPE_INT, "reputation": TYPE_INT,
 	"stock": TYPE_DICTIONARY, "upgrades": TYPE_DICTIONARY, "codex": TYPE_DICTIONARY, "flags": TYPE_DICTIONARY,
-	"endings": TYPE_ARRAY, "rush_hour_unlocked": TYPE_BOOL, "rush_best": TYPE_INT, "settings": TYPE_DICTIONARY,
+	"endings": TYPE_ARRAY, "rush_hour_unlocked": TYPE_BOOL, "rush_best": TYPE_INT, "rush_best_assisted": TYPE_BOOL,
+	"settings": TYPE_DICTIONARY,
 }
 ## Version 1 kept these in flags (moved out by the version 2 step of save_migrations).
 const V1_ENDING_FLAG := "ending"
@@ -101,8 +105,10 @@ var flags: Dictionary = {}
 ## reached) and the Rush Hour unlock; like the Codex, new_game keeps them.
 var endings: Array[String] = []
 var rush_hour_unlocked := false
-## Filled in plan step 8.
+## The best Rush Hour score (coins earned in one run) and whether Assist was on
+## during that run; like the endings, new_game keeps them.
 var rush_best := 0
+var rush_best_assisted := false
 ## Where the save lives: SAVE_PATH, or TOOL_SAVE_PATH in tool runs.
 var save_path := SAVE_PATH
 
@@ -269,11 +275,13 @@ func tolerance_scale(step: String) -> float:
 ## unlock and its best.
 func new_game() -> void:
 	var best := rush_best
+	var best_assisted := rush_best_assisted
 	var kept_codex := codex
 	var kept_endings := endings
 	var unlocked := rush_hour_unlocked
 	_reset_progress()
 	rush_best = best
+	rush_best_assisted = best_assisted
 	codex = kept_codex
 	endings = kept_endings
 	rush_hour_unlocked = unlocked
@@ -425,6 +433,30 @@ func has_recorded(ending: String) -> bool:
 	return rush_hour_unlocked and ending in endings
 
 
+## Starts a Rush Hour run in the shop (flow_args {"rush": seed}; a new seed each run).
+func start_rush() -> void:
+	goto(Flow.SHOP, {"rush": randi()})
+
+
+## The shop's end of a Rush Hour run: `result` (Shop.rush_result()) becomes the best
+## when its score beats rush_best (with its assisted marker), saved; then the results
+## screen shows it with "best" (the best now) and "new_best".
+func finish_rush(result: Dictionary) -> void:
+	var score := int(result["score"])
+	var new_best := score > rush_best
+	if new_best:
+		rush_best = score
+		rush_best_assisted = bool(result["assisted"])
+		save_game()
+	print("[Game] Rush Hour run finished: score %d, served %d%s; best %d%s" % [score, int(result["served"]),
+		" (assisted)" if result["assisted"] else "", rush_best, " (new best)" if new_best else ""])
+	var shown := result.duplicate()
+	shown["best"] = rush_best
+	shown["best_assisted"] = rush_best_assisted
+	shown["new_best"] = new_best
+	goto(Flow.RESULTS, shown)
+
+
 ## Closes the market and goes to the next morning.
 func leave_market() -> void:
 	at_market = false
@@ -465,7 +497,8 @@ func save_game() -> void:
 	var data := {
 		"version": SAVE_VERSION, "day": day, "at_market": at_market, "coins": coins, "reputation": reputation,
 		"stock": stock, "upgrades": upgrades, "codex": codex, "flags": flags, "endings": endings,
-		"rush_hour_unlocked": rush_hour_unlocked, "rush_best": rush_best, "settings": {"assist": assist_mode, "gentle": gentle_mode},
+		"rush_hour_unlocked": rush_hour_unlocked, "rush_best": rush_best, "rush_best_assisted": rush_best_assisted,
+		"settings": {"assist": assist_mode, "gentle": gentle_mode},
 	}
 	var temp := save_path + ".tmp"
 	var file := FileAccess.open(temp, FileAccess.WRITE)
@@ -483,8 +516,8 @@ func save_game() -> void:
 		DirAccess.remove_absolute(temp)
 		_report_error("Could not replace save '%s' with '%s': %s; the save is unchanged" % [save_path, temp, error_string(replaced)])
 		return
-	print("[Game] Saved to %s: day %d%s, %d coins, reputation %d, upgrades %s, flags %s, endings %s, Rush Hour %s, assist %s, gentle %s" % [
-		save_path, day, " (market)" if at_market else "", coins, reputation, upgrades, flags, endings, rush_hour_unlocked, assist_mode, gentle_mode])
+	print("[Game] Saved to %s: day %d%s, %d coins, reputation %d, upgrades %s, flags %s, endings %s, Rush Hour %s (best %d%s), assist %s, gentle %s" % [
+		save_path, day, " (market)" if at_market else "", coins, reputation, upgrades, flags, endings, rush_hour_unlocked, rush_best, " assisted" if rush_best_assisted else "", assist_mode, gentle_mode])
 
 
 ## Loads save_path into progress and settings. A missing save starts fresh silently
@@ -518,8 +551,8 @@ func load_game() -> void:
 		gentle_mode = false
 		_discard_save("corrupt (%s)" % problem)
 		return
-	print("[Game] Loaded save from %s: day %d%s, %d coins, reputation %d, stock %s, upgrades %s, flags %s, endings %s, Rush Hour %s, assist %s, gentle %s" % [
-		save_path, day, " (market)" if at_market else "", coins, reputation, stock, upgrades, flags, endings, rush_hour_unlocked, assist_mode, gentle_mode])
+	print("[Game] Loaded save from %s: day %d%s, %d coins, reputation %d, stock %s, upgrades %s, flags %s, endings %s, Rush Hour %s (best %d%s), assist %s, gentle %s" % [
+		save_path, day, " (market)" if at_market else "", coins, reputation, stock, upgrades, flags, endings, rush_hour_unlocked, rush_best, " assisted" if rush_best_assisted else "", assist_mode, gentle_mode])
 
 
 ## Where a corrupt save is moved: save.json -> save.corrupt.json.
@@ -584,6 +617,7 @@ func _reset_progress() -> void:
 	endings = []
 	rush_hour_unlocked = false
 	rush_best = 0
+	rush_best_assisted = false
 
 
 ## Applies a parsed save; returns "" or what is wrong with it (the caller then
@@ -651,6 +685,7 @@ func _apply_save(data: Variant) -> String:
 			return "endings has '%s' twice" % ending
 		endings.append(ending)
 	rush_hour_unlocked = saved["rush_hour_unlocked"]
+	rush_best_assisted = saved["rush_best_assisted"]
 	var settings: Dictionary = saved["settings"]
 	if settings.size() != SETTINGS_KEYS.size() or not SETTINGS_KEYS.all(func(key: String) -> bool: return typeof(settings.get(key)) == TYPE_BOOL):
 		return "settings must be exactly %s, each true or false" % [SETTINGS_KEYS]
@@ -683,7 +718,7 @@ static func migrate_save(saved: Dictionary, migrations: Array[Callable], target:
 ## version i + 2. Steps run before the save is validated, so they must read keys
 ## with get() and leave anything malformed for the validation to report.
 static func save_migrations() -> Array[Callable]:
-	return [_save_v1_to_v2]
+	return [_save_v1_to_v2, _save_v2_to_v3]
 
 
 ## Version 1 -> 2: the ending reached and the Rush Hour unlock move out of the story's
@@ -700,6 +735,12 @@ static func _save_v1_to_v2(saved: Dictionary) -> void:
 	saved["rush_hour_unlocked"] = story_flags.get(V1_RUSH_HOUR_FLAG, false)
 	story_flags.erase(V1_ENDING_FLAG)
 	story_flags.erase(V1_RUSH_HOUR_FLAG)
+
+
+## Version 2 -> 3: the Rush Hour best gains its assisted marker; no earlier run set a
+## best (Rush Hour did not exist), so it is false.
+static func _save_v2_to_v3(saved: Dictionary) -> void:
+	saved["rush_best_assisted"] = false
 
 
 ## Reports `problem`, moves the bad save to backup_path() and writes defaults in

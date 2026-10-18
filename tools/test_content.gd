@@ -73,6 +73,7 @@ func _tests() -> Array[Callable]:
 		_test_flag_paths_enumerate_conditions,
 		_test_i14_endings,
 		_test_i15_patience,
+		_test_i16_rush_voices,
 		_test_part_values_have_sprites,
 		_test_malformed_data_errors,
 		_test_title_shows_content_errors,
@@ -465,6 +466,16 @@ func _test_i15_patience() -> void:
 				if patience < MIN_PATIENCE and not problem in problems:
 					problems.append(problem)
 	_check(problems.is_empty(), "I15 every customer has at least %.0f s of patience at the counter after %.0f s in line" % [MIN_PATIENCE, QUEUE_WAIT], "\n".join(problems))
+
+
+## I16: Rush Hour can ask for every potion: each has a request in the voice of at least
+## one ordinary archetype (story characters never visit a run; Rush.voices_for).
+func _test_i16_rush_voices() -> void:
+	var silent: Array[String] = []
+	for potion in Content.potions():
+		if Rush.voices_for(potion).is_empty():
+			silent.append(potion.id)
+	_check(silent.is_empty(), "I16 every potion has a request in an ordinary archetype's voice", ", ".join(silent))
 
 
 ## The path enumerator covers each outcome class a condition can tell apart: two

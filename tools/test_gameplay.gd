@@ -162,6 +162,10 @@ func _tests() -> Array[Callable]:
 		_test_ending_scene,
 		_test_story_playthrough_helpful,
 		_test_story_playthrough_refusing,
+		_test_rush_rules,
+		_test_shop_rush_run,
+		_test_rush_screens,
+		_test_rush_keyboard_assist,
 	]
 
 
@@ -2158,14 +2162,16 @@ func _test_save_round_trip() -> void:
 	_check(_game.codex_words() == PackedStringArray(["hint_warm", "hint_calm"]) and _game.codex_recipes() == ({"hearthglow_tonic": PackedStringArray(["ember_pepper", "sunpetal"])} as Dictionary[String, PackedStringArray]), "save round trip: codex", str(_game.codex))
 	_check(_game.assist_mode and _game.gentle_mode and _game.reported_errors.size() == errors, "save round trip: settings, no errors", "%s %s" % [_game.assist_mode, _game.gentle_mode])
 	_game.rush_best = 7
+	_game.rush_best_assisted = true
 	_game.new_game()
-	_check(_game.rush_best == 7 and _game.assist_mode and _game.day == 1 and _game.upgrades.is_empty() and _game.flags.is_empty() and _game.coins == Content.day(1).starting_coins, "a new game restarts the story but keeps the settings and the Rush best", "%d %s %d %s %s" % [_game.rush_best, _game.assist_mode, _game.day, _game.upgrades, _game.flags])
+	_check(_game.rush_best == 7 and _game.rush_best_assisted and _read_save().get("rush_best_assisted") == true and _game.assist_mode and _game.day == 1 and _game.upgrades.is_empty() and _game.flags.is_empty() and _game.coins == Content.day(1).starting_coins, "a new game restarts the story but keeps the settings and the Rush best", "%d %s %d %s %s" % [_game.rush_best, _game.assist_mode, _game.day, _game.upgrades, _game.flags])
 	var saved_after := _read_save()
 	_check(_game.rush_hour_unlocked and _game.endings == (["cosy_corner", "guild_master"] as Array[String]) and saved_after.get("rush_hour_unlocked") == true and saved_after.get("endings") == ["cosy_corner", "guild_master"], "a new game keeps the Rush Hour unlock and the endings reached (saved)", str(saved_after))
 	_check(_game.codex_words() == PackedStringArray(["hint_warm", "hint_calm"]) and _game.codex_recipes().has("hearthglow_tonic"), "a new game keeps the Codex", str(_game.codex))
 	_game.assist_mode = false
 	_game.gentle_mode = false
 	_game.rush_best = 0
+	_game.rush_best_assisted = false
 	_game.codex = {}
 	_game.endings = []
 	_game.rush_hour_unlocked = false
@@ -2198,6 +2204,7 @@ func _test_save_missing_and_corrupt() -> void:
 		"version 0": JSON.stringify(_with(good, "version", 0)),
 		"huge reputation": JSON.stringify(_with(good, "reputation", 1e300)),
 		"huge rush_best": JSON.stringify(_with(good, "rush_best", GameState.SAVE_SCORE_MAX + 1)),
+		"rush_best_assisted not a bool": JSON.stringify(_with(good, "rush_best_assisted", "yes")),
 		"unknown story flag": JSON.stringify(_with(good, "flags", {"goat_trusts_you": true})),
 		"bad beat outcome": JSON.stringify(_with(good, "flags", {"quill.inspection": "splendid"})),
 		"ending left in flags": JSON.stringify(_with(good, "flags", {"ending": "cosy_corner"})),
@@ -2257,10 +2264,27 @@ func _test_save_migrations() -> void:
 	_check("newer" in GameState.migrate_save(newer, steps, 3) and newer == {"version": 4}, "a save from a newer game is refused unchanged", str(newer))
 	var v1 := {"version": 1, "day": 8, "at_market": false, "flags": {"quill.fair": "great", "ending": "cosy_corner", "rush_hour_unlocked": true}}
 	var upgraded := GameState.migrate_save(v1, GameState.save_migrations(), GameState.SAVE_VERSION)
-	_check(upgraded == "" and v1 == {"version": 2, "day": 8, "at_market": false, "flags": {"quill.fair": "great"}, "endings": ["cosy_corner"], "rush_hour_unlocked": true}, "version 1 -> 2: the ending and the Rush Hour unlock move out of the flags", "%s %s" % [upgraded, v1])
+	_check(upgraded == "" and v1 == {"version": 3, "day": 8, "at_market": false, "flags": {"quill.fair": "great"}, "endings": ["cosy_corner"], "rush_hour_unlocked": true, "rush_best_assisted": false}, "version 1 -> 2: the ending and the Rush Hour unlock move out of the flags", "%s %s" % [upgraded, v1])
 	var v1_plain := {"version": 1, "day": 2, "at_market": false, "flags": {}}
 	GameState.migrate_save(v1_plain, GameState.save_migrations(), GameState.SAVE_VERSION)
-	_check(v1_plain == {"version": 2, "day": 2, "at_market": false, "flags": {}, "endings": [], "rush_hour_unlocked": false}, "version 1 -> 2: a save without an ending gets none and no unlock", str(v1_plain))
+	_check(v1_plain == {"version": 3, "day": 2, "at_market": false, "flags": {}, "endings": [], "rush_hour_unlocked": false, "rush_best_assisted": false}, "version 1 -> 2: a save without an ending gets none and no unlock", str(v1_plain))
+	var v2 := {"version": 2, "rush_best": 40}
+	_check(GameState.migrate_save(v2, GameState.save_migrations(), GameState.SAVE_VERSION) == "" and v2 == {"version": 3, "rush_best": 40, "rush_best_assisted": false}, "version 2 -> 3: the Rush Hour best gains an assisted marker, false", str(v2))
+	# A whole version 2 save file (the format before Rush Hour) loads, best kept and not assisted.
+	_game.new_game()
+	_game.rush_hour_unlocked = true
+	_game.rush_best = 40
+	_game.save_game()
+	var v2_file: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	v2_file["version"] = 2
+	v2_file.erase("rush_best_assisted")
+	_write_save(JSON.stringify(v2_file))
+	_game.rush_best = 0
+	var errors := _game.reported_errors.size()
+	_game.load_game()
+	_check(_game.reported_errors.size() == errors and _game.rush_best == 40 and not _game.rush_best_assisted and _game.rush_hour_unlocked, "a version 2 save file loads with its best, not assisted", "best %d assisted %s, errors %s" % [_game.rush_best, _game.rush_best_assisted, _game.reported_errors.slice(errors)])
+	_delete_saves()
+	_game.load_game()
 	var v1_two_day_end := {"version": 1, "day": 3.0, "at_market": false, "flags": {}}
 	GameState.migrate_save(v1_two_day_end, GameState.save_migrations(), GameState.SAVE_VERSION)
 	_check(v1_two_day_end.get("at_market") == true, "version 1 -> 2: the two-day build's finished save reopens the market before day 3", str(v1_two_day_end))
@@ -2645,6 +2669,249 @@ func _until(condition: Callable, frames: int) -> bool:
 			return true
 		await process_frame
 	return condition.call()
+
+
+## Rush Hour rules (Rush, Shift.rush): the spawn curve's ends and floors, the waves
+## and their potions (Stir and Pour first, then Mortar, Bellows, all 17), ordinary
+## voices only, a seed's customers repeating, and 60 customers of a run in distinct looks.
+func _test_rush_rules() -> void:
+	_check(is_equal_approx(Rush.arrival_gap(0), Rush.GAP_START) and is_equal_approx(Rush.arrival_gap(1000), Rush.GAP_FLOOR) and Rush.arrival_gap(10) < Rush.arrival_gap(9), "rush: the arrival gap shrinks from its start to its floor", "%s %s" % [Rush.arrival_gap(0), Rush.arrival_gap(1000)])
+	_check(is_equal_approx(Rush.patience_scale(0), Rush.PATIENCE_START) and is_equal_approx(Rush.patience_scale(1000), Rush.PATIENCE_FLOOR) and Rush.patience_scale(10) < Rush.patience_scale(9), "rush: patience shrinks from its start to its floor", "%s %s" % [Rush.patience_scale(0), Rush.patience_scale(1000)])
+	_check([Rush.wave(0), Rush.wave(Rush.WAVE_SIZE - 1), Rush.wave(Rush.WAVE_SIZE), Rush.wave(Rush.WAVE_SIZE * 3), Rush.wave(1000)] == [0, 0, 1, 3, 3], "rush: a wave every WAVE_SIZE served, the last one lasts", str([Rush.wave(0), Rush.wave(Rush.WAVE_SIZE), Rush.wave(1000)]))
+	var stations: Array[Array] = [["stir", "pour"], ["stir", "pour", "mortar"], ["stir", "pour", "mortar", "bellows"], ["stir", "pour", "mortar", "bellows"]]
+	var previous := 0
+	for index in Rush.WAVE_DAYS.size():
+		var potions := Rush.potions_of_wave(index)
+		var steps := {}
+		for potion in potions:
+			for step in potion.steps:
+				steps[step] = true
+		var newest: String = stations[index].back()
+		_check(potions.size() > previous and steps.keys().all(func(step: String) -> bool: return step in stations[index]) and steps.has(newest), "rush: wave %d adds potions, stations %s" % [index + 1, stations[index]], "%d potions, steps %s" % [potions.size(), steps.keys()])
+		previous = potions.size()
+	_check(Rush.potions_of_wave(Rush.WAVE_DAYS.size() - 1).size() == Content.potions().size(), "rush: the last wave allows all %d potions" % Content.potions().size(), str(Rush.potions_of_wave(3).size()))
+	var config := Shift.rush(11)
+	_check(config.is_rush() and config.run_seed == 11 and config.customers.is_empty() and config.ingredients.size() == Content.ingredients().size() and is_equal_approx(config.patience_scale, Rush.PATIENCE_START), "rush: Shift.rush puts every ingredient on the shelf, no fixed customers", str(config.ingredients.size()))
+	var first := RandomNumberGenerator.new()
+	var second := RandomNumberGenerator.new()
+	first.seed = 11
+	second.seed = 11
+	var taken := {}
+	var taken_again := {}
+	var problems: Array[String] = []
+	for n in 60:
+		var served := n
+		var visit := Rush.customer(first, served)
+		var again := Rush.customer(second, served)
+		var who := Content.archetype(visit.archetype)
+		var potion := Content.potion(visit.potion)
+		if visit.archetype != again.archetype or visit.potion != again.potion or visit.request != again.request:
+			problems.append("customer %d differs for the same seed" % n)
+		if who == null or who.is_story() or not potion in Rush.potions_of_wave(Rush.wave(served)) or not Content.requests_for(visit.potion, visit.archetype).has(Content.request(visit.request)):
+			problems.append("customer %d: %s wants %s (request %s)" % [n, visit.archetype, visit.potion, visit.request])
+		var part_names: Array[String] = []
+		part_names.assign(Customer.parts_of(who))
+		var look := Look.next_distinct(part_names, first, taken, n)
+		var look_again := Look.next_distinct(part_names, second, taken_again, n)
+		if taken.size() != n + 1:
+			problems.append("customer %d repeats a look %s" % [n, look.describe()])
+		if look.describe() != look_again.describe():
+			problems.append("customer %d looks different for the same seed" % n)
+	_check(problems.is_empty(), "rush: 60 customers (voice, potion, request line, look) repeat for a seed, are ordinary voices of their wave's potions, in distinct looks", "\n".join(problems))
+	_check([Rush.reputation_delta(Brew.Grade.PERFECT), Rush.reputation_delta(Brew.Grade.GOOD), Rush.reputation_delta(Brew.Grade.MEH), Rush.reputation_delta(Brew.Grade.MISBREW)] == [0, 0, 0, Economy.reputation_delta(Brew.Grade.MISBREW)] and Economy.reputation_delta(Brew.Grade.MISBREW) < 0, "rush: serves never raise the run's reputation, a Misbrew still costs", "")
+	_check(Rush.WAVE_NAMES.size() == Rush.WAVE_DAYS.size() and Rush.WAVE_NOTES.size() == Rush.WAVE_DAYS.size() and Rush.WAVE_NAMES.all(func(name: String) -> bool: return RegEx.create_from_string("[0-9]").search(name) == null and name == name.to_upper()), "rush: every wave has a banner name (capitals, no digits: Silkscreen) and a note", str(Rush.WAVE_NAMES))
+
+
+## Every ingredient, three of each (recipes for an unlimited Rush Hour shelf).
+func _rush_stock() -> Dictionary[String, int]:
+	var stock: Dictionary[String, int] = {}
+	for item in Content.ingredients():
+		stock[item.id] = 3
+	return stock
+
+
+## A Rush Hour run in the shop: the run's reputation and score on the HUD, an unlimited
+## shelf (paged, no counts), a served customer starting wave 2, then a storm-off mid-brew
+## taking the reputation to 0: the station is dropped, the line walks out, the results
+## show the score as the new best (assisted), saved; the story's coins, stock and
+## reputation are untouched.
+func _test_shop_rush_run() -> void:
+	_game.new_game()
+	_game.rush_hour_unlocked = true
+	_game.rush_best = 0
+	_game.rush_best_assisted = false
+	_game.assist_mode = true
+	var story := [_game.coins, _game.stock.duplicate(), _game.reputation, _game.day]
+	var shop := await _goto_scene(GameState.Flow.SHOP, {"rush": 7}) as Shop
+	var reputation_label := shop.get_node("Column/Hud/Reputation") as Label
+	var served_label := shop.get_node("Column/Hud/Served") as Label
+	_check(shop.shift.is_rush() and shop.reputation == Rush.START_REPUTATION and shop.coins == 0, "rush run: starts at reputation %d and 0 coins" % Rush.START_REPUTATION, "%d %d" % [shop.reputation, shop.coins])
+	_check(reputation_label.visible and reputation_label.text == str(Rush.START_REPUTATION) and (shop.get_node("Column/Hud/ReputationIcon") as TextureRect).visible and "Reputation" in reputation_label.accessibility_name, "rush run: the HUD shows the run's reputation with a heart", reputation_label.text)
+	var unlimited := Content.ingredients().all(func(item: Ingredient) -> bool:
+		var shelf := shop.shelf_item(item.id)
+		return shelf != null and shelf.stock == ShelfItem.UNLIMITED and not shelf.disabled and not (shelf.get_node("Count") as Label).visible and "unlimited" in shelf.accessibility_name)
+	_check(unlimited and (shop.get_node("Column/Stage/ShelfNext") as Button).visible, "rush run: every ingredient on a paged shelf, unlimited, no counts", str(shop.stock))
+	var banner := shop.get_node_or_null("Column/Stage/WaveBanner") as PanelContainer
+	_check(banner != null and banner.visible and (banner.get_node("List/Name") as Label).text == Rush.WAVE_NAMES[0] and (banner.get_node("List/Note") as Label).text == Rush.WAVE_NOTES[0] and banner.mouse_filter == Control.MOUSE_FILTER_IGNORE, "rush run: the run opens with the wave one banner (takes no input)", str(banner))
+	if await _wait_for_order(shop, "rush run"):
+		_check(not shop.customer.archetype.is_story() and shop.customer.potion in Rush.potions_of_wave(0), "rush run: the first customer is an ordinary voice asking for a wave-1 potion", "%s %s" % [shop.customer.archetype.id, shop.customer.potion.id])
+		shop.served = Rush.WAVE_SIZE - 1
+		var recipe := _exact_recipe(shop.customer.potion, _rush_stock())
+		await _serve(shop, recipe, "rush run")
+		_check(shop.coins > 0 and "wave 2" in served_label.text, "rush run: a serve pays into the score and starts wave 2", "%d coins, %s" % [shop.coins, served_label.text])
+		_check(shop.reputation == Rush.START_REPUTATION and reputation_label.text == str(Rush.START_REPUTATION), "rush run: a good serve leaves the run's reputation where it was", "%d" % shop.reputation)
+		var stamp := shop.get_node("Column/Stage/Stamp") as Control
+		# Both have settled from their pop-in scale (the banner holds WAVE_BANNER_HOLD).
+		await _frames(30)
+		_check(banner.visible and (banner.get_node("List/Name") as Label).text == Rush.WAVE_NAMES[1] and (banner.get_node("List/Note") as Label).text == Rush.WAVE_NOTES[1], "rush run: wave two is announced on the banner with what it adds", (banner.get_node("List/Name") as Label).text)
+		_check(not banner.get_global_rect().intersects(stamp.get_global_rect()) and not banner.get_global_rect().intersects(shop.slot_button(0).get_global_rect()), "rush run: the wave banner clears the grade stamp and the pot slots", "%s vs %s" % [banner.get_global_rect(), stamp.get_global_rect()])
+		_check(shop.stock.values().all(func(count: int) -> bool: return count == ShelfItem.UNLIMITED), "rush run: brewing never uses up the shelf", str(shop.stock))
+		_refill_patience(shop)
+	await _skip_lines(shop)
+	if await _wait_for_order(shop, "rush run, second customer"):
+		var score := shop.coins
+		for id in _recipe_between(shop.customer.potion, _rush_stock(), 0):
+			await _tap_item(shop, id)
+		await _tap(shop.brew_button())
+		var brewing := await _until(func() -> bool: return shop.station != null and shop.station.is_running(), FLOW_FRAMES)
+		_check(brewing, "rush run: the second brew starts a station", str(shop.station))
+		shop.reputation = 1
+		shop.customer.patience_left = 0.01
+		var over := await _until(func() -> bool: return shop.station == null and shop.reputation <= 0, FLOW_FRAMES)
+		var walking := ([shop.customer] + shop.queue).all(func(visitor: Customer) -> bool: return visitor == null or visitor.state == Customer.State.LEAVE or visitor.state == Customer.State.GONE)
+		_check(over and walking and shop.brew_button().disabled, "rush run: reputation 0 mid-brew drops the station and the line walks out", "station %s, reputation %d" % [shop.station, shop.reputation])
+		var results := await _until(func() -> bool: return current_scene is Results and not _game.is_transitioning(), FLOW_FRAMES)
+		var args := _game.flow_args
+		_check(results and int(args.get("score", -1)) == score and args.get("new_best") == true and int(args.get("best", -1)) == score and args.get("assisted") == true, "rush run: the results show the score as the new best, assisted", str(args))
+		_check(_game.rush_best == score and _game.rush_best_assisted and int(_read_save().get("rush_best", -1)) == score and _read_save().get("rush_best_assisted") == true, "rush run: the best and its assisted marker are saved", "%d %s" % [_game.rush_best, _game.rush_best_assisted])
+		_check(results and (current_scene.get_node("Column/NewBest") as Label).visible and root.gui_get_focus_owner() == current_scene.get_node("Column/AgainButton"), "rush run: New best! shows and Again has focus", str(root.gui_get_focus_owner()))
+	_check([_game.coins, _game.stock, _game.reputation, _game.day] == story, "rush run: the story's coins, stock, reputation and day are untouched", "%s vs %s" % [[_game.coins, _game.stock, _game.reputation, _game.day], story])
+	_game.assist_mode = false
+	await _goto_scene(GameState.Flow.TITLE)
+
+
+## The Rush Hour entry and results screens: no Rush Hour button before the story is
+## finished; after it the button and the best line (assisted marked) show, 32x32+ in
+## the thumb zone at 9:16, 9:19.5 and 16:9, and start a run; quitting a run records
+## nothing; the results' Again and Title buttons fit the same rules and work; a lower
+## score keeps the best.
+func _test_rush_screens() -> void:
+	_game.new_game()
+	_game.rush_hour_unlocked = false
+	var title := await _goto_scene(GameState.Flow.TITLE)
+	_check(not (title.get_node("Column/RushButton") as Button).visible and not (title.get_node("Column/RushBest") as Label).visible, "rush screens: no Rush Hour on the title before the story is finished", "")
+	_game.rush_hour_unlocked = true
+	_game.rush_best = 40
+	_game.rush_best_assisted = true
+	title = await _goto_scene(GameState.Flow.TITLE)
+	var rush := title.get_node("Column/RushButton") as Button
+	var best := title.get_node("Column/RushBest") as Label
+	_check(rush.visible and best.visible and best.text == "Best: 40 coins (assisted)" and rush.focus_mode == Control.FOCUS_ALL and rush.accessibility_name != "", "rush screens: the title shows Rush Hour and the best, assisted marked", best.text)
+	var results := {"score": 25, "served": 3, "stormed_off": 2, "refused": 1, "grades": [1, 2, 0, 0], "tips": 4, "wave": 1, "assisted": false}
+	for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
+		root.size = window
+		await _frames(10)
+		_check_targets([rush, title.get_node("Column/OpenShopButton") as Control], null, "rush screens: title at %s" % window)
+		_check(not rush.get_global_rect().intersects((title.get_node("Column/OpenShopButton") as Control).get_global_rect()) and not best.get_global_rect().intersects((title.get_node("Column/OpenShopButton") as Control).get_global_rect()), "rush screens: Rush Hour and its best clear Open the shop at %s" % window, "")
+	root.size = BASE_WINDOW
+	await _frames(5)
+	await _tap(rush)
+	var shop := await _until(func() -> bool: return current_scene is Shop and not _game.is_transitioning(), FLOW_FRAMES)
+	_check(shop and (current_scene as Shop).shift.is_rush(), "rush screens: the Rush Hour button starts a run", str(current_scene))
+	if shop:
+		(current_scene as Shop).open_pause()
+		await _frames(3)
+		await _tap(current_scene.get_node("Modal/PausePanel/List/QuitButton") as Button)
+		await _until(func() -> bool: return current_scene is Title and not _game.is_transitioning(), FLOW_FRAMES)
+		_check(current_scene is Title and _game.rush_best == 40 and _game.rush_best_assisted, "rush screens: quitting a run goes to the title and records nothing", "best %d" % _game.rush_best)
+	_game.finish_rush(results)
+	await _game.transition_finished
+	var screen := current_scene as Results
+	_check(screen != null and _game.rush_best == 40 and _game.rush_best_assisted and not (screen.get_node("Column/NewBest") as Label).visible and "Best: 40 coins (assisted)" in (screen.get_node("Column/Card/List/Details") as Label).text, "rush screens: a lower score keeps the best (and its marker)", str(_game.flow_args))
+	if screen != null:
+		var buttons: Array[Control] = [screen.get_node("Column/AgainButton") as Control, screen.get_node("Column/TitleButton") as Control]
+		for control in buttons:
+			_check(control.focus_mode == Control.FOCUS_ALL and (control as Button).accessibility_name != "", "rush screens: results %s focusable and named" % control.name, "")
+		for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
+			root.size = window
+			await _frames(10)
+			_check_targets(buttons, null, "rush screens: results at %s" % window)
+			_check(not (screen.get_node("Column/Card") as Control).get_global_rect().intersects(buttons[0].get_global_rect()), "rush screens: the results card clears Again at %s" % window, "")
+		root.size = BASE_WINDOW
+		await _frames(5)
+		await _tap(buttons[0])
+		var again := await _until(func() -> bool: return current_scene is Shop and not _game.is_transitioning(), FLOW_FRAMES)
+		_check(again and (current_scene as Shop).shift.is_rush(), "rush screens: Again starts a new run", str(current_scene))
+		_game.finish_rush(results)
+		await _game.transition_finished
+		await _tap(current_scene.get_node("Column/TitleButton") as Button)
+		_check(await _until(func() -> bool: return current_scene is Title and not _game.is_transitioning(), FLOW_FRAMES), "rush screens: Title goes back to the title", str(current_scene))
+	_game.new_game()
+
+
+## Keyboard only: from the title, Up and Enter start Rush Hour with Assist off; Assist
+## is switched on mid-run from the pause menu (so the run counts as assisted); a
+## customer is served by keys (shelf items, Brew, each station's Assist button); with
+## the run's reputation at 1 the Refuse button ends it; the results' Again has focus,
+## the run is marked assisted, and Title is reachable by keys.
+func _test_rush_keyboard_assist() -> void:
+	_game.new_game()
+	_game.rush_hour_unlocked = true
+	_game.assist_mode = false
+	var title := await _goto_scene(GameState.Flow.TITLE)
+	var on_rush := await _focus_by_keys(title.get_node("Column/RushButton") as Button)
+	await _action(&"ui_accept")
+	var in_shop := on_rush and await _until(func() -> bool: return current_scene is Shop and not _game.is_transitioning(), FLOW_FRAMES)
+	_check(in_shop and (current_scene as Shop).shift.is_rush(), "rush keys: Up and Enter on the title start Rush Hour", str(root.gui_get_focus_owner()))
+	if not in_shop:
+		_game.assist_mode = false
+		return
+	var shop := current_scene as Shop
+	if await _wait_for_order(shop, "rush keys"):
+		var assist_row := shop.get_node("Modal/PausePanel/List/AssistRow/AssistButton") as Button
+		var menu := shop.get_node("Column/Hud/PauseButton") as Button
+		for i in 20:
+			if root.gui_get_focus_owner() == menu:
+				break
+			await _action(&"ui_focus_prev")
+		var on_menu := root.gui_get_focus_owner() == menu
+		await _action(&"ui_accept")
+		var on_assist := await _focus_by_keys(assist_row)
+		await _action(&"ui_accept")
+		var on_resume := await _focus_by_keys(shop.get_node("Modal/PausePanel/List/ResumeButton") as Button)
+		await _action(&"ui_accept")
+		_check(on_menu and on_assist and on_resume and _game.assist_mode and not paused, "rush keys: Assist switched on mid-run from the pause menu", "%s %s %s assist %s" % [on_menu, on_assist, on_resume, _game.assist_mode])
+		_refill_patience(shop)
+		var served := shop.served
+		for id in _exact_recipe(shop.customer.potion, _rush_stock()):
+			shop.show_shelf_item(shop.shelf_item(id))
+			var focused := await _focus_by_keys(shop.shelf_item(id))
+			await _action(&"ui_accept")
+			_check(focused, "rush keys: ui_accept adds %s" % id, str(root.gui_get_focus_owner()))
+		var on_brew := await _focus_by_keys(shop.brew_button())
+		await _action(&"ui_accept")
+		_check(on_brew and shop.is_brewing(), "rush keys: Enter on Brew brews", str(root.gui_get_focus_owner()))
+		for step in shop.customer.potion.steps:
+			var ready := await _until(func() -> bool: return shop.station != null and shop.station.is_running() and shop.station.assist_button() != null and shop.station.assist_button().has_focus(), FLOW_FRAMES)
+			if not ready:
+				break
+			await _action(&"ui_accept")
+		_check(await _until(func() -> bool: return shop.served == served + 1, FLOW_FRAMES), "rush keys: served by keys with Assist", "served %d" % shop.served)
+	_refill_patience(shop)
+	await _skip_lines(shop)
+	if await _wait_for_order(shop, "rush keys, second customer"):
+		shop.reputation = 1
+		var refuse := shop.get_node("Column/Stage/RefuseButton") as Button
+		var on_refuse := await _focus_by_keys(refuse)
+		await _action(&"ui_accept")
+		var results := on_refuse and await _until(func() -> bool: return current_scene is Results and not _game.is_transitioning(), FLOW_FRAMES)
+		_check(results and root.gui_get_focus_owner() == current_scene.get_node("Column/AgainButton") and _game.flow_args.get("assisted") == true, "rush keys: refusing at reputation 1 ends the run on the results, Again focused", str(root.gui_get_focus_owner()))
+		if results:
+			var on_title := await _focus_by_keys(current_scene.get_node("Column/TitleButton") as Button)
+			await _action(&"ui_accept")
+			_check(on_title and await _until(func() -> bool: return current_scene is Title and not _game.is_transitioning(), FLOW_FRAMES), "rush keys: Down and Enter on Title go back to the title", str(current_scene))
+	_game.assist_mode = false
+	await _goto_scene(GameState.Flow.TITLE)
 
 
 ## Story rules (Story): outcomes per grade, flag conditions (an unrecorded flag counts
