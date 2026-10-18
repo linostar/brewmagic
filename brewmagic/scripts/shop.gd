@@ -9,7 +9,7 @@ extends Control
 ## from the backdrop's top edge), and its edge rows and columns are stretched
 ## into the rest of the visible rect so the shop fills any screen.
 ##
-## Line: customers arrive in the day's order, one every ARRIVAL_GAP seconds while
+## Line: customers arrive in the day's order, one every ShiftConfig.arrival_gap seconds while
 ## the line (the counter plus the queue places of Customer.SLOT_X) has room, and
 ## at once when it is empty. Only the one at the counter is served; the queue waits
 ## in front of the window (patience draining at Customer.QUEUE_PATIENCE_RATE) and
@@ -58,6 +58,14 @@ extends Control
 ## beat's own line for it instead of an archetype reaction; the day's end commits the
 ## outcomes to Game.flags (Game.finish_day), so a quit mid-shift records none.
 ##
+## Rush Hour (ShiftConfig.Mode.RUSH, flow_args {"rush": seed}): the same shop with an
+## endless line (Rush.customer, looks from Look.next_distinct, both from a generator
+## seeded by the run), arrivals and patience on Rush's curve, every ingredient
+## unlimited (ShelfItem.UNLIMITED), coins counted from 0 (the score) and the run's own
+## reputation from Rush.START_REPUTATION. Each wave is announced as it starts; when
+## the reputation reaches 0 the run ends (RUSH_END_DELAY later Game.finish_rush shows
+## the results). The story's coins, stock and reputation are never touched.
+##
 ## Grade stamp: a served customer gets a stamp on the counter front (the grade in
 ## words, its colour and its own icon) while "+pay" flies to the coin counter with
 ## the coins; a customer storming off gets none.
@@ -86,8 +94,6 @@ const ESSENCE_COLORS: Array[Color] = [Color("#f07c2c"), Color("#68bede"), Color(
 const ESSENCE_ICONS: Array[String] = ["essence_ember", "essence_frost", "essence_bloom", "essence_gloom"]
 const FIRST_CUSTOMER_DELAY := 0.5
 const NEXT_CUSTOMER_DELAY := 0.7
-## Seconds between arrivals while the line has room.
-const ARRIVAL_GAP := 8.0
 const VOICE_PATH := "res://audio/sfx/voice_%s.wav"
 ## Each blip's pitch varies this much either way, so a line does not drone.
 const VOICE_JITTER := 0.06
@@ -95,6 +101,12 @@ const STEP_GAP := 0.5
 const REACTION_HOLD := 2.4
 const MISBREW_HOLD := 2.8
 const STORMED_HOLD := 2.2
+## Seconds from a Rush Hour run's end (reputation 0) to its results screen.
+const RUSH_END_DELAY := 1.6
+## Stage-space centre of the Rush Hour wave banner (the workspace top, under the
+## counter and the grade stamp) and how long it holds.
+const WAVE_BANNER_CENTER := Vector2(135, 211)
+const WAVE_BANNER_HOLD := 1.8
 ## Side margins of a button whose caption needs more room than the theme's 12 (Refuse).
 const NARROW_MARGIN := 6.0
 const LIQUID_FRAME_TIME := 0.25
@@ -218,8 +230,18 @@ var _focus_before_pause: Control
 ## The "?" button whose mode help is open.
 var _help_opener: Button
 var _stamp_tween: Tween
-## Set once the last customer has left and the day is handed to Game.finish_day().
+## Set once the last customer has left and the day is handed to Game.finish_day(),
+## or a Rush Hour run's reputation reached 0.
 var _day_over := false
+## Rush Hour: customers and their looks come from this generator (seeded by the run),
+## so a seed always brings the same line; the signatures of the run's looks so far.
+var _rush_rng := RandomNumberGenerator.new()
+var _rush_looks := {}
+## Rush Hour: true once Assist was on at any moment of the run (marks its score).
+var _assisted := false
+## Rush Hour: the wave banner (built on the first wave) and its running tween.
+var _wave_banner: PanelContainer
+var _wave_tween: Tween
 
 @onready var _fill: Control = $Fill
 @onready var _column: Control = $Column
@@ -246,6 +268,8 @@ var _day_over := false
 @onready var _coin_icon: TextureRect = $Column/Hud/CoinIcon
 @onready var _coins_label: Label = $Column/Hud/Coins
 @onready var _served_label: Label = $Column/Hud/Served
+@onready var _reputation_icon: TextureRect = $Column/Hud/ReputationIcon
+@onready var _reputation_label: Label = $Column/Hud/Reputation
 @onready var _assist_tag: Label = $Column/Hud/AssistTag
 @onready var _pause_button: Button = $Column/Hud/PauseButton
 @onready var _fx: Node2D = $Fx
@@ -295,28 +319,43 @@ func _ready() -> void:
 	_gentle_help.pressed.connect(open_mode_help.bind(_gentle_help))
 	_mode_help.pressed.connect(close_mode_help)
 	_modal_dim.gui_input.connect(_on_modal_dim_input)
-	var number := int(_game.flow_args.get("day", _game.day))
-	shift = Shift.story(number, _game.flags)
-	if shift == null:
-		# The title screen is the only safe place to go; the player sees why there.
-		_game.abort_to(GameState.Flow.TITLE, "Day %d is missing from data/days.json; the shop cannot open." % number)
-		return
 	_rng.randomize()
-	coins = _game.coins
+	if _game.flow_args.has("rush"):
+		shift = Shift.rush(int(_game.flow_args["rush"]))
+		_rush_rng.seed = shift.run_seed
+		reputation = Rush.START_REPUTATION
+		_assisted = _game.assist_mode
+		for item in shift.ingredients:
+			stock[item.id] = ShelfItem.UNLIMITED
+	else:
+		var number := int(_game.flow_args.get("day", _game.day))
+		shift = Shift.story(number, _game.flags)
+		if shift == null:
+			# The title screen is the only safe place to go; the player sees why there.
+			_game.abort_to(GameState.Flow.TITLE, "Day %d is missing from data/days.json; the shop cannot open." % number)
+			return
+		coins = _game.coins
+		for item in shift.ingredients:
+			stock[item.id] = _game.stock.get(item.id, 0)
+		var parts: Array[Array] = []
+		for spec in shift.customers:
+			var who := Content.archetype(spec.archetype)
+			parts.append(Customer.parts_of(who) if who != null else [])
+		_looks = Look.distinct_for(parts, _rng.randi())
 	_starting_coins = coins
 	_shown_coins = coins
-	for item in shift.ingredients:
-		stock[item.id] = _game.stock.get(item.id, 0)
+	_reputation_icon.texture = Art.texture("ui", "heart_full")
+	_reputation_icon.visible = shift.is_rush()
+	_reputation_label.visible = shift.is_rush()
 	_build_shelf()
 	_update_pot()
 	_update_hud()
 	_sync_setting_buttons()
-	var parts: Array[Array] = []
-	for spec in shift.customers:
-		var who := Content.archetype(spec.archetype)
-		parts.append(Customer.parts_of(who) if who != null else [])
-	_looks = Look.distinct_for(parts, _rng.randi())
-	print("[Shop] Day %d '%s': %d customers, %d coins, stock %s, patience x%.2f" % [shift.day, shift.title, shift.customers.size(), coins, stock, shift.patience_scale])
+	if shift.is_rush():
+		print("[Shop] Rush Hour run (seed %d): %d coins, reputation %d, unlimited stock of %d ingredients, patience x%.2f" % [shift.run_seed, coins, reputation, stock.size(), shift.patience_scale])
+		_announce_wave()
+	else:
+		print("[Shop] Day %d '%s': %d customers, %d coins, stock %s, patience x%.2f" % [shift.day, shift.title, shift.customers.size(), coins, stock, shift.patience_scale])
 
 
 func _process(delta: float) -> void:
@@ -348,15 +387,16 @@ func is_brewing() -> bool:
 ## brewing, when the pot is full or the item is out of stock.
 func add_to_pot(item: ShelfItem, from_canvas: Vector2) -> bool:
 	var id := item.ingredient.id
-	if _brewing or pot.size() >= POT_CAPACITY or stock[id] <= 0:
+	if _brewing or pot.size() >= POT_CAPACITY or stock[id] == 0:
 		Juice.shake(item, 2.0, 0.2)
 		Juice.shake(_slot_row, 2.0, 0.2)
 		return false
 	pot.append(item.ingredient)
-	stock[id] -= 1
-	item.set_stock(stock[id])
+	if stock[id] != ShelfItem.UNLIMITED:
+		stock[id] -= 1
+		item.set_stock(stock[id])
 	Juice.squash(item, 0.25)
-	print("[Shop] Added %s to the pot (%d/%d), %d left" % [id, pot.size(), POT_CAPACITY, stock[id]])
+	print("[Shop] Added %s to the pot (%d/%d), %s left" % [id, pot.size(), POT_CAPACITY, _stock_text(id)])
 	_update_pot()
 	_fly_ingredient(item.ingredient, from_canvas)
 	return true
@@ -368,12 +408,18 @@ func remove_from_pot(index: int) -> void:
 		return
 	var item: Ingredient = pot[index]
 	pot.remove_at(index)
-	stock[item.id] += 1
-	_shelf_items[item.id].set_stock(stock[item.id])
+	if stock[item.id] != ShelfItem.UNLIMITED:
+		stock[item.id] += 1
+		_shelf_items[item.id].set_stock(stock[item.id])
 	Juice.squash(_shelf_items[item.id], 0.25)
 	Juice.squash(_slots[index], 0.3)
-	print("[Shop] Took %s out of the pot (%d/%d), %d left" % [item.id, pot.size(), POT_CAPACITY, stock[item.id]])
+	print("[Shop] Took %s out of the pot (%d/%d), %s left" % [item.id, pot.size(), POT_CAPACITY, _stock_text(item.id)])
 	_update_pot()
+
+
+## How many of ingredient `id` are left, in words for the log.
+func _stock_text(id: String) -> String:
+	return "unlimited" if stock[id] == ShelfItem.UNLIMITED else str(stock[id])
 
 
 func open_pause() -> void:
@@ -681,16 +727,22 @@ func show_shelf_item(item: ShelfItem) -> void:
 
 
 ## Lets the next customer in when the line has room: right away (after
-## NEXT_CUSTOMER_DELAY) when it is empty, else ARRIVAL_GAP after the last arrival.
+## NEXT_CUSTOMER_DELAY) when it is empty, else ShiftConfig.arrival_gap after the last
+## arrival (STORY_ARRIVAL_GAP on a story day; shrinking in Rush Hour, which is endless).
 func _tick_arrivals(delta: float) -> void:
-	if shift == null or _next_customer >= shift.customers.size() or _line_size() >= Customer.SLOT_X.size():
+	if shift == null or _day_over or _line_size() >= Customer.SLOT_X.size() or not shift.has_customer(_next_customer):
 		return
 	if _line_size() == 0:
 		_until_arrival = minf(_until_arrival, NEXT_CUSTOMER_DELAY)
 	_until_arrival -= delta
 	if _until_arrival <= 0.0:
-		_until_arrival = ARRIVAL_GAP
+		_until_arrival = shift.arrival_gap(served)
 		_spawn_next_customer()
+
+
+## "N/M" for customer number `number` of a story day; just "N" in endless Rush Hour.
+func _of_total(number: int) -> String:
+	return str(number) if shift.is_rush() else "%d/%d" % [number, shift.customers.size()]
 
 
 ## The customers in line: at (or walking to) the counter plus the queue.
@@ -700,26 +752,33 @@ func _line_size() -> int:
 
 ## Sends in the day's next customer to the first free place in line.
 func _spawn_next_customer() -> void:
-	if _next_customer >= shift.customers.size():
+	if not shift.has_customer(_next_customer):
 		_check_day_done()
 		return
-	var spec := shift.customers[_next_customer]
-	var look := _looks[_next_customer]
-	_next_customer += 1
+	var spec := shift.customer_at(_next_customer, served, _rush_rng)
 	var who := Content.archetype(spec.archetype)
+	var look: Look
+	if shift.is_rush():
+		var part_names: Array[String] = []
+		part_names.assign(Customer.parts_of(who) if who != null else [])
+		look = Look.next_distinct(part_names, _rush_rng, _rush_looks, _next_customer + 1)
+	else:
+		look = _looks[_next_customer]
+	_next_customer += 1
+	var patience_scale := shift.patience_at(served)
 	var wants := Content.potion(spec.potion)
 	var says: RequestLine = null
 	if who != null and wants != null:
 		says = Content.request(spec.request) if spec.request != "" else _pick_request(wants.id, who.id)
 	if who == null or wants == null or says == null:
-		push_error("[Shop] Day %d customer %d (%s wants %s) cannot be set up; skipping" % [shift.day, _next_customer, spec.archetype, spec.potion])
+		push_error("[Shop] %s customer %d (%s wants %s) cannot be set up; skipping" % [shift.title, _next_customer, spec.archetype, spec.potion])
 		_spawn_next_customer()
 		return
 	if who.is_story():
 		# A story character always wears its own look, so it is recognised on every visit.
 		look = who.fixed_look
 	var visitor := CUSTOMER_SCENE.instantiate() as Customer
-	visitor.setup(who, wants, says, who.patience_seconds * shift.patience_scale, look)
+	visitor.setup(who, wants, says, who.patience_seconds * patience_scale, look)
 	visitor.number = _next_customer
 	visitor.visit = spec
 	visitor.arrived.connect(_on_customer_arrived)
@@ -735,7 +794,7 @@ func _spawn_next_customer() -> void:
 	_customers.move_child(visitor, 0)
 	_present += 1
 	visitor.enter(place)
-	print("[Shop] Customer %d/%d: %s wants %s (request %s, patience %.0fs, %s), place %d in line" % [visitor.number, shift.customers.size(), who.id, wants.id, says.id, visitor.patience_total, look.describe(), place])
+	print("[Shop] Customer %s: %s wants %s (request %s, patience %.0fs, %s), place %d in line" % [_of_total(visitor.number), who.id, wants.id, says.id, visitor.patience_total, look.describe(), place])
 
 
 func _pick_request(potion_id: String, archetype_id: String) -> RequestLine:
@@ -1093,6 +1152,9 @@ func _finish_brew() -> void:
 
 
 func _deliver(grade: Brew.Grade, quality: float) -> void:
+	# A Rush Hour run that ended while the bottle flew pays nothing more.
+	if _day_over:
+		return
 	var wants := customer.potion
 	var pay := Economy.pay(wants.price, grade)
 	var tip := Economy.tip(wants.price, grade, customer.archetype.tip_tendency)
@@ -1104,8 +1166,11 @@ func _deliver(grade: Brew.Grade, quality: float) -> void:
 	grades.append(grade)
 	if grade == Brew.Grade.PERFECT:
 		perfect += 1
-	print("[Shop] Served customer %d/%d (%s): %s, quality %.2f, paid %d, tip %d, reputation %+d, coins %d" % [customer.number, shift.customers.size(), customer.archetype.id, Brew.Grade.keys()[grade], quality, pay, tip, reputation_change, coins])
+	print("[Shop] Served customer %s (%s): %s, quality %.2f, paid %d, tip %d, reputation %+d, coins %d" % [_of_total(customer.number), customer.archetype.id, Brew.Grade.keys()[grade], quality, pay, tip, reputation_change, coins])
 	_update_hud()
+	if shift.is_rush() and Rush.wave(served) > Rush.wave(served - 1):
+		_announce_wave()
+	_check_rush_over()
 	_show_stamp(grade)
 	_note_in_codex(grade)
 	var grade_key: String = Archetype.GRADES[grade]
@@ -1216,9 +1281,11 @@ func _on_patience_ran_out(who: Customer) -> void:
 	_update_pot()
 	if dropped_station:
 		_focus_play()
-	print("[Shop] Customer %d/%d (%s) stormed off: reputation %+d" % [customer.number, shift.customers.size(), customer.archetype.id, Economy.STORMED_OFF_REPUTATION])
+	print("[Shop] Customer %s (%s) stormed off: reputation %+d" % [_of_total(customer.number), customer.archetype.id, Economy.STORMED_OFF_REPUTATION])
 	Juice.shake(_stage, 2.0, 0.3)
 	_say(_reaction_line(customer, "stormed_off", Story.STORMED_OFF), STORMED_HOLD, _send_off.bind(customer))
+	_update_hud()
+	_check_rush_over()
 
 
 ## Gives `button` copies of its theme styles with NARROW_MARGIN side margins, so a
@@ -1253,9 +1320,10 @@ func refuse_customer() -> void:
 	_update_pot()
 	_update_hud()
 	Juice.squash(_refuse_button, 0.2)
-	print("[Shop] Refused customer %d/%d (%s): reputation %+d" % [who.number, shift.customers.size(), who.archetype.id, Economy.REFUSED_REPUTATION])
+	print("[Shop] Refused customer %s (%s): reputation %+d" % [_of_total(who.number), who.archetype.id, Economy.REFUSED_REPUTATION])
 	_say(_reaction_line(who, "refused", Story.REFUSED), REACTION_HOLD, _send_off.bind(who))
 	_focus_play()
+	_check_rush_over()
 
 
 ## Queued customer `who` ran out of patience: it storms off from the queue (the
@@ -1264,10 +1332,12 @@ func _storm_off_queue(who: Customer) -> void:
 	stormed_off += 1
 	reputation += Economy.STORMED_OFF_REPUTATION
 	queue.erase(who)
-	print("[Shop] Customer %d/%d (%s) stormed off from the queue: reputation %+d" % [who.number, shift.customers.size(), who.archetype.id, Economy.STORMED_OFF_REPUTATION])
+	print("[Shop] Customer %s (%s) stormed off from the queue: reputation %+d" % [_of_total(who.number), who.archetype.id, Economy.STORMED_OFF_REPUTATION])
 	_say_aside(_reaction_line(who, "stormed_off", Story.STORMED_OFF), who)
 	who.leave()
 	_close_up_line()
+	_update_hud()
+	_check_rush_over()
 
 
 ## The customer at the counter walks out; the queue steps forward.
@@ -1300,8 +1370,11 @@ func _on_customer_left(who: Customer) -> void:
 	_check_day_done()
 
 
-## Ends the day once every customer has come in and gone.
+## Ends the day once every customer has come in and gone (a Rush Hour run ends
+## only by its reputation, _check_rush_over).
 func _check_day_done() -> void:
+	if shift.is_rush():
+		return
 	if _next_customer >= shift.customers.size() and _present == 0:
 		get_tree().create_timer(NEXT_CUSTOMER_DELAY, false).timeout.connect(_end_day)
 
@@ -1318,6 +1391,98 @@ func day_result() -> Dictionary:
 		"stormed_off": stormed_off, "refused": refused, "grades": counts, "earned": coins - _starting_coins - tips, "tips": tips,
 		"reputation": reputation, "coins": coins,
 	}
+
+
+## The run's results as the results scene reads them (Game.finish_rush adds the best):
+## score (coins earned), served, stormed_off, refused, grades (a count per Brew.Grade),
+## tips, wave (1-based) and assisted (Assist was on at some moment of the run).
+func rush_result() -> Dictionary:
+	var counts: Array[int] = [0, 0, 0, 0]
+	for grade in grades:
+		counts[grade] += 1
+	return {
+		"score": coins, "served": served, "stormed_off": stormed_off, "refused": refused, "grades": counts,
+		"tips": tips, "wave": Rush.wave(served) + 1, "assisted": _assisted,
+	}
+
+
+## "Wave N" pops over the counter as a Rush Hour wave starts (it brings new potions).
+func _announce_wave() -> void:
+	var index := Rush.wave(served)
+	var potions := PackedStringArray()
+	for potion in Rush.potions_of_wave(index):
+		potions.append(potion.id)
+	if _wave_banner == null:
+		_build_wave_banner()
+	if _wave_tween != null:
+		_wave_tween.kill()
+	(_wave_banner.get_node("List/Name") as Label).text = Rush.WAVE_NAMES[index]
+	(_wave_banner.get_node("List/Note") as Label).text = Rush.WAVE_NOTES[index]
+	_wave_banner.size = Vector2.ZERO
+	_wave_banner.position = (WAVE_BANNER_CENTER - _wave_banner.size / 2.0).round()
+	_wave_banner.pivot_offset = _wave_banner.size / 2.0
+	_wave_banner.scale = Vector2(1.6, 1.6)
+	_wave_banner.modulate.a = 0.0
+	_wave_banner.show()
+	_wave_tween = _wave_banner.create_tween()
+	_wave_tween.tween_property(_wave_banner, "modulate:a", 1.0, 0.1)
+	_wave_tween.parallel().tween_property(_wave_banner, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_wave_tween.tween_interval(WAVE_BANNER_HOLD)
+	_wave_tween.tween_property(_wave_banner, "modulate:a", 0.0, 0.3)
+	_wave_tween.tween_callback(_wave_banner.hide)
+	Juice.squash(_served_label, 0.3)
+	print("[Shop] Rush Hour %s (%s): %s" % [Rush.WAVE_NAMES[index].to_lower(), Rush.WAVE_NOTES[index], ", ".join(potions)])
+
+
+## The wave banner: the grade stamp's dark plate with a gold border, the wave's name
+## (Silkscreen) over what it adds (VT323), centred on WAVE_BANNER_CENTER in the
+## workspace, under the counter and clear of the grade stamp; it takes no input.
+func _build_wave_banner() -> void:
+	_wave_banner = PanelContainer.new()
+	_wave_banner.name = "WaveBanner"
+	_wave_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := _stamp.get_theme_stylebox(&"panel").duplicate() as StyleBoxFlat
+	style.border_color = GOLD
+	_wave_banner.add_theme_stylebox_override(&"panel", style)
+	var list := VBoxContainer.new()
+	list.name = "List"
+	list.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	list.add_theme_constant_override(&"separation", 0)
+	var title := Label.new()
+	title.name = "Name"
+	title.theme_type_variation = &"TitleLabel"
+	title.add_theme_color_override(&"font_color", GOLD)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var note := Label.new()
+	note.name = "Note"
+	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	list.add_child(title)
+	list.add_child(note)
+	_wave_banner.add_child(list)
+	_stage.add_child(_wave_banner)
+
+
+## Ends a Rush Hour run once its reputation reaches 0: the running station is
+## dropped, everyone in line walks out, and RUSH_END_DELAY later Game.finish_rush
+## shows the results. Story days never end this way.
+func _check_rush_over() -> void:
+	if not shift.is_rush() or _day_over or reputation > 0:
+		return
+	_day_over = true
+	if station != null:
+		station.queue_free()
+		station = null
+	_show_station_layer(false)
+	_brewing = false
+	pot.clear()
+	_update_pot()
+	for visitor: Customer in [customer] + queue:
+		if visitor != null and visitor.state != Customer.State.LEAVE and visitor.state != Customer.State.GONE:
+			visitor.leave()
+	Juice.shake(_stage, 4.0, 0.4)
+	var result := rush_result()
+	print("[Shop] Rush Hour over: %s" % result)
+	get_tree().create_timer(RUSH_END_DELAY, false).timeout.connect(_game.finish_rush.bind(result))
 
 
 ## Commits the day. Ingredients still in the pot (put in after the last order, or
@@ -1337,7 +1502,12 @@ func _update_hud() -> void:
 	if _shown_coins > coins:
 		_shown_coins = coins
 	_coins_label.text = str(_shown_coins)
-	_served_label.text = "Served %d/%d" % [served, shift.customers.size()]
+	if shift.is_rush():
+		_served_label.text = "Served %d, wave %d" % [served, Rush.wave(served) + 1]
+		_reputation_label.text = str(reputation)
+		_reputation_label.accessibility_name = "Reputation %d; the run ends at 0" % reputation
+	else:
+		_served_label.text = "Served %d/%d" % [served, shift.customers.size()]
 	_assist_tag.visible = _game.assist_mode
 
 
@@ -1354,6 +1524,7 @@ func _sync_setting_buttons() -> void:
 ## Assist changes restart a running station in the new mode (its progress is lost).
 func _on_assist_toggled(on: bool) -> void:
 	_game.assist_mode = on
+	_assisted = _assisted or on
 	_game.save_game()
 	print("[Shop] Assist mode %s" % ("on" if on else "off"))
 	_sync_setting_buttons()

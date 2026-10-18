@@ -224,6 +224,8 @@ One upgrade per station: exactly one entry for each of `"stir"`, `"pour"`, `"mor
 - **I15** Patience. On every flag path, every customer of day N still has 33 seconds at the counter (enough for a
   multi-station brew) after waiting one brew (25 s) in line, where patience drains at `Customer.QUEUE_PATIENCE_RATE`
   (0.5): `patience_seconds * patience_scale - 25 * 0.5 >= 33`. The third in line waits two brews and can still storm off.
+- **I16** Rush Hour voices. Every potion has at least one request in the voice of an ordinary archetype (one without a
+  `look`), so a Rush Hour run, where story characters never visit, can ask for all of them.
 
 ## Current content (days 1-7)
 | ingredient | essence | day | flags | price |

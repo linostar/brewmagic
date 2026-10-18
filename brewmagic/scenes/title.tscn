@@ -90,6 +90,41 @@ horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 3
 
+[node name="RushButton" type="Button" parent="Column"]
+visible = false
+custom_minimum_size = Vector2(180, 40)
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 0.55
+anchor_right = 0.5
+anchor_bottom = 0.55
+offset_left = -90.0
+offset_top = -20.0
+offset_right = 90.0
+offset_bottom = 20.0
+grow_horizontal = 2
+grow_vertical = 2
+accessibility_name = "Play Rush Hour"
+text = "Rush Hour"
+
+[node name="RushBest" type="Label" parent="Column"]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_top = 0.615
+anchor_right = 1.0
+anchor_bottom = 0.615
+offset_top = -8.0
+offset_bottom = 8.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_outline_color = Color(0.11, 0.078, 0.125, 1)
+theme_override_constants/outline_size = 4
+text = "Best: 0 coins"
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="OpenShopButton" type="Button" parent="Column"]
 custom_minimum_size = Vector2(180, 44)
 layout_mode = 1

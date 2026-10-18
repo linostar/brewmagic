@@ -86,17 +86,24 @@ static func distinct_for(parts: Array[Array], shift_seed: int) -> Array[Look]:
 	for i in parts.size():
 		var part_names: Array[String] = []
 		part_names.assign(parts[i])
-		var look := from_seed(rng.randi())
-		var tries := 1
-		while taken.has(look.signature(part_names)) and tries < MAX_TRIES:
-			look = from_seed(rng.randi())
-			tries += 1
-		var key := look.signature(part_names)
-		if taken.has(key):
-			push_error("[Look] Visitor %d (%s) found no unused look in %d tries; it repeats one" % [i, part_names, MAX_TRIES])
-		taken[key] = true
-		looks.append(look)
+		looks.append(next_distinct(part_names, rng, taken, i))
 	return looks
+
+
+## The next look from `rng` whose signature on `part_names` is not in `taken` (which
+## it joins), for visitor number `visitor` of a shift or run; after MAX_TRIES it is
+## reported and repeats one. distinct_for and the endless Rush Hour line share it.
+static func next_distinct(part_names: Array[String], rng: RandomNumberGenerator, taken: Dictionary, visitor: int) -> Look:
+	var look := from_seed(rng.randi())
+	var tries := 1
+	while taken.has(look.signature(part_names)) and tries < MAX_TRIES:
+		look = from_seed(rng.randi())
+		tries += 1
+	var key := look.signature(part_names)
+	if taken.has(key):
+		push_error("[Look] Visitor %d (%s) found no unused look in %d tries; it repeats one" % [visitor, part_names, MAX_TRIES])
+	taken[key] = true
+	return look
 
 
 ## Every look from_seed can pick, for counting and enumerating.
