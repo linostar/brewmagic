@@ -5,6 +5,8 @@
 ; heart_*: patience, 9x9; hourglass: 9x9, labels the patience row (same outline style as the hearts).
 ; Sprites added later go at the end so the packed regions of earlier ones (the theme hard-codes panel) never move.
 ; grade_*: 9x9 grade stamp icons with distinct shapes (perfect sparkle, good check, meh tilde, misbrew cross).
+; icon_*: 9x9 stat icons of the results screens (served bottle, tips coin stack, stormed-off storm cloud, refused
+; prohibition sign, Rush Hour wave pennant), each its own shape.
 
 @ essence_ember 9x9
 ...0.....
@@ -240,3 +242,58 @@ egeegeege
 01110
 01110
 .000.
+
+@ icon_served 9x9
+...000...
+...040...
+...090...
+..09v90..
+.09ooo90.
+.0onnno0.
+.0nnnnn0.
+.0mnnnm0.
+..00000..
+
+@ icon_tips 9x9
+..00000..
+.0dd6dd0.
+.0cdddc0.
+.0000000.
+.0dd6dd0.
+.0cdddc0.
+.0000000.
+.0c444c0.
+..00000..
+
+@ icon_stormed 9x9
+..000.00.
+.07990970
+079999990
+078999870
+.0888880.
+..00d00..
+...0d0...
+..0d0....
+..00.....
+
+@ icon_refused 9x9
+..00000..
+.0bbbbb0.
+0bbb666b0
+0b6bb66b0
+0b66b66b0
+0b66bb6b0
+0b666bbb0
+.0bbbbb0.
+..00000..
+
+@ icon_wave 9x9
+.00......
+.040000..
+.04bbbb0.
+.04bccbb0
+.04bbbb0.
+.040000..
+.040.....
+.040.....
+00000....

@@ -9,7 +9,6 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-mouse_filter = 2
 script = ExtResource("1_results")
 
 [node name="Background" type="ColorRect" parent="."]
@@ -28,122 +27,125 @@ offset_right = 270.0
 offset_bottom = 480.0
 mouse_filter = 2
 
-[node name="Heading" type="Label" parent="Column"]
+[node name="Layout" type="VBoxContainer" parent="Column"]
 layout_mode = 1
-anchors_preset = -1
-anchor_top = 0.07
+anchors_preset = 15
 anchor_right = 1.0
-anchor_bottom = 0.07
+anchor_bottom = 1.0
 offset_left = 8.0
-offset_top = -12.0
+offset_top = 14.0
 offset_right = -8.0
-offset_bottom = 12.0
+offset_bottom = -16.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="Header" type="VBoxContainer" parent="Column/Layout"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 2
+
+[node name="Heading" type="Label" parent="Column/Layout/Header"]
+layout_mode = 2
 theme_type_variation = &"TitleLabel"
 text = "Rush Hour over"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="ScoreLabel" type="Label" parent="Column"]
-layout_mode = 1
-anchors_preset = -1
-anchor_top = 0.14
-anchor_right = 1.0
-anchor_bottom = 0.14
-offset_top = -16.0
-offset_bottom = 16.0
-grow_horizontal = 2
-grow_vertical = 2
+[node name="NewBest" type="Label" parent="Column/Layout/Header"]
+visible = false
+layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.788, 0.361, 1)
 theme_override_colors/font_outline_color = Color(0.11, 0.078, 0.125, 1)
 theme_override_constants/outline_size = 6
 theme_override_font_sizes/font_size = 25
-text = "0 coins"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="NewBest" type="Label" parent="Column"]
-visible = false
-layout_mode = 1
-anchors_preset = -1
-anchor_top = 0.2
-anchor_right = 1.0
-anchor_bottom = 0.2
-offset_top = -10.0
-offset_bottom = 10.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_type_variation = &"TitleLabel"
-theme_override_colors/font_color = Color(1, 0.788, 0.361, 1)
-theme_override_font_sizes/font_size = 16
 text = "New best!"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Card" type="PanelContainer" parent="Column"]
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.5
-anchor_top = 0.25
-anchor_right = 0.5
-anchor_bottom = 0.25
-offset_left = -118.0
-offset_right = 118.0
-offset_bottom = 60.0
-grow_horizontal = 2
-
-[node name="List" type="VBoxContainer" parent="Column/Card"]
+[node name="TopGap" type="Control" parent="Column/Layout"]
 layout_mode = 2
-theme_override_constants/separation = 6
+size_flags_vertical = 3
+size_flags_stretch_ratio = 0.25
+mouse_filter = 2
 
-[node name="Served" type="Label" parent="Column/Card/List"]
-layout_mode = 2
-theme_type_variation = &"DarkLabel"
-horizontal_alignment = 1
-
-[node name="Grades" type="GridContainer" parent="Column/Card/List"]
+[node name="Tiles" type="GridContainer" parent="Column/Layout"]
 layout_mode = 2
 size_flags_horizontal = 4
-theme_override_constants/h_separation = 16
-theme_override_constants/v_separation = 2
+size_flags_vertical = 3
+size_flags_stretch_ratio = 2.0
+mouse_filter = 2
+theme_override_constants/h_separation = 6
+theme_override_constants/v_separation = 6
 columns = 2
 
-[node name="Details" type="Label" parent="Column/Card/List"]
+[node name="Grades" type="PanelContainer" parent="Column/Layout"]
 layout_mode = 2
-theme_type_variation = &"DarkLabel"
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="Row" type="HBoxContainer" parent="Column/Layout/Grades"]
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_constants/separation = 0
+
+[node name="Counts" type="HBoxContainer" parent="Column/Layout"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 18
+alignment = 1
+
+[node name="StormedOff" type="HBoxContainer" parent="Column/Layout/Counts"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="Icon" type="TextureRect" parent="Column/Layout/Counts/StormedOff"]
+layout_mode = 2
+mouse_filter = 2
+stretch_mode = 5
+
+[node name="Text" type="Label" parent="Column/Layout/Counts/StormedOff"]
+layout_mode = 2
+text = "Stormed off: 0"
+
+[node name="Refused" type="HBoxContainer" parent="Column/Layout/Counts"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="Icon" type="TextureRect" parent="Column/Layout/Counts/Refused"]
+layout_mode = 2
+mouse_filter = 2
+stretch_mode = 5
+
+[node name="Text" type="Label" parent="Column/Layout/Counts/Refused"]
+layout_mode = 2
+text = "Refused: 0"
+
+[node name="Best" type="Label" parent="Column/Layout"]
+layout_mode = 2
+text = "Best: 0 coins"
 horizontal_alignment = 1
 
-[node name="AgainButton" type="Button" parent="Column"]
+[node name="BottomGap" type="Control" parent="Column/Layout"]
+layout_mode = 2
+size_flags_vertical = 3
+size_flags_stretch_ratio = 0.25
+mouse_filter = 2
+
+[node name="AgainButton" type="Button" parent="Column/Layout"]
 custom_minimum_size = Vector2(180, 44)
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.5
-anchor_top = 0.78
-anchor_right = 0.5
-anchor_bottom = 0.78
-offset_left = -90.0
-offset_top = -22.0
-offset_right = 90.0
-offset_bottom = 22.0
-grow_horizontal = 2
-grow_vertical = 2
+layout_mode = 2
+size_flags_horizontal = 4
 accessibility_name = "Play Rush Hour again"
 text = "Again"
 
-[node name="TitleButton" type="Button" parent="Column"]
+[node name="TitleButton" type="Button" parent="Column/Layout"]
 custom_minimum_size = Vector2(180, 40)
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.5
-anchor_top = 0.9
-anchor_right = 0.5
-anchor_bottom = 0.9
-offset_left = -90.0
-offset_top = -20.0
-offset_right = 90.0
-offset_bottom = 20.0
-grow_horizontal = 2
-grow_vertical = 2
+layout_mode = 2
+size_flags_horizontal = 4
 accessibility_name = "Back to the title"
 text = "Title"
