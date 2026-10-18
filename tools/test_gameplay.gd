@@ -2718,6 +2718,7 @@ func _test_rush_rules() -> void:
 		if look.describe() != look_again.describe():
 			problems.append("customer %d looks different for the same seed" % n)
 	_check(problems.is_empty(), "rush: 60 customers (voice, potion, request line, look) repeat for a seed, are ordinary voices of their wave's potions, in distinct looks", "\n".join(problems))
+	_check([Rush.reputation_delta(Brew.Grade.PERFECT), Rush.reputation_delta(Brew.Grade.GOOD), Rush.reputation_delta(Brew.Grade.MEH), Rush.reputation_delta(Brew.Grade.MISBREW)] == [0, 0, 0, Economy.reputation_delta(Brew.Grade.MISBREW)] and Economy.reputation_delta(Brew.Grade.MISBREW) < 0, "rush: serves never raise the run's reputation, a Misbrew still costs", "")
 	_check(Rush.WAVE_NAMES.size() == Rush.WAVE_DAYS.size() and Rush.WAVE_NOTES.size() == Rush.WAVE_DAYS.size() and Rush.WAVE_NAMES.all(func(name: String) -> bool: return RegEx.create_from_string("[0-9]").search(name) == null and name == name.to_upper()), "rush: every wave has a banner name (capitals, no digits: Silkscreen) and a note", str(Rush.WAVE_NAMES))
 
 
@@ -2758,6 +2759,7 @@ func _test_shop_rush_run() -> void:
 		var recipe := _exact_recipe(shop.customer.potion, _rush_stock())
 		await _serve(shop, recipe, "rush run")
 		_check(shop.coins > 0 and "wave 2" in served_label.text, "rush run: a serve pays into the score and starts wave 2", "%d coins, %s" % [shop.coins, served_label.text])
+		_check(shop.reputation == Rush.START_REPUTATION and reputation_label.text == str(Rush.START_REPUTATION), "rush run: a good serve leaves the run's reputation where it was", "%d" % shop.reputation)
 		var stamp := shop.get_node("Column/Stage/Stamp") as Control
 		# Both have settled from their pop-in scale (the banner holds WAVE_BANNER_HOLD).
 		await _frames(30)

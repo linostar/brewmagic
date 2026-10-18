@@ -1158,7 +1158,7 @@ func _deliver(grade: Brew.Grade, quality: float) -> void:
 	var wants := customer.potion
 	var pay := Economy.pay(wants.price, grade)
 	var tip := Economy.tip(wants.price, grade, customer.archetype.tip_tendency)
-	var reputation_change := Economy.reputation_delta(grade)
+	var reputation_change := Rush.reputation_delta(grade) if shift.is_rush() else Economy.reputation_delta(grade)
 	coins += pay + tip
 	tips += tip
 	reputation += reputation_change

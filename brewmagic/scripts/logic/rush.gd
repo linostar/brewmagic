@@ -25,6 +25,13 @@ const WAVE_NAMES: Array[String] = ["WAVE ONE", "WAVE TWO", "WAVE THREE", "WAVE F
 const WAVE_NOTES: Array[String] = ["Stir and pour potions", "New: potions for the mortar", "New: potions for the bellows", "New: the rare potions"]
 
 
+## The run's reputation change for a delivered `grade`: only the story's losses
+## (Economy.reputation_delta below 0, a Misbrew); a good serve never raises it, so
+## every run heads for its end however well it goes.
+static func reputation_delta(grade: Brew.Grade) -> int:
+	return mini(Economy.reputation_delta(grade), 0)
+
+
 static func arrival_gap(served: int) -> float:
 	return maxf(GAP_START - GAP_STEP * served, GAP_FLOOR)
 
