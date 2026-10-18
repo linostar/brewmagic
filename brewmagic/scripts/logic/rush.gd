@@ -4,7 +4,7 @@ class_name Rush
 ## the run's served count, so the pressure grows with the player's pace.
 
 ## The run's reputation at the start; the run ends when it reaches 0.
-const START_REPUTATION := 10
+const START_REPUTATION := 5
 ## Seconds between arrivals while the line has room: GAP_START at first, GAP_STEP
 ## less per customer served, never under GAP_FLOOR.
 const GAP_START := 8.0
