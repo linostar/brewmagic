@@ -81,6 +81,8 @@ const MUSIC_TRACKS: Dictionary[Flow, StringName] = {
 }
 ## Seconds a change of track takes to crossfade (at most 1 s).
 const CROSSFADE_TIME := 0.8
+## Frames the window-close quit waits after stopping the audio, so the mixer drops the playbacks.
+const QUIT_FRAMES := 3
 ## Volume settings: 0..VOLUME_MAX in steps of VOLUME_STEP (0 mutes the bus).
 const VOLUME_MAX := 100
 const VOLUME_STEP := 10
@@ -223,6 +225,8 @@ func _ready() -> void:
 		add_child(player)
 		_music_players.append(player)
 	_sfx_rng.randomize()
+	# Closing the window quits through _quit_quietly, after the audio has stopped.
+	get_tree().set_auto_accept_quit(false)
 	get_tree().node_added.connect(_on_node_added)
 	# Tool runs (the tests, the project check, the headless main-scene run) drive the
 	# tree from a SceneTree script; they must never read or overwrite the player's save.
@@ -234,6 +238,32 @@ func _ready() -> void:
 	_fit_window()
 	get_viewport().size_changed.connect(_update_screen_fit)
 	_update_screen_fit()
+
+
+## Closing the window: a stream still playing at quit keeps its playback (and the
+## stream) referenced by the AudioServer, which reports them leaked at exit. stop()
+## only queues the playback's removal for the mixer, so the quit waits QUIT_FRAMES.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		_quit_quietly()
+
+
+func _quit_quietly() -> void:
+	print("[Game] Quitting: stopping audio")
+	stop_audio()
+	for i in QUIT_FRAMES:
+		await get_tree().process_frame
+	get_tree().quit()
+
+
+## Stops the music and every sound now (the crossfade too).
+func stop_audio() -> void:
+	if _music_fade != null:
+		_music_fade.kill()
+	for player in _sfx_players:
+		player.stop()
+	for player in _music_players:
+		player.stop()
 
 
 ## Desktop windows are sized in physical pixels, so on a high-density screen
