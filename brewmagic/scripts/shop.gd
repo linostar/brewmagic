@@ -280,6 +280,8 @@ var _wave_tween: Tween
 @onready var _reputation_label: Label = $Column/Hud/Reputation
 @onready var _assist_tag: Label = $Column/Hud/AssistTag
 @onready var _pause_button: Button = $Column/Hud/PauseButton
+@onready var _music_toggle: Button = $Column/Hud/MusicToggle
+@onready var _sfx_toggle: Button = $Column/Hud/SfxToggle
 @onready var _fx: Node2D = $Fx
 ## The pause menu: the shared settings panel with Resume and Quit to title added.
 @onready var _modal: SettingsPanel = $Modal
@@ -307,6 +309,14 @@ func _ready() -> void:
 	for i in _slots.size():
 		_slots[i].pressed.connect(_on_slot_pressed.bind(i))
 	_pause_button.pressed.connect(open_pause)
+	(_pause_button.get_node("Icon") as TextureRect).texture = Art.texture("ui", "icon_menu")
+	_music_toggle.pressed.connect(toggle_music)
+	_sfx_toggle.pressed.connect(toggle_sfx)
+	_game.audio_settings_changed.connect(_sync_sound_toggles)
+	# The top-right row sits above everything else; Down from it goes to Brew.
+	for button: Button in [_music_toggle, _sfx_toggle, _pause_button]:
+		button.focus_neighbor_bottom = button.get_path_to(_brew_button)
+	_sync_sound_toggles()
 	_modal.set_title("Paused")
 	_modal.add_button("ResumeButton", "Resume", true).pressed.connect(close_pause)
 	_modal.add_button("QuitButton", "Quit to title", false).pressed.connect(_on_quit_pressed)
@@ -1478,6 +1488,41 @@ func _update_hud() -> void:
 
 func _sync_setting_buttons() -> void:
 	_assist_tag.visible = _game.assist_mode
+
+
+## The HUD's music toggle: mutes or unmutes the music (its volume is kept).
+## Silent at volume 0 (its slider all the way down), a press brings the default volume back.
+func toggle_music() -> void:
+	Juice.squash(_music_toggle, 0.2)
+	if _game.music_volume == 0:
+		_game.set_music_volume(GameState.DEFAULT_MUSIC_VOLUME)
+	else:
+		_game.set_music_muted(not _game.music_muted)
+	_game.sfx(&"tap")
+
+
+## The HUD's sound toggle: mutes or unmutes the sound effects and voices (volume kept).
+## Unmuting plays a sample tap; muting plays nothing. At volume 0 a press brings the
+## default volume back.
+func toggle_sfx() -> void:
+	Juice.squash(_sfx_toggle, 0.2)
+	if _game.sfx_volume == 0:
+		_game.set_sfx_volume(GameState.DEFAULT_SFX_VOLUME)
+	else:
+		_game.set_sfx_muted(not _game.sfx_muted)
+	if not _game.sfx_silent():
+		_game.sfx(&"tap")
+
+
+## Shows each toggle's state: the icon (slashed when silent) and its accessibility name.
+func _sync_sound_toggles() -> void:
+	_show_sound_toggle(_music_toggle, "icon_music", "Music", _game.music_silent())
+	_show_sound_toggle(_sfx_toggle, "icon_sound", "Sound effects", _game.sfx_silent())
+
+
+static func _show_sound_toggle(toggle: Button, icon: String, what: String, silent: bool) -> void:
+	(toggle.get_node("Icon") as TextureRect).texture = Art.texture("ui", icon + ("_off" if silent else ""))
+	toggle.accessibility_name = "%s muted, tap to unmute" % what if silent else "%s on, tap to mute" % what
 
 
 ## Assist changes restart a running station in the new mode (its progress is lost).

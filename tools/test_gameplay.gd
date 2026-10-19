@@ -154,6 +154,7 @@ func _tests() -> Array[Callable]:
 		_test_shop_sounds,
 		_test_volume_settings,
 		_test_settings_panels_layout,
+		_test_sound_toggles,
 		_test_shop_mortar_and_bellows,
 		_test_shop_shelf_fits_without_pages,
 		_test_shop_shelf_pages,
@@ -1373,7 +1374,7 @@ func _test_shop_keyboard_day1_assist() -> void:
 	await _game.transition_finished
 
 
-## Criterion 3: the pause button reads "Menu", is at least 32x32 in the top-right
+## Criterion 3: the pause button shows the menu icon, is at least 32x32 in the top-right
 ## corner of the safe area and has an accessibility name. Mode help (no hover,
 ## no always-visible text): each toggle keeps its description as an instant
 ## tooltip, and the "?" right after it (32x32+, focusable, named) opens the same
@@ -1385,7 +1386,8 @@ func _test_shop_menu_and_mode_info() -> void:
 	var safe := _game.safe_rect()
 	var menu := shop.get_node("Column/Hud/PauseButton") as Button
 	var rect := menu.get_global_rect()
-	_check(menu.text == "Menu" and menu.accessibility_name != "", "pause button reads Menu and is named", "%s / %s" % [menu.text, menu.accessibility_name])
+	var menu_icon := (menu.get_node("Icon") as TextureRect).texture as AtlasTexture
+	_check(menu_icon != null and menu_icon.region == Art.texture("ui", "icon_menu").region and menu.accessibility_name == "Pause menu", "pause button shows the menu icon and is named", "%s / %s" % [menu_icon, menu.accessibility_name])
 	_check(rect.size.x >= MIN_TARGET and rect.size.y >= MIN_TARGET and rect.end.x >= safe.end.x - 8.0 and rect.position.y <= safe.position.y + 8.0, "Menu button is 32x32+ in the top right", "%s in %s" % [rect, safe])
 	var tag := shop.get_node("Column/Hud/AssistTag") as Label
 	var tag_text := Rect2(tag.get_global_rect().end.x - tag.get_minimum_size().x, tag.get_global_rect().position.y, tag.get_minimum_size().x, tag.size.y)
@@ -2169,11 +2171,13 @@ func _test_save_round_trip() -> void:
 	_game.gentle_mode = true
 	_game.music_volume = 30
 	_game.sfx_volume = 0
+	_game.music_muted = true
 	_game.save_game()
 	_game.day = 1
 	_game.coins = 0
 	_game.assist_mode = false
 	_game.music_volume = 90
+	_game.music_muted = false
 	var errors := _game.reported_errors.size()
 	_game.load_game()
 	_check(_game.day == 2 and _game.at_market and _game.coins == 33 and _game.reputation == -4 and _game.rush_best == 7, "save round trip: day, market, coins, reputation, Rush best", "%d %s %d %d %d" % [_game.day, _game.at_market, _game.coins, _game.reputation, _game.rush_best])
@@ -2181,7 +2185,7 @@ func _test_save_round_trip() -> void:
 	_check(_game.flags.recursive_equal({"quill.inspection": "great", "vexley.opening": "refused"}, 1), "save round trip: story flags", str(_game.flags))
 	_check(_game.endings == (["cosy_corner", "guild_master"] as Array[String]) and _game.rush_hour_unlocked, "save round trip: endings reached and the Rush Hour unlock", "%s %s" % [_game.endings, _game.rush_hour_unlocked])
 	_check(_game.codex_words() == PackedStringArray(["hint_warm", "hint_calm"]) and _game.codex_recipes() == ({"hearthglow_tonic": PackedStringArray(["ember_pepper", "sunpetal"])} as Dictionary[String, PackedStringArray]), "save round trip: codex", str(_game.codex))
-	_check(_game.assist_mode and _game.gentle_mode and _game.music_volume == 30 and _game.sfx_volume == 0 and _game.reported_errors.size() == errors, "save round trip: settings, no errors", "%s %s %d %d" % [_game.assist_mode, _game.gentle_mode, _game.music_volume, _game.sfx_volume])
+	_check(_game.assist_mode and _game.gentle_mode and _game.music_volume == 30 and _game.sfx_volume == 0 and _game.music_muted and not _game.sfx_muted and _game.reported_errors.size() == errors, "save round trip: settings, no errors", "%s %s %d %d %s %s" % [_game.assist_mode, _game.gentle_mode, _game.music_volume, _game.sfx_volume, _game.music_muted, _game.sfx_muted])
 	_game.rush_best = 7
 	_game.rush_best_assisted = true
 	_game.new_game()
@@ -2193,6 +2197,8 @@ func _test_save_round_trip() -> void:
 	_game.gentle_mode = false
 	_game.music_volume = GameState.DEFAULT_MUSIC_VOLUME
 	_game.sfx_volume = GameState.DEFAULT_SFX_VOLUME
+	_game.music_muted = false
+	_game.sfx_muted = false
 	_game.rush_best = 0
 	_game.rush_best_assisted = false
 	_game.codex = {}
@@ -2223,11 +2229,13 @@ func _test_save_missing_and_corrupt() -> void:
 		"upgrade level too high": JSON.stringify(_with(good, "upgrades", {"stir": 9})),
 		"day out of range": JSON.stringify(_with(good, "day", 0)),
 		"bad settings": JSON.stringify(_with(good, "settings", {"assist": true})),
-		"music volume above 100": JSON.stringify(_with(good, "settings", {"assist": false, "gentle": false, "music": 110, "sfx": 80})),
-		"negative sfx volume": JSON.stringify(_with(good, "settings", {"assist": false, "gentle": false, "music": 70, "sfx": -10})),
-		"fractional sfx volume": JSON.stringify(_with(good, "settings", {"assist": false, "gentle": false, "music": 70, "sfx": 55.5})),
-		"music volume not a number": JSON.stringify(_with(good, "settings", {"assist": false, "gentle": false, "music": "loud", "sfx": 80})),
-		"assist not a bool": JSON.stringify(_with(good, "settings", {"assist": 1, "gentle": false, "music": 70, "sfx": 80})),
+		"music volume above 100": JSON.stringify(_with(good, "settings", {"assist": false, "gentle": false, "music": 110, "sfx": 80, "music_muted": false, "sfx_muted": false})),
+		"negative sfx volume": JSON.stringify(_with(good, "settings", {"assist": false, "gentle": false, "music": 70, "sfx": -10, "music_muted": false, "sfx_muted": false})),
+		"fractional sfx volume": JSON.stringify(_with(good, "settings", {"assist": false, "gentle": false, "music": 70, "sfx": 55.5, "music_muted": false, "sfx_muted": false})),
+		"music volume not a number": JSON.stringify(_with(good, "settings", {"assist": false, "gentle": false, "music": "loud", "sfx": 80, "music_muted": false, "sfx_muted": false})),
+		"music_muted not a bool": JSON.stringify(_with(good, "settings", {"assist": false, "gentle": false, "music": 70, "sfx": 80, "music_muted": "yes", "sfx_muted": false})),
+		"sfx_muted missing": JSON.stringify(_with(good, "settings", {"assist": false, "gentle": false, "music": 70, "sfx": 80, "music_muted": false})),
+		"assist not a bool": JSON.stringify(_with(good, "settings", {"assist": 1, "gentle": false, "music": 70, "sfx": 80, "music_muted": false, "sfx_muted": false})),
 		"newer version": JSON.stringify(_with(good, "version", 99)),
 		"version 0": JSON.stringify(_with(good, "version", 0)),
 		"huge reputation": JSON.stringify(_with(good, "reputation", 1e300)),
@@ -2292,14 +2300,16 @@ func _test_save_migrations() -> void:
 	_check("newer" in GameState.migrate_save(newer, steps, 3) and newer == {"version": 4}, "a save from a newer game is refused unchanged", str(newer))
 	var v1 := {"version": 1, "day": 8, "at_market": false, "flags": {"quill.fair": "great", "ending": "cosy_corner", "rush_hour_unlocked": true}}
 	var upgraded := GameState.migrate_save(v1, GameState.save_migrations(), GameState.SAVE_VERSION)
-	_check(upgraded == "" and v1 == {"version": 4, "day": 8, "at_market": false, "flags": {"quill.fair": "great"}, "endings": ["cosy_corner"], "rush_hour_unlocked": true, "rush_best_assisted": false}, "version 1 -> 2: the ending and the Rush Hour unlock move out of the flags", "%s %s" % [upgraded, v1])
+	_check(upgraded == "" and v1 == {"version": GameState.SAVE_VERSION, "day": 8, "at_market": false, "flags": {"quill.fair": "great"}, "endings": ["cosy_corner"], "rush_hour_unlocked": true, "rush_best_assisted": false}, "version 1 -> 2: the ending and the Rush Hour unlock move out of the flags", "%s %s" % [upgraded, v1])
 	var v1_plain := {"version": 1, "day": 2, "at_market": false, "flags": {}}
 	GameState.migrate_save(v1_plain, GameState.save_migrations(), GameState.SAVE_VERSION)
-	_check(v1_plain == {"version": 4, "day": 2, "at_market": false, "flags": {}, "endings": [], "rush_hour_unlocked": false, "rush_best_assisted": false}, "version 1 -> 2: a save without an ending gets none and no unlock", str(v1_plain))
+	_check(v1_plain == {"version": GameState.SAVE_VERSION, "day": 2, "at_market": false, "flags": {}, "endings": [], "rush_hour_unlocked": false, "rush_best_assisted": false}, "version 1 -> 2: a save without an ending gets none and no unlock", str(v1_plain))
 	var v2 := {"version": 2, "rush_best": 40}
-	_check(GameState.migrate_save(v2, GameState.save_migrations(), GameState.SAVE_VERSION) == "" and v2 == {"version": 4, "rush_best": 40, "rush_best_assisted": false}, "version 2 -> 3: the Rush Hour best gains an assisted marker, false", str(v2))
+	_check(GameState.migrate_save(v2, GameState.save_migrations(), GameState.SAVE_VERSION) == "" and v2 == {"version": GameState.SAVE_VERSION, "rush_best": 40, "rush_best_assisted": false}, "version 2 -> 3: the Rush Hour best gains an assisted marker, false", str(v2))
 	var v3 := {"version": 3, "settings": {"assist": true, "gentle": false}}
-	_check(GameState.migrate_save(v3, GameState.save_migrations(), GameState.SAVE_VERSION) == "" and v3 == {"version": 4, "settings": {"assist": true, "gentle": false, "music": GameState.DEFAULT_MUSIC_VOLUME, "sfx": GameState.DEFAULT_SFX_VOLUME}}, "version 3 -> 4: the settings gain the default music and SFX volumes", str(v3))
+	_check(GameState.migrate_save(v3, GameState.save_migrations(), GameState.SAVE_VERSION) == "" and v3 == {"version": GameState.SAVE_VERSION, "settings": {"assist": true, "gentle": false, "music": GameState.DEFAULT_MUSIC_VOLUME, "sfx": GameState.DEFAULT_SFX_VOLUME, "music_muted": false, "sfx_muted": false}}, "version 3 -> 4: the settings gain the default music and SFX volumes", str(v3))
+	var v4 := {"version": 4, "settings": {"assist": false, "gentle": true, "music": 30, "sfx": 0}}
+	_check(GameState.migrate_save(v4, GameState.save_migrations(), GameState.SAVE_VERSION) == "" and v4 == {"version": 5, "settings": {"assist": false, "gentle": true, "music": 30, "sfx": 0, "music_muted": false, "sfx_muted": false}}, "version 4 -> 5: the settings gain the music and sound mutes, off, volumes kept", str(v4))
 	# A whole version 2 save file (the format before Rush Hour) loads, best kept and not assisted.
 	_game.new_game()
 	_game.rush_hour_unlocked = true
@@ -2319,6 +2329,8 @@ func _test_save_migrations() -> void:
 	v3_file["version"] = 3
 	(v3_file["settings"] as Dictionary).erase("music")
 	(v3_file["settings"] as Dictionary).erase("sfx")
+	(v3_file["settings"] as Dictionary).erase("music_muted")
+	(v3_file["settings"] as Dictionary).erase("sfx_muted")
 	_write_save(JSON.stringify(v3_file))
 	_game.music_volume = 10
 	_game.sfx_volume = 20
@@ -4207,6 +4219,129 @@ func _test_volume_settings() -> void:
 	_check(_game.sfx_volume == 100, "volumes: a tap at the right end sets 100", str(_game.sfx_volume))
 	shop.close_pause()
 	_game.set_music_volume(GameState.DEFAULT_MUSIC_VOLUME)
+	_game.set_sfx_volume(GameState.DEFAULT_SFX_VOLUME)
+	await _close_shop()
+
+
+## The shop HUD's music and sound toggles, in a story day and in Rush Hour: one top-right
+## row (music, sound, the menu icon), 32x32, in the safe area, above the highest speech
+## bubble and clear of the HUD labels at 9:16, 9:19.5 and 16:9. A tap or Enter mutes and
+## unmutes each bus without touching its volume (icon, name and save follow); unmuting the
+## sound effects plays a sample tap, muting them nothing. Left/Right walk the row and Down
+## leaves it into the shop. The mutes reload from the save, a volume slider turned up
+## unmutes its bus, and the toggles take no tap under the pause panel or the Codex.
+func _test_sound_toggles() -> void:
+	var music_bus := AudioServer.get_bus_index(GameState.MUSIC_BUS)
+	var sfx_bus := AudioServer.get_bus_index(GameState.SFX_BUS)
+	for args: Dictionary in [{}, {"rush": 5}]:
+		var visited := await _goto_scene(GameState.Flow.SHOP, args) as Shop
+		var kind := "Rush Hour" if args.has("rush") else "story"
+		_game.assist_mode = true
+		visited._sync_setting_buttons()
+		var row: Array[Control] = []
+		for node_name: String in ["MusicToggle", "SfxToggle", "PauseButton"]:
+			row.append(visited.get_node("Column/Hud/" + node_name) as Control)
+		var bubble := visited.get_node("Column/Stage/Bubble") as SpeechBubble
+		var line_height := bubble.text_font().get_height(bubble.text_font_size()) + SpeechBubble.LINE_SPACING
+		var bubble_box := line_height * 3.0 - SpeechBubble.LINE_SPACING + SpeechBubble.PADDING.y * 2.0
+		for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
+			root.size = window
+			await _frames(10)
+			var label := "sound toggles (%s) at %s" % [kind, window]
+			var safe := _game.safe_rect()
+			_check(row.all(func(control: Control) -> bool: return safe.encloses(control.get_global_rect())), label + ": inside the safe area", "%s in %s" % [row.map(func(control: Control) -> Rect2: return control.get_global_rect()), safe])
+			var bubble_top := (visited.get_node("Column/Stage") as Control).get_global_rect().position.y + SpeechBubble.BOTTOM_Y - bubble_box
+			var rects: Array[Rect2] = []
+			rects.assign(row.map(func(control: Control) -> Rect2: return control.get_global_rect()))
+			_check(rects.all(func(rect: Rect2) -> bool: return rect.size == Vector2(32, 32) and is_equal_approx(rect.position.y, rects[0].position.y) and rect.end.y <= bubble_top), label + ": one row of 32x32 above the speech bubble", "%s, bubble top %.0f" % [rects, bubble_top])
+			_check(rects[0].end.x <= rects[1].position.x and rects[1].end.x <= rects[2].position.x, label + ": music, sound, menu left to right, not overlapping", str(rects))
+			for hud_label: String in ["Coins", "Served", "Reputation", "AssistTag"]:
+				var text := visited.get_node("Column/Hud/" + hud_label) as Label
+				if not text.visible:
+					continue
+				var box := text.get_global_rect()
+				var width := text.get_minimum_size().x
+				var drawn := Rect2(box.end.x - width if text.horizontal_alignment == HORIZONTAL_ALIGNMENT_RIGHT else box.position.x, box.position.y, width, box.size.y)
+				_check(rects.all(func(rect: Rect2) -> bool: return not rect.intersects(drawn)), "%s: clear of %s" % [label, hud_label], "%s vs %s" % [rects, drawn])
+		root.size = BASE_WINDOW
+		_game.assist_mode = false
+		visited._sync_setting_buttons()
+		await _frames(5)
+	var shop := current_scene as Shop
+	var music := shop.get_node("Column/Hud/MusicToggle") as Button
+	var sfx := shop.get_node("Column/Hud/SfxToggle") as Button
+	var pause := shop.get_node("Column/Hud/PauseButton") as Button
+	var icon_of := func(toggle: Button) -> Rect2: return ((toggle.get_node("Icon") as TextureRect).texture as AtlasTexture).region
+	_check(icon_of.call(music) == Art.texture("ui", "icon_music").region and music.accessibility_name == "Music on, tap to mute" and sfx.accessibility_name == "Sound effects on, tap to mute", "sound toggles: start on, named and showing the plain icons", "%s / %s" % [music.accessibility_name, sfx.accessibility_name])
+	# A customer reaching the counter takes keyboard focus; let that happen before the keyboard checks.
+	await _wait_for_order(shop, "sound toggles")
+	_game.sfx_log.clear()
+	await _tap(music)
+	_check(_game.music_muted and AudioServer.is_bus_mute(music_bus) and _game.music_volume == GameState.DEFAULT_MUSIC_VOLUME and icon_of.call(music) == Art.texture("ui", "icon_music_off").region and music.accessibility_name == "Music muted, tap to unmute" and _read_save()["settings"]["music_muted"] == true and _heard(&"tap"), "sound toggles: a tap mutes the music, volume kept, slashed icon, saved", "%s %s %d %s" % [_game.music_muted, AudioServer.is_bus_mute(music_bus), _game.music_volume, music.accessibility_name])
+	await _frames(4)
+	await _tap(music)
+	_check(not _game.music_muted and not AudioServer.is_bus_mute(music_bus) and is_equal_approx(AudioServer.get_bus_volume_linear(music_bus), GameState.DEFAULT_MUSIC_VOLUME / 100.0) and music.accessibility_name == "Music on, tap to mute" and _read_save()["settings"]["music_muted"] == false, "sound toggles: a second tap brings the music back at its volume", "%s %f" % [_game.music_muted, AudioServer.get_bus_volume_linear(music_bus)])
+	sfx.grab_focus()
+	_game.sfx_log.clear()
+	await _action(&"ui_accept")
+	_check(_game.sfx_muted and AudioServer.is_bus_mute(sfx_bus) and _game.sfx_volume == GameState.DEFAULT_SFX_VOLUME and icon_of.call(sfx) == Art.texture("ui", "icon_sound_off").region and sfx.accessibility_name == "Sound effects muted, tap to unmute" and not _heard(&"tap"), "sound toggles: Enter mutes the sound effects, no tap played", "%s %s %s" % [_game.sfx_muted, sfx.accessibility_name, _game.sfx_log])
+	await _frames(4)
+	await _action(&"ui_accept")
+	_check(not _game.sfx_muted and not AudioServer.is_bus_mute(sfx_bus) and _heard(&"tap") and sfx.accessibility_name == "Sound effects on, tap to mute", "sound toggles: Enter again unmutes them with a sample tap", "%s %s" % [_game.sfx_muted, _game.sfx_log])
+	_check(icon_of.call(music) == Art.texture("ui", "icon_music").region and icon_of.call(sfx) == Art.texture("ui", "icon_sound").region, "sound toggles: unmuted, both show the plain icons again", "")
+	await _frames(4)
+	await _tap(sfx)
+	_check(_game.sfx_muted and AudioServer.is_bus_mute(sfx_bus), "sound toggles: a tap mutes the sound effects too", str(_game.sfx_muted))
+	await _frames(4)
+	await _tap(sfx)
+	music.grab_focus()
+	await _action(&"ui_accept")
+	_check(_game.music_muted and not _game.sfx_muted, "sound toggles: Enter mutes the music too", "%s %s" % [_game.music_muted, _game.sfx_muted])
+	await _frames(4)
+	await _action(&"ui_accept")
+	_game.set_music_volume(0)
+	_game.set_sfx_volume(0)
+	_check(icon_of.call(music) == Art.texture("ui", "icon_music_off").region and sfx.accessibility_name == "Sound effects muted, tap to unmute", "sound toggles: a slider at 0 shows the toggle muted", sfx.accessibility_name)
+	await _frames(4)
+	await _tap(music)
+	await _frames(4)
+	_game.sfx_log.clear()
+	await _tap(sfx)
+	_check(_game.music_volume == GameState.DEFAULT_MUSIC_VOLUME and _game.sfx_volume == GameState.DEFAULT_SFX_VOLUME and not _game.music_silent() and not _game.sfx_silent() and _heard(&"tap"), "sound toggles: at volume 0 a press brings the default volume back", "%d %d %s" % [_game.music_volume, _game.sfx_volume, _game.sfx_log])
+	music.grab_focus()
+	await _action(&"ui_right")
+	var after_right := root.gui_get_focus_owner()
+	await _action(&"ui_right")
+	_check(after_right == sfx and root.gui_get_focus_owner() == pause, "sound toggles: Right walks music, sound, menu", "%s %s" % [after_right, root.gui_get_focus_owner()])
+	await _action(&"ui_left")
+	await _action(&"ui_left")
+	_check(root.gui_get_focus_owner() == music, "sound toggles: Left walks back", str(root.gui_get_focus_owner()))
+	await _action(&"ui_down")
+	var below := root.gui_get_focus_owner()
+	_check(below == shop.get_node("Column/Stage/BrewButton"), "sound toggles: Down leaves the row for Brew", str(below))
+	_game.set_sfx_muted(true)
+	_game.sfx_muted = false
+	_game.load_game()
+	_check(_game.sfx_muted and AudioServer.is_bus_mute(sfx_bus) and sfx.accessibility_name == "Sound effects muted, tap to unmute", "sound toggles: a mute reloads from the save", "%s %s" % [_game.sfx_muted, sfx.accessibility_name])
+	shop.open_pause()
+	await _frames(5)
+	var slider := shop.get_node("Modal/Panel/List/SfxRow/Slider") as VolumeSlider
+	_check(slider.value == GameState.DEFAULT_SFX_VOLUME and slider.accessibility_name.ends_with("(muted)"), "sound toggles: the muted slider keeps its level and says muted", slider.accessibility_name)
+	await _tap(sfx)
+	_check(_game.sfx_muted, "sound toggles: no tap reaches them under the pause panel", str(_game.sfx_muted))
+	slider.grab_focus()
+	await _action(&"ui_right")
+	_check(not _game.sfx_muted and _game.sfx_volume == GameState.DEFAULT_SFX_VOLUME + GameState.VOLUME_STEP and sfx.accessibility_name == "Sound effects on, tap to mute", "sound toggles: turning the slider up unmutes and the toggle follows", "%s %d %s" % [_game.sfx_muted, _game.sfx_volume, sfx.accessibility_name])
+	shop.close_pause()
+	await _frames(5)
+	shop.open_codex()
+	await _frames(5)
+	await _tap(music)
+	_check(not _game.music_muted, "sound toggles: no tap reaches them under the Codex", str(_game.music_muted))
+	shop.codex.close()
+	await _frames(5)
+	_game.set_music_muted(false)
+	_game.set_sfx_muted(false)
 	_game.set_sfx_volume(GameState.DEFAULT_SFX_VOLUME)
 	await _close_shop()
 

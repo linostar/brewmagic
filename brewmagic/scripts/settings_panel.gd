@@ -10,7 +10,8 @@ extends Control
 ## Toggles save at once (Game.assist_mode, gentle_mode) and emit assist_changed /
 ## gentle_changed for the host (the shop restarts or rescales a running station).
 ## Sliders run 0..Game.VOLUME_MAX in steps of Game.VOLUME_STEP and apply and save at
-## once (Game.set_music_volume, set_sfx_volume); each change plays a sample tap at the
+## once (Game.set_music_volume, set_sfx_volume; a level above 0 also unmutes that bus,
+## which the shop's HUD toggles mute); each change plays a sample tap at the
 ## new SFX volume. Each slider's accessibility name names the setting and its value.
 ##
 ## Mode help: the "?" next to each mode toggle opens ModeHelp, a flat button laid
@@ -138,8 +139,8 @@ func sync() -> void:
 	_gentle_button.accessibility_name = _gentle_button.text
 	_music_slider.set_value_no_signal(_game.music_volume)
 	_sfx_slider.set_value_no_signal(_game.sfx_volume)
-	_show_volume(_music_slider, _music_value, "Music volume", _game.music_volume)
-	_show_volume(_sfx_slider, _sfx_value, "Sound effects volume", _game.sfx_volume)
+	_show_volume(_music_slider, _music_value, "Music volume", _game.music_volume, _game.music_silent())
+	_show_volume(_sfx_slider, _sfx_value, "Sound effects volume", _game.sfx_volume, _game.sfx_silent())
 
 
 ## Shows the description of `help`'s mode (ASSIST_INFO or GENTLE_INFO) in a
@@ -199,20 +200,20 @@ func _on_gentle_toggled(on: bool) -> void:
 
 func _on_music_changed(value: float) -> void:
 	_game.set_music_volume(roundi(value))
-	_show_volume(_music_slider, _music_value, "Music volume", _game.music_volume)
+	_show_volume(_music_slider, _music_value, "Music volume", _game.music_volume, _game.music_silent())
 	_game.sfx(&"tap")
 
 
 func _on_sfx_changed(value: float) -> void:
 	_game.set_sfx_volume(roundi(value))
-	_show_volume(_sfx_slider, _sfx_value, "Sound effects volume", _game.sfx_volume)
+	_show_volume(_sfx_slider, _sfx_value, "Sound effects volume", _game.sfx_volume, _game.sfx_silent())
 	# The sample plays on the SFX bus, so it is heard at the new volume.
 	_game.sfx(&"tap")
 
 
-func _show_volume(slider: VolumeSlider, label: Label, what: String, volume: int) -> void:
+func _show_volume(slider: VolumeSlider, label: Label, what: String, volume: int, silent: bool) -> void:
 	label.text = str(volume)
-	slider.accessibility_name = "%s %d of %d%s" % [what, volume, GameState.VOLUME_MAX, " (muted)" if volume == 0 else ""]
+	slider.accessibility_name = "%s %d of %d%s" % [what, volume, GameState.VOLUME_MAX, " (muted)" if silent else ""]
 
 
 func _fit() -> void:

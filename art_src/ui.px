@@ -7,6 +7,8 @@
 ; grade_*: 9x9 grade stamp icons with distinct shapes (perfect sparkle, good check, meh tilde, misbrew cross).
 ; icon_*: 9x9 stat icons of the results screens (served bottle, tips coin stack, stormed-off storm cloud, refused
 ; prohibition sign, Rush Hour wave pennant), each its own shape.
+; icon_music / icon_sound (+ _off: the same with a red slash, so muted reads by shape) and icon_menu:
+; 9x9 shop HUD toggle and menu icons (cream on dark outline like button text), drawn at 2x.
 ; slider_knob / slider_knob_hot: 10x14 volume slider grabber (a wooden peg like the buttons; hot = hovered or
 ; focused, brass-gold, so the focused slider shows by colour and the theme's focus ring).
 
@@ -331,3 +333,58 @@ egeegeege
 0555555540
 0444444440
 .00000000.
+
+@ icon_music 9x9
+...000...
+...0660..
+...06060.
+...060060
+...060.0.
+.00060...
+066660...
+06660....
+.000.....
+
+@ icon_music_off 9x9
+b..000...
+ab.0660..
+.ab06060.
+..ab60060
+...ab0.0.
+.000ab...
+06666ab..
+06660.ab.
+.000...ab
+
+@ icon_sound 9x9
+....0....
+...060.0.
+0000660.0
+0666660.0
+0666660.0
+0666660.0
+0000660.0
+...060.0.
+....0....
+
+@ icon_sound_off 9x9
+b...0....
+ab.060.0.
+0ab0660.0
+06ab660.0
+066ab60.0
+0666ab0.0
+00006ab.0
+...060ab.
+....0..ab
+
+@ icon_menu 9x9
+.........
+000000000
+066666660
+000000000
+066666660
+000000000
+066666660
+000000000
+.........

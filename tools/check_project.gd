@@ -5,8 +5,8 @@ extends SceneTree
 ##   res://scripts/stations/station.gd reads mouse or key events, defines _input /
 ##   _unhandled_input style handlers, polls actions or keys, or relies on hover,
 ## - every interactive Control in a saved scene is at least MIN_TARGET base units on both
-##   axes, and in full-screen scenes sits below the top TOP_ZONE of the screen (the pause
-##   button excepted).
+##   axes, and in full-screen scenes sits below the top TOP_ZONE of the screen (excepted:
+##   the shop HUD's top-right row, TOP_RIGHT_NAMES, and only inside TOP_RIGHT_CORNER).
 ## Also compiles every script: project.godot raises GDScript warnings to errors,
 ## so any warning fails here.
 ## Usage (from repo root): "$GODOT" --headless --path brewmagic --script "$PWD/tools/check_project.gd"
@@ -35,7 +35,11 @@ const BASE_SIZE := Vector2i(270, 480)
 const MIN_TARGET := 32.0
 ## Fraction of the screen height, from the top, reserved for reading.
 const TOP_ZONE := 0.4
-const PAUSE_BUTTON_NAME := "PauseButton"
+## The controls allowed in the reading zone: the shop HUD's music and sound toggles and
+## the pause button, one row in the top-right corner (that many base units from the right
+## edge and the top). Anywhere else they are held to the rule like any other control.
+const TOP_RIGHT_NAMES: Array[StringName] = [&"MusicToggle", &"SfxToggle", &"PauseButton"]
+const TOP_RIGHT_CORNER := Vector2(118, 48)
 
 var _violations: Array[String] = []
 
@@ -130,10 +134,16 @@ func _check_node(path: String, node: Node, full_screen: bool) -> void:
 		if rect.size.x < MIN_TARGET or rect.size.y < MIN_TARGET:
 			_violations.append("%s: interactive Control '%s' is %s, smaller than %dx%d" % [path, _scene_path_of(control), rect.size, int(MIN_TARGET), int(MIN_TARGET)])
 		var top_limit := root.get_visible_rect().size.y * TOP_ZONE
-		if full_screen and control.name != PAUSE_BUTTON_NAME and rect.position.y < top_limit:
+		if full_screen and not _in_top_right_row(control, rect) and rect.position.y < top_limit:
 			_violations.append("%s: interactive Control '%s' starts at y=%.0f, inside the top %d%% reading zone" % [path, _scene_path_of(control), rect.position.y, int(TOP_ZONE * 100.0)])
 	for child in node.get_children():
 		_check_node(path, child, full_screen)
+
+
+## True for one of TOP_RIGHT_NAMES lying wholly inside the top-right TOP_RIGHT_CORNER.
+func _in_top_right_row(control: Control, rect: Rect2) -> bool:
+	var width := root.get_visible_rect().size.x
+	return control.name in TOP_RIGHT_NAMES and rect.position.x >= width - TOP_RIGHT_CORNER.x and rect.end.x <= width and rect.end.y <= TOP_RIGHT_CORNER.y
 
 
 func _is_interactive(control: Control) -> bool:
