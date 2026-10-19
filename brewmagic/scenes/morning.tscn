@@ -95,7 +95,7 @@ grow_horizontal = 2
 text = "Status"
 horizontal_alignment = 1
 
-[node name="OpenShopButton" type="Button" parent="Column"]
+[node name="OpenShopButton" type="Button" parent="Column" groups=["own_squash"]]
 custom_minimum_size = Vector2(180, 44)
 layout_mode = 1
 anchors_preset = -1
@@ -112,7 +112,7 @@ grow_vertical = 2
 accessibility_name = "Open the shop"
 text = "Open the shop"
 
-[node name="CodexButton" type="Button" parent="Column" groups=["own_sound"]]
+[node name="CodexButton" type="Button" parent="Column" groups=["own_sound", "own_squash"]]
 custom_minimum_size = Vector2(140, 40)
 layout_mode = 1
 anchors_preset = -1

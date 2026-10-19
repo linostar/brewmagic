@@ -3,7 +3,8 @@
 // phone (390x844 at 3x, touch, mobile) and as a keyboard-only desktop player. Each run
 // fails on any failed request, page error, console error, missing engine boot log, a
 // still-visible Godot status overlay, a missing canvas, a page whose touch/selection
-// CSS is not applied, or a screenshot with nothing drawn. Then each run plays and
+// CSS is not applied, or a screenshot with nothing drawn (taken once the splash has
+// gone to the title by itself: "[Game] Arrived at TITLE"). Then each run plays and
 // serves the first day-1 customer, requiring the game's "[Shop] Served customer 1/N"
 // log line. Pointer runs (CDP touch events on the phone, the mouse on desktop) tap
 // "Open the shop" on the title and on the morning screen, the recipe's ingredients and Brew, stir real circles at the target
@@ -303,6 +304,8 @@ async function smoke(browser, url, run) {
     const bootError = await booted;
     if (bootError !== null) throw new Error(`engine did not boot: ${bootError.message.split('\n')[0]}`);
     await page.waitForTimeout(settleMs);
+    // The game opens on the splash (1.5 s, the main scene), which goes to the title by itself.
+    await waitForLog(page, logs, /^\[Game\] Arrived at TITLE/, 'the title after the splash');
     const overlayVisible = await page.evaluate(() => {
       const status = document.getElementById('status');
       return status !== null && getComputedStyle(status).display !== 'none' && getComputedStyle(status).visibility !== 'hidden';

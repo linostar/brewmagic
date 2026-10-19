@@ -136,14 +136,14 @@ size_flags_vertical = 3
 size_flags_stretch_ratio = 0.25
 mouse_filter = 2
 
-[node name="AgainButton" type="Button" parent="Column/Layout"]
+[node name="AgainButton" type="Button" parent="Column/Layout" groups=["own_squash"]]
 custom_minimum_size = Vector2(180, 44)
 layout_mode = 2
 size_flags_horizontal = 4
 accessibility_name = "Play Rush Hour again"
 text = "Again"
 
-[node name="TitleButton" type="Button" parent="Column/Layout"]
+[node name="TitleButton" type="Button" parent="Column/Layout" groups=["own_squash"]]
 custom_minimum_size = Vector2(180, 40)
 layout_mode = 2
 size_flags_horizontal = 4

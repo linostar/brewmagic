@@ -98,6 +98,7 @@ done
 run_script test_gameplay "$LOG_DIR/test.log" --fixed-fps 60
 run_script test_content "$LOG_DIR/content.log"
 summary="$(grep "^check_project: OK" "$LOG_DIR/check.log"); check fixtures: $fixtures; $(grep "^test_gameplay: OK" "$LOG_DIR/test.log"); $(grep "^test_content: OK" "$LOG_DIR/content.log")"
-RUN_FRAMES="${RUN_FRAMES:-300}" run_script run_main "$LOG_DIR/run.log"
+# At 60 fixed fps the default 300 frames (5 s) cover the splash and its wipe to the title.
+RUN_FRAMES="${RUN_FRAMES:-300}" run_script run_main "$LOG_DIR/run.log" --fixed-fps 60
 
 echo "PASS validate ($summary)"

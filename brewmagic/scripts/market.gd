@@ -154,6 +154,8 @@ func _card(card_size: Vector2) -> Button:
 	card.focus_mode = Control.FOCUS_ALL
 	# A buy plays "buy", a refused one "nope" (_bought, _refuse), not the generic tap.
 	card.add_to_group(GameState.OWN_SOUND_GROUP)
+	# A buy squashes the card (or shakes it when refused) itself.
+	card.add_to_group(GameState.OWN_SQUASH_GROUP)
 	return card
 
 

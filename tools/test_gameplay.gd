@@ -176,6 +176,17 @@ func _tests() -> Array[Callable]:
 		_test_summary_tally,
 		_test_results_tally,
 		_test_results_screens_layout,
+		_test_splash_auto_advance,
+		_test_splash_skips,
+		_test_title_hero_layout,
+		_test_transition_wipe,
+		_test_hit_stop,
+		_test_button_press_squash,
+		_test_grimoire_pages,
+		_test_grimoire_counts_and_sounds,
+		_test_grimoire_layout,
+		_test_atlas_sidecar_rows,
+		_test_pour_sound_pause,
 	]
 
 
@@ -207,7 +218,8 @@ func _test_goto_logs_transition() -> void:
 	_check(_game.transition_log.back().begins_with("TITLE -> TITLE (%s)" % TITLE_PATH), "goto log entry", str(_game.transition_log.back()))
 	_check(current_scene != null and current_scene.scene_file_path == TITLE_PATH, "goto swaps scene", str(current_scene))
 	_check(_game.state == GameState.Flow.TITLE and _game.flow_args.get("from") == "test", "goto sets state and args", "%s %s" % [_game.state, _game.flow_args])
-	_check(is_zero_approx((_game.get_node("Fade/Curtain") as ColorRect).color.a), "goto fades back in", "curtain still visible")
+	var wipe := _game.get_node("Fade/Wipe") as ColorRect
+	_check(is_zero_approx(_game.wipe_progress()) and not wipe.visible and wipe.mouse_filter == Control.MOUSE_FILTER_IGNORE, "goto's swirl wipe reopens and lets touches through", "progress %.2f, visible %s" % [_game.wipe_progress(), wipe.visible])
 
 
 func _test_goto_missing_scene_shows_error() -> void:
@@ -1680,10 +1692,13 @@ func _test_shop_grade_stamps() -> void:
 			break
 		var wants := shop.customer.potion
 		var who := shop.customer.archetype
+		var stops := Juice.hit_stops
 		if not await _serve(shop, _recipe_between(wants, shop.stock, case[1], case[2]), label):
 			break
 		_check(shop.grades.back() == grade, label + ": served at that grade", str(shop.grades))
 		await _check_stamp(shop, grade, Economy.pay(wants.price, grade), Economy.tip(wants.price, grade, who.tip_tendency), label)
+		var expected_stops := 1 if grade == Brew.Grade.MISBREW else 0
+		_check(Juice.hit_stops - stops == expected_stops and not Juice.is_hit_stopped(), label + ": %d hit-stop as the stamp lands, over by now" % expected_stops, str(Juice.hit_stops - stops))
 		await _skip_lines(shop)
 	await _close_shop()
 
@@ -1808,8 +1823,17 @@ func _test_look_distinct_per_shift() -> void:
 
 ## Shop customers draw through the palette swap: every part with swappable colours
 ## has the shader with exactly its look's swaps; the face has none.
+## The first visitor's look is pinned: the day's looks are rolled at random, and about 1
+## roll in 270 is the art's own colours (cloth A blue, cloth B green, light skin), which
+## rightly swaps nothing; asserting on a random look made this test fail intermittently
+## with no problem listed. The art-colour look itself is checked to draw unswapped.
 func _test_shop_customer_look() -> void:
+	var art_colours := Look.new()
+	var robe: Array[String] = ["body_robe", "head_round", "hair_witch_hat"]
+	_check(robe.all(func(part: String) -> bool: return art_colours.swaps(part).is_empty()), "the art's own colours swap nothing", art_colours.signature(robe))
 	var shop := await _open_shop()
+	# The day's looks are rolled in the shop's _ready; the first visitor enters later.
+	shop._looks[0] = Look.from_seed(42)
 	if await _wait_for_order(shop, "customer look"):
 		var visitor := shop.customer
 		var problems := PackedStringArray()
@@ -2093,8 +2117,11 @@ func _test_shop_mortar_and_bellows() -> void:
 					await process_frame
 				pour.feed(_touch(POUR_HOLD_POINT, false))
 		_check(order == ["Mortar", "Bellows", "Stir", "Pour"], "day 2 runs the potion's steps in order", str(order))
+		var stops := Juice.hit_stops
 		_check(await _until(func() -> bool: return shop.served == 1, FLOW_FRAMES), "day 2 customer served", str(shop.served))
 		_check(shop.grades == ([Brew.Grade.PERFECT] as Array[Brew.Grade]), "mortar and bellows by touch give a Perfect potion", str(shop.grades))
+		_check(_heard(&"stamp_perfect") and (shop.get_node("Column/Stage/Stamp") as Control).visible, "the Perfect stamp and its sound land on the delivery frame", str(_game.sfx_log.slice(-6)))
+		_check(await _until(func() -> bool: return Juice.hit_stops == stops + 1, 30) and is_equal_approx(Juice.last_hit_stop, Shop.STAMP_HIT_STOPS[Brew.Grade.PERFECT]), "the Perfect stamp lands with a hit-stop", "%d stops, last %.2f s" % [Juice.hit_stops - stops, Juice.last_hit_stop])
 		wants.steps = shipped
 	await _close_shop()
 
@@ -2108,6 +2135,7 @@ func _check_stamp(shop: Shop, grade: Brew.Grade, pay: int, tip: int, label: Stri
 	var icon := (shop.get_node("Column/Stage/Stamp/Row/Icon") as TextureRect).texture as AtlasTexture
 	var expected_icon := Art.texture("ui", Shop.STAMP_ICONS[grade])
 	_check(stamp.visible and text.text == Shop.STAMP_TEXTS[grade] and icon != null and icon.region == expected_icon.region and text.get_theme_color(&"font_color") == Shop.STAMP_COLORS[grade], label + ": stamp reads %s with its icon and colour" % Shop.STAMP_TEXTS[grade], "visible %s '%s' %s" % [stamp.visible, text.text, icon.region if icon != null else Rect2()])
+	_check(_heard(Shop.STAMP_SOUNDS[grade]), label + ": the stamp's sound plays with the delivery", str(_game.sfx_log.slice(-6)))
 	var expected_pay := PackedStringArray(["+%d" % pay]) if pay > 0 else PackedStringArray()
 	_check(_pay_texts(shop) == expected_pay, label + ": coins fly as %s" % expected_pay, str(_pay_texts(shop)))
 	var expected_tip := PackedStringArray(["tip +%d" % tip]) if tip > 0 else PackedStringArray()
@@ -4416,3 +4444,484 @@ func _test_settings_panels_layout() -> void:
 	root.size = BASE_WINDOW
 	await _frames(5)
 	await _close_shop()
+
+
+## The splash (flow SPLASH, the main scene): the cauldron bubbles the logo up out of
+## itself with "made with Claude" under the pot, then after Splash.SHOW_TIME goes to the
+## title by itself. With audio still locked it plays nothing (the title track only waits).
+func _test_splash_auto_advance() -> void:
+	var main_scene := str(ProjectSettings.get_setting("application/run/main_scene"))
+	_check(main_scene == _game.scene_paths[GameState.Flow.SPLASH], "splash: the splash is the main scene", main_scene)
+	_game.audio_unlocked = false
+	var played := _game.sfx_played
+	var started := _game.music_started
+	_game.goto(GameState.Flow.SPLASH)
+	await _game.transition_finished
+	var splash := current_scene as Splash
+	_check(splash != null and _game.state == GameState.Flow.SPLASH, "splash: goto SPLASH shows the splash", str(current_scene))
+	if splash != null:
+		var logo := splash.get_node("Column/Logo") as TextureRect
+		var credit := splash.get_node("Column/Credit") as Label
+		var hero := splash.get_node("Column/Hero") as CauldronHero
+		var risen := false
+		while not _game.is_transitioning() and splash.elapsed < Splash.SHOW_TIME + 1.0:
+			await process_frame
+			if not risen and splash.elapsed >= Splash.CREDIT_DELAY + Splash.CREDIT_TIME:
+				risen = true
+				_check(logo.scale.is_equal_approx(Vector2.ONE) and is_equal_approx(logo.modulate.a, 1.0) and logo.get_global_rect().end.y < hero.get_global_rect().position.y, "splash: the logo has risen out of the pot to full size above it", "%s scale %s" % [logo.get_global_rect(), logo.scale])
+				_check(credit.text == "made with Claude" and credit.modulate.a > 0.9 and credit.get_global_rect().position.y > hero.get_global_rect().end.y, "splash: \"made with Claude\" shows under the pot", "'%s' alpha %.2f" % [credit.text, credit.modulate.a])
+		_check(risen and splash.finished and absf(splash.elapsed - Splash.SHOW_TIME) <= 3.0 * FRAME and _game.transition_log.back().begins_with("SPLASH -> TITLE"), "splash: goes to the title by itself after %.1f s" % Splash.SHOW_TIME, "%.3f s, %s" % [splash.elapsed, _game.transition_log.back()])
+		await _game.transition_finished
+		_check(current_scene is Title and _game.state == GameState.Flow.TITLE, "splash: the title follows", str(current_scene))
+	_check(_game.sfx_played == played and _game.music_started == started and _game.music_track == &"title", "splash: nothing plays before the first input; the title track waits", "%d sounds, started %s, track %s" % [_game.sfx_played - played, _game.music_started, _game.music_track])
+	_game.audio_unlocked = true
+
+
+## A touch anywhere or any key skips the splash at once.
+func _test_splash_skips() -> void:
+	for how: String in ["touch", "key"]:
+		_game.goto(GameState.Flow.SPLASH)
+		await _game.transition_finished
+		var splash := current_scene as Splash
+		if splash == null:
+			_check(false, "splash skip by %s: the splash shows" % how, str(current_scene))
+			continue
+		await _frames(6)
+		if how == "touch":
+			await _tap_at(_game.visible_rect().get_center() + Vector2(0, 150))
+		else:
+			await _key(KEY_SPACE)
+		_check(splash.finished and _game.is_transitioning() and _game.transition_log.back().begins_with("SPLASH -> TITLE") and splash.elapsed < Splash.SHOW_TIME / 2.0, "splash: a %s skips to the title at once" % how, "finished %s after %.2f s, %s" % [splash.finished, splash.elapsed, _game.transition_log.back()])
+		await _game.transition_finished
+		_check(current_scene is Title, "splash skip by %s: the title shows" % how, str(current_scene))
+
+
+## The title's reading zone: the logo pops in and the big cauldron bubbles and steams in
+## the four essence colours, all above the thumb zone and clear of every button, the
+## Rush Hour best line and the content-error banner; the buttons keep their sizes,
+## thumb zone and focus (Open the shop first) at 9:16, 9:19.5 and 16:9.
+func _test_title_hero_layout() -> void:
+	var day := _game.day
+	var unlocked := _game.rush_hour_unlocked
+	_game.day = 3
+	_game.rush_hour_unlocked = true
+	for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
+		root.size = window
+		var title := TITLE_SCENE.instantiate() as Title
+		root.add_child(title)
+		await _frames(2)
+		var label := "title hero at %s" % window
+		var logo := title.get_node("Column/Logo") as TextureRect
+		_check(logo.scale.x < 1.0, label + ": the logo pops in from small", str(logo.scale))
+		title.show_content_error(Title.CONTENT_ERROR_MESSAGE % 3)
+		await _frames(ceili(Title.POP_TIME / FRAME) + 2)
+		_check(logo.scale.is_equal_approx(Vector2.ONE), label + ": the logo has popped in", str(logo.scale))
+		var hero := title.get_node("Column/Hero") as CauldronHero
+		var visible := _game.visible_rect()
+		var reading_end := visible.position.y + visible.size.y * THUMB_ZONE_TOP
+		var column := _game.column_rect()
+		var art: Array[Control] = [hero, logo, title.get_node("Column/Tagline") as Control]
+		for piece in art:
+			var rect := piece.get_global_rect().grow_individual(0, Title.BOB_HEIGHT, 0, Title.BOB_HEIGHT)
+			_check(rect.end.y <= reading_end and column.grow(1.0).encloses(rect), "%s: %s in the reading zone, inside the column" % [label, piece.name], "%s, reading zone ends at %.0f" % [rect, reading_end])
+		var buttons: Array[Control] = []
+		for node: String in ["GrimoireButton", "RushButton", "OpenShopButton", "NewGameButton", "SettingsButton"]:
+			buttons.append(title.get_node("Column/" + node) as Control)
+		_check_targets(buttons, null, label)
+		var banner := title.get_node("Column/ContentErrorBanner") as Control
+		var others: Array[Control] = buttons + ([title.get_node("Column/RushBest"), banner] as Array[Control])
+		var overlaps := PackedStringArray()
+		for piece in [hero, logo] as Array[Control]:
+			for other in others:
+				# The error banner may cover the logo (it is drawn over it); never the cauldron.
+				if piece == logo and other == banner:
+					continue
+				if piece.get_global_rect().intersects(other.get_global_rect()):
+					overlaps.append("%s/%s" % [piece.name, other.name])
+		_check(overlaps.is_empty() and others.all(func(other: Control) -> bool: return other.visible), label + ": the cauldron clears every button, the best line and the banner; the logo every button and the best line", str(overlaps))
+		for i in buttons.size():
+			for j in range(i + 1, buttons.size()):
+				if buttons[i].get_global_rect().intersects(buttons[j].get_global_rect()):
+					overlaps.append("%s/%s" % [buttons[i].name, buttons[j].name])
+		_check(overlaps.is_empty(), label + ": no two buttons overlap", str(overlaps))
+		var grimoire := title.get_node("Column/GrimoireButton") as Button
+		_check(grimoire.accessibility_name != "" and grimoire.focus_mode == Control.FOCUS_ALL and grimoire.get_theme_stylebox("focus") is StyleBoxFlat, label + ": the Grimoire button is named and focusable", grimoire.accessibility_name)
+		_check(root.gui_get_focus_owner() == title.get_node("Column/OpenShopButton"), label + ": Open the shop (Continue) has the focus first", str(root.gui_get_focus_owner()))
+		var particles := ["Steam", "Bubbles", "BigBubbles"].all(func(node: String) -> bool: return (hero.get_node(node) as CPUParticles2D).emitting)
+		_check(particles and (hero.get_node("Steam") as CPUParticles2D).color.is_equal_approx(hero.tint().lightened(0.6)) and (hero.get_node("Liquid") as TextureRect).modulate.is_equal_approx(hero.tint()), label + ": bubbles and steam rise in the cauldron's tint", str(hero.tint()))
+		title.free()
+	var cycle := range(Shop.ESSENCE_COLORS.size()).all(func(i: int) -> bool: return CauldronHero.tint_at(i * CauldronHero.TINT_TIME).is_equal_approx(Shop.ESSENCE_COLORS[i]))
+	_check(cycle and CauldronHero.tint_at(Shop.ESSENCE_COLORS.size() * CauldronHero.TINT_TIME).is_equal_approx(Shop.ESSENCE_COLORS[0]), "title: the steam cycles through ember, frost, bloom and gloom", str(CauldronHero.tint_at(CauldronHero.TINT_TIME)))
+	_game.day = day
+	_game.rush_hour_unlocked = unlocked
+	root.size = BASE_WINDOW
+	await _frames(2)
+
+
+## A transition is a potion swirl wipe: it closes in a potion colour (touches under it go
+## nowhere), covers the screen, reopens on the new scene while its content slides in,
+## all in under 0.5 s; the content is at rest on arrival.
+func _test_transition_wipe() -> void:
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+	var old := current_scene as Title
+	var open := old.get_node("Column/OpenShopButton") as Button
+	var presses: Array[int] = [0]
+	open.pressed.connect(func() -> void: presses[0] += 1)
+	var start := Engine.get_process_frames()
+	_game.goto(GameState.Flow.TITLE)
+	await _frames(3)
+	var wipe := _game.get_node("Fade/Wipe") as ColorRect
+	_check(_game.is_transitioning() and wipe.visible and wipe.mouse_filter == Control.MOUSE_FILTER_STOP and _game.wipe_progress() > 0.0 and _game.wipe_progress() < 1.0, "wipe: the swirl closes over the screen, blocking touches", "progress %.2f" % _game.wipe_progress())
+	_check(Content.potions().any(func(potion: PotionType) -> bool: return potion.color.is_equal_approx(_game.wipe_color)), "wipe: in a potion's colour", str(_game.wipe_color))
+	await _tap(open)
+	_check(presses[0] == 0, "wipe: a touch during the wipe reaches nothing under it", "%d presses" % presses[0])
+	var covered := 0.0
+	var slid := 0.0
+	while _game.is_transitioning():
+		covered = maxf(covered, _game.wipe_progress())
+		var scene := current_scene as Control
+		if scene != null and scene != old and scene.get_node_or_null("Column") != null:
+			slid = maxf(slid, (scene.get_node("Column") as Control).position.y - _game.column_rect().position.y)
+		await process_frame
+	var frames := Engine.get_process_frames() - start
+	_check(is_equal_approx(covered, 1.0), "wipe: covers the whole screen at the swap", "max progress %.2f" % covered)
+	_check(frames <= ceili(0.5 / FRAME) and frames >= ceili(2.0 * GameState.WIPE_TIME / FRAME), "wipe: the whole transition takes under 0.5 s", "%d frames" % frames)
+	var column := (current_scene as Control).get_node("Column") as Control
+	_check(slid > 0.0 and column.position.is_equal_approx(_game.column_rect().position) and is_equal_approx(column.modulate.a, 1.0), "wipe: the new screen's content slides in and is at rest on arrival", "slid %.1f, at %s" % [slid, column.position])
+	_check(not wipe.visible and wipe.mouse_filter == Control.MOUSE_FILTER_IGNORE and is_zero_approx(_game.wipe_progress()), "wipe: clear and letting touches through after", "progress %.2f" % _game.wipe_progress())
+
+
+## Juice.hit_stop freezes game time for at most HIT_STOP_MAX, a touch still presses a
+## button during it, it ends by itself, and overlapping stops restore the time scale found.
+func _test_hit_stop() -> void:
+	var button := Button.new()
+	button.text = "Hit"
+	button.position = Vector2(95, 290)
+	button.size = Vector2(80, 40)
+	root.add_child(button)
+	var presses: Array[int] = [0]
+	button.pressed.connect(func() -> void: presses[0] += 1)
+	await process_frame
+	var stops := Juice.hit_stops
+	Juice.hit_stop(self, 1.0)
+	_check(Juice.is_hit_stopped() and is_zero_approx(Engine.time_scale) and is_equal_approx(Juice.last_hit_stop, Juice.HIT_STOP_MAX) and Juice.hit_stops == stops + 1 and Juice.HIT_STOP_MAX <= 0.1, "hit-stop: freezes game time, never longer than 100 ms", "scale %.2f, %.2f s" % [Engine.time_scale, Juice.last_hit_stop])
+	await _tap(button)
+	_check(presses[0] == 1 and Juice.is_hit_stopped(), "hit-stop: a touch during the freeze still presses a button", "%d presses" % presses[0])
+	var frames := 2
+	while Juice.is_hit_stopped() and frames < 30:
+		await process_frame
+		frames += 1
+	_check(not Juice.is_hit_stopped() and is_equal_approx(Engine.time_scale, 1.0) and frames <= ceili(Juice.HIT_STOP_MAX / FRAME) + 1, "hit-stop: over within 100 ms, time runs again", "%d frames" % frames)
+	Engine.time_scale = 2.0
+	Juice.hit_stop(self, 0.05)
+	Juice.hit_stop(self, 0.08)
+	await _frames(ceili(0.08 / FRAME) + 2)
+	_check(is_equal_approx(Engine.time_scale, 2.0) and not Juice.is_hit_stopped(), "hit-stop: overlapping stops end together and restore the time scale they found", str(Engine.time_scale))
+	Engine.time_scale = 1.0
+	button.free()
+
+
+## Every Button press squashes the button about its centre (one global hook, drawn only:
+## the button's own scale and rect never change), by touch and by keyboard, and settles
+## back; a button that animates itself is left alone; and keyboard focus moves from a
+## squashing button as from a still one (Up from the pause panel's Assist toggle right
+## after pressing it reaches Resume, not the "?" beside it).
+func _test_button_press_squash() -> void:
+	var button := Button.new()
+	button.text = "Squash"
+	button.position = Vector2(60, 290)
+	button.size = Vector2(150, 40)
+	root.add_child(button)
+	var own := Button.new()
+	own.text = "Own"
+	own.add_to_group(GameState.OWN_SQUASH_GROUP)
+	own.position = Vector2(60, 360)
+	own.size = Vector2(150, 40)
+	root.add_child(own)
+	await process_frame
+	var rect := button.get_global_rect()
+	# The press lands as the frame starts; its squash has moved by the next one.
+	await _tap(button)
+	await process_frame
+	var drawn: Vector2 = button.get_meta(&"juice_press_scale", Vector2.ONE)
+	_check(drawn.x > 1.0 and drawn.y < 1.0 and button.scale.is_equal_approx(Vector2.ONE) and button.get_global_rect().is_equal_approx(rect), "press squash: a tapped Button is drawn squashed, its rect untouched", "drawn %s, scale %s" % [drawn, button.scale])
+	await _frames(20)
+	_check((button.get_meta(&"juice_press_scale", Vector2.ZERO) as Vector2).is_equal_approx(Vector2.ONE), "press squash: and settles back", str(button.get_meta(&"juice_press_scale", Vector2.ZERO)))
+	button.grab_focus()
+	await _action(&"ui_accept")
+	await process_frame
+	_check(not (button.get_meta(&"juice_press_scale", Vector2.ONE) as Vector2).is_equal_approx(Vector2.ONE), "press squash: Enter on a focused Button squashes it too", str(button.get_meta(&"juice_press_scale", Vector2.ONE)))
+	await _tap(own)
+	await process_frame
+	_check(not own.has_meta(&"juice_press_scale"), "press squash: a button in OWN_SQUASH_GROUP (it animates itself) is left alone", "")
+	button.free()
+	own.free()
+	var shop := await _open_shop()
+	if await _wait_for_order(shop, "press squash focus"):
+		shop.open_pause()
+		await process_frame
+		(shop.get_node("Modal/Panel/List/ResumeButton") as Button).grab_focus()
+		await _action(&"ui_down")
+		await _action(&"ui_accept")
+		await _action(&"ui_up")
+		_check(root.gui_get_focus_owner() == shop.get_node("Modal/Panel/List/ResumeButton"), "press squash: Up right after toggling Assist goes to Resume, not the \"?\"", str(root.gui_get_focus_owner()))
+		shop.close_pause()
+	await _close_shop()
+
+
+## The Grimoire of Making opens from the title's Grimoire button (by touch and by Enter),
+## Next/Prev turn its five pages by touch and keyboard (no wrap; a page button that runs
+## out hands the focus over), focus stays in the book, the Pixel Art page browses sprites
+## with their letter grids, and ui_cancel or Close closes it with focus back on the button.
+func _test_grimoire_pages() -> void:
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+	var title := current_scene as Title
+	var open := title.get_node("Column/GrimoireButton") as Button
+	await _tap(open)
+	var book := title.grimoire
+	_check(book != null and root.gui_get_focus_owner() == book.get_node("Column/Panel/List/Footer/NextButton") and _heard(&"codex_open"), "grimoire: the title's Grimoire button opens it, Next focused", str(root.gui_get_focus_owner()))
+	if book == null:
+		return
+	var prev := book.get_node("Column/Panel/List/Footer/PrevButton") as Button
+	var next := book.get_node("Column/Panel/List/Footer/NextButton") as Button
+	var headings := PackedStringArray()
+	for i in Grimoire.PAGE_TITLES.size():
+		headings.append(book.page_texts()[0])
+		if i == Grimoire.Page.PIXEL_ART:
+			var shown := Grimoire.showcase()
+			var grid := book.find_children("*", "Control", true, false).filter(func(node: Node) -> bool: return node is Grimoire.SourceGrid)
+			_check(grid.size() == 1 and (grid[0] as Grimoire.SourceGrid).rows == Art.rows(shown[0][0], shown[0][1]), "grimoire: the Pixel Art page shows the first sprite's letter grid", str(shown[0]))
+			# A page's (or sprite's) new controls are laid out on the next frames.
+			await _frames(2)
+			await _tap(book.find_child("SpriteNext", true, false) as Button)
+			grid = book.find_children("*", "Control", true, false).filter(func(node: Node) -> bool: return node is Grimoire.SourceGrid)
+			_check(book.sprite_index == 1 and grid.size() == 1 and (grid[0] as Grimoire.SourceGrid).rows == Art.rows(shown[1][0], shown[1][1]), "grimoire: > shows the next sprite and its grid", str(book.sprite_index))
+			await _frames(2)
+			await _tap(book.find_child("SpritePrev", true, false) as Button)
+			await _frames(2)
+			await _tap(book.find_child("SpritePrev", true, false) as Button)
+			_check(book.sprite_index == shown.size() - 1, "grimoire: < from the first sprite wraps to the last", str(book.sprite_index))
+		if i < Grimoire.PAGE_TITLES.size() - 1:
+			await _tap(next)
+	_check(headings == PackedStringArray(Grimoire.PAGE_TITLES) and _heard(&"page_flip"), "grimoire: Next by touch turns through every page", str(headings))
+	_check(next.disabled and not prev.disabled and book.page == Grimoire.Page.TOOLS, "grimoire: the last page disables Next", str(book.page))
+	await _tap(prev)
+	_check(book.page == Grimoire.Page.WORDS, "grimoire: Prev by touch turns back", str(book.page))
+	prev.grab_focus()
+	await _action(&"ui_accept")
+	_check(book.page == Grimoire.Page.SOUND, "grimoire: Enter on Prev turns back", str(book.page))
+	next.grab_focus()
+	await _action(&"ui_accept")
+	_check(book.page == Grimoire.Page.WORDS, "grimoire: Enter on Next turns on", str(book.page))
+	_check(await _focus_stays_in(book.get_node("Column/Panel") as Control), "grimoire: keyboard focus stays in the book", str(root.gui_get_focus_owner()))
+	prev.grab_focus()
+	for i in Grimoire.PAGE_TITLES.size():
+		if book.page != Grimoire.Page.COVER:
+			await _action(&"ui_accept")
+	_check(book.page == Grimoire.Page.COVER and prev.disabled and root.gui_get_focus_owner() == next, "grimoire: Prev run out on the cover hands the focus to Next", str(root.gui_get_focus_owner()))
+	# Shortcuts (Close's is ui_cancel) only see key events, as a real Escape is.
+	await _key(KEY_ESCAPE)
+	_check(title.grimoire == null and not is_instance_valid(book) and root.gui_get_focus_owner() == open, "grimoire: Escape (ui_cancel) closes it, focus back on the Grimoire button", str(root.gui_get_focus_owner()))
+	await _action(&"ui_accept")
+	book = title.grimoire
+	_check(book != null, "grimoire: Enter on the Grimoire button opens it", "")
+	if book != null:
+		await _tap(book.get_node("Column/Panel/List/Footer/CloseButton") as Button)
+		_check(title.grimoire == null and not is_instance_valid(book), "grimoire: Close by touch closes it", "")
+
+
+## Every number in the Grimoire matches a recount of the shipped data (atlas sidecars,
+## palette.hex, the sound catalogs, Content) and shows on its pages; the Sound page plays
+## effects and voices on the SFX bus and a loop as the music, which gives way to the
+## title's track when the book closes.
+func _test_grimoire_counts_and_sounds() -> void:
+	var expected: Dictionary[String, int] = {}
+	var atlases := 0
+	var sprites := 0
+	for file in DirAccess.get_files_at("res://art/"):
+		if file.get_extension() == "json":
+			atlases += 1
+			var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://art/" + file))
+			sprites += (data["sprites"] as Dictionary).size()
+	expected["atlases"] = atlases
+	expected["sprites"] = sprites
+	var palette := 0
+	for raw in FileAccess.get_file_as_string(ProjectSettings.globalize_path("res://").path_join("../art_src/palette.hex")).split("\n"):
+		if raw.get_slice(";", 0).strip_edges() != "":
+			palette += 1
+	expected["palette"] = palette
+	expected["effect"] = GameState.SFX_IDS.size()
+	expected["voice"] = Content.archetypes().size()
+	var tracks := {}
+	for state: GameState.Flow in GameState.MUSIC_TRACKS:
+		tracks[GameState.MUSIC_TRACKS[state]] = true
+	expected["music"] = tracks.size()
+	var reactions := 0
+	for who in Content.archetypes():
+		for grade in who.reactions:
+			reactions += who.reactions[grade].size()
+	var beats := 0
+	var mornings := 0
+	for day in Content.days():
+		mornings += (1 if day.morning_note != "" else 0) + day.morning_notes.size()
+		for visit in day.customers:
+			beats += visit.lines.size()
+	var pages := 0
+	for ending in Content.endings():
+		pages += ending.pages.size()
+	expected["requests"] = Content.requests().size()
+	expected["reactions"] = reactions
+	expected["misbrews"] = Content.misbrews().size()
+	expected["beats"] = beats
+	expected["mornings"] = mornings
+	expected["endings"] = pages
+	expected["hint words"] = Content.hint_words().size()
+	expected["lines"] = expected["requests"] + reactions + expected["misbrews"] + beats + mornings + pages
+	var counts := Grimoire.counts()
+	var wrong := PackedStringArray()
+	for key in expected:
+		if counts.get(key, -1) != expected[key]:
+			wrong.append("%s %s, recounted %d" % [key, counts.get(key, -1), expected[key]])
+	_check(wrong.is_empty() and expected["sprites"] > 100 and expected["lines"] > 400, "grimoire: every count matches a recount of the shipped data (%d sprites, %d sounds, %d lines)" % [sprites, expected["effect"] + expected["voice"] + expected["music"], expected["lines"]], "\n".join(wrong))
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+	var title := current_scene as Title
+	title.open_grimoire()
+	await process_frame
+	var book := title.grimoire
+	var shown: Array[Array] = [["sprites", "atlases", "effect", "voice", "music", "lines"], ["sprites", "atlases", "palette"], ["effect", "voice", "music"],
+		["requests", "reactions", "misbrews", "beats", "mornings", "endings", "hint words", "lines"], ["atlases", "music"]]
+	for page in shown.size():
+		var text := " ".join(book.page_texts())
+		var missing: Array = shown[page].filter(func(key: String) -> bool: return not (" %d " % counts[key] in " %s " % text.replace(",", " ").replace(".", " ")))
+		_check(missing.is_empty(), "grimoire: page %s shows its counts" % Grimoire.PAGE_TITLES[page], "%s missing from: %s" % [missing, text])
+		book.turn(1)
+	book.turn(-2)
+	# The page's new controls are laid out on the next frames.
+	await _frames(2)
+	_check(book.page == Grimoire.Page.SOUND, "grimoire: back on the Sound page", str(book.page))
+	var list := Grimoire.sounds()
+	await _tap(book.find_child("SoundNext", true, false) as Button)
+	_check(book.sound_index == 1 and _game.sfx_log.back() == StringName(list[1]["id"]) and book.played == "effect %s" % list[1]["id"], "grimoire: > picks the next sound and plays it", "%s, last %s" % [book.played, _game.sfx_log.back()])
+	await _frames(ceili(GameState.SFX_MIN_GAP / FRAME) + 2)
+	var count := _game.sfx_log.size()
+	await _tap(book.find_child("PlayButton", true, false) as Button)
+	_check(_game.sfx_log.size() == count + 1 and _game.sfx_log.back() == StringName(list[1]["id"]), "grimoire: Play plays the sound again", str(_game.sfx_log.slice(-3)))
+	var voice := list.map(func(sound: Dictionary) -> String: return sound["kind"]).find("voice")
+	var played := _game.sfx_played
+	book.pick_sound(voice)
+	_check(_game.sfx_played == played + 1 and book.played == "voice %s" % list[voice]["id"], "grimoire: a voice plays on the SFX bus", book.played)
+	var loop := list.map(func(sound: Dictionary) -> String: return sound["kind"]).rfind("music")
+	book.pick_sound(loop)
+	_check(_game.music_track == StringName(list[loop]["id"]) and book.page_texts().has(str(list[loop]["id"]).replace("_", " ")), "grimoire: a music loop plays as the music", str(_game.music_track))
+	book.close()
+	await process_frame
+	_check(_game.music_track == GameState.track_for(GameState.Flow.TITLE, {}), "grimoire: closing gives the title its own music back", str(_game.music_track))
+
+
+## The Grimoire's controls on every page are 32x32 or more, in the thumb zone and the
+## safe area, named and focusable, and its panel stays clear of its title at 9:16,
+## 9:19.5 and 16:9.
+func _test_grimoire_layout() -> void:
+	for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
+		root.size = window
+		var title := TITLE_SCENE.instantiate() as Title
+		root.add_child(title)
+		await process_frame
+		title.open_grimoire()
+		# The book opens with a squash; it is measured at rest.
+		await _frames(20)
+		var book := title.grimoire
+		for page in Grimoire.PAGE_TITLES.size():
+			await _frames(2)
+			var label := "grimoire %s at %s" % [Grimoire.PAGE_TITLES[page], window]
+			var buttons: Array[Control] = []
+			buttons.assign(book.find_children("*", "BaseButton", true, false).filter(func(node: Node) -> bool: return (node as Control).is_visible_in_tree()))
+			_check_targets(buttons, null, label)
+			_check(buttons.all(func(button: Control) -> bool: return button.accessibility_name != "" and button.focus_mode == Control.FOCUS_ALL), label + ": every button named and focusable", str(buttons.map(func(button: Control) -> String: return button.name)))
+			var panel := (book.get_node("Column/Panel") as Control).get_global_rect()
+			var heading := (book.get_node("Column/Title") as Control).get_global_rect()
+			_check(panel.position.y >= heading.end.y and _game.safe_rect().encloses(panel), label + ": the page fits its panel, under the book's title", "%s, title %s" % [panel, heading])
+			book.turn(1)
+		book.close()
+		title.free()
+	root.size = BASE_WINDOW
+	await _frames(2)
+
+
+## Every atlas sidecar carries each sprite's .px source rows (tools/pixelart.py) and the
+## palette; the rows of every ui and title sprite redraw its atlas pixels exactly.
+func _test_atlas_sidecar_rows() -> void:
+	var problems := PackedStringArray()
+	for atlas in Art.atlases():
+		var palette := Art.palette(atlas)
+		if palette.size() != 32:
+			problems.append("%s: palette of %d" % [atlas, palette.size()])
+		for sprite in Art.sprite_names(atlas):
+			var rows := Art.rows(atlas, sprite)
+			var size := Art.texture(atlas, sprite).get_size()
+			if rows.size() != int(size.y) or Array(rows).any(func(row: String) -> bool: return row.length() != int(size.x)):
+				problems.append("%s/%s: rows do not match %s" % [atlas, sprite, size])
+			elif atlas == "ui" or atlas == "title":
+				var region := Art.texture(atlas, sprite)
+				var image := region.atlas.get_image().get_region(Rect2i(region.region))
+				for y in rows.size():
+					for x in rows[y].length():
+						var letter := rows[y][x]
+						var pixel := image.get_pixel(x, y)
+						var wanted := Color(0, 0, 0, 0) if letter == "." else Color(palette["0123456789abcdefghijklmnopqrstuv".find(letter)])
+						if not (pixel.is_equal_approx(wanted) or (letter == "." and is_zero_approx(pixel.a))):
+							problems.append("%s/%s (%d, %d): '%s' is %s" % [atlas, sprite, x, y, letter, pixel])
+	_check(problems.is_empty() and Art.atlases().size() >= 7, "every sprite's source rows ship in its sidecar and redraw its pixels", "\n".join(problems.slice(0, 8)))
+
+
+## Pausing mid-pour (the pause panel or the Codex) holds the pour's fill sound and
+## resuming continues it; quitting a paused pour stops it.
+func _test_pour_sound_pause() -> void:
+	var shop := await _open_shop()
+	if not await _wait_for_order(shop, "pour sound"):
+		await _close_shop()
+		return
+	shop.customer.patience_left = 999.0
+	var wants := shop.customer.potion
+	for id in _exact_recipe(wants, shop.stock):
+		await _tap_item(shop, id)
+	await _tap(shop.brew_button())
+	var order: Array[String] = []
+	var pour: Pour = null
+	for step in wants.steps:
+		if not await _until(func() -> bool: return shop.station != null and shop.station.is_running() and not (str(shop.station.name) in order), FLOW_FRAMES):
+			break
+		order.append(str(shop.station.name))
+		if shop.station is Pour:
+			pour = shop.station as Pour
+			break
+		await _drive_circles(shop.station, Stir.CENTRE, Stir.RING_RADIUS, Stir.DEFAULT_TEMPO)
+	_check(pour != null, "pour sound: the pour station runs", str(order))
+	if pour == null:
+		await _close_shop()
+		return
+	pour.feed(_touch(POUR_HOLD_POINT, true))
+	await _frames(10)
+	_check(_heard(&"pour_fill") and _game.sfx_paused.is_empty(), "pour sound: holding the pour plays its fill", str(_game.sfx_log.slice(-4)))
+	shop.open_pause()
+	var fill := pour.fill
+	await _frames(10)
+	_check(&"pour_fill" in _game.sfx_paused and is_equal_approx(pour.fill, fill), "pour sound: the pause panel holds the fill sound (and the pour)", "%s, fill %.3f -> %.3f" % [_game.sfx_paused, fill, pour.fill])
+	shop.close_pause()
+	await _frames(5)
+	_check(_game.sfx_paused.is_empty() and pour.fill > fill, "pour sound: resuming continues it", "%s, fill %.3f" % [_game.sfx_paused, pour.fill])
+	shop.open_codex()
+	await process_frame
+	_check(&"pour_fill" in _game.sfx_paused, "pour sound: the Codex holds it too", str(_game.sfx_paused))
+	shop.codex.close()
+	await process_frame
+	_check(_game.sfx_paused.is_empty(), "pour sound: closing the Codex continues it", str(_game.sfx_paused))
+	shop.open_pause()
+	await process_frame
+	await _tap(shop.get_node("Modal/Panel/List/QuitButton") as Button)
+	_check(_game.sfx_paused.is_empty(), "pour sound: quitting a paused pour stops its sound", str(_game.sfx_paused))
+	await _game.transition_finished
+	paused = false

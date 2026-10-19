@@ -85,7 +85,7 @@ layout_mode = 2
 text = "Page 1 of 1"
 horizontal_alignment = 1
 
-[node name="NextButton" type="Button" parent="Column"]
+[node name="NextButton" type="Button" parent="Column" groups=["own_squash"]]
 custom_minimum_size = Vector2(180, 44)
 layout_mode = 1
 anchors_preset = -1
