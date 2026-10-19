@@ -1,0 +1,22 @@
+{
+  "title": {
+    "samples": 1512000,
+    "seconds": 34.286,
+    "sha256": "a205dd36db61060995a5a90415d097427ed58c692381e5ce2400612b67f02154"
+  },
+  "shop": {
+    "samples": 1764000,
+    "seconds": 40.0,
+    "sha256": "b791181b6881bbf9ec255ea426f9c21b7dd6e93613ade9aa3126bc718e63cc1c"
+  },
+  "rush": {
+    "samples": 1354752,
+    "seconds": 30.72,
+    "sha256": "aa591374c3518a1e84304cb2e3659b902c795078460eac490a02dfbda6355aca"
+  },
+  "ending": {
+    "samples": 1443273,
+    "seconds": 32.727,
+    "sha256": "9ade6c9ab134e204ae898a63a5fbdee0b281a5b0a30d30c47f930dd02dbbf480"
+  }
+}

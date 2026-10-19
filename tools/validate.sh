@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Validation gate: pixel art check, sound check, asset import, project check (touch-first
+# Validation gate: pixel art check, sound and music checks, asset import, project check (touch-first
 # restriction + strict script compile) and its violation fixtures, headless
 # gameplay tests, content tests, headless run of the main scene. Exits non-zero on the first failure and points at the
 # log that explains it. Every Godot call is killed after GODOT_TIMEOUT seconds.
@@ -14,7 +14,7 @@ mkdir -p "$LOG_DIR"
 
 fail() {
   echo "FAIL $1 (log: $2)" >&2
-  grep -E "ERROR|WARNING|check_project|test_gameplay|test_content|run_main|pixelart|sfx" "$2" >&2 || true
+  grep -E "ERROR|WARNING|check_project|test_gameplay|test_content|run_main|pixelart|sfx|music" "$2" >&2 || true
   exit 1
 }
 
@@ -51,6 +51,10 @@ fi
 # The synthesised sounds must match their synth (and the archetypes' voices) too.
 if ! python3 tools/sfx.py --check >"$LOG_DIR/sfx.log" 2>&1 || ! grep -q "^sfx: OK" "$LOG_DIR/sfx.log"; then
   fail "sound check" "$LOG_DIR/sfx.log"
+fi
+# The music loops must match their recorded render (PCM checksum and loop length; no encoder needed).
+if ! python3 tools/music.py --check >"$LOG_DIR/music.log" 2>&1 || ! grep -q "^music: OK" "$LOG_DIR/music.log"; then
+  fail "music check" "$LOG_DIR/music.log"
 fi
 
 # On a fresh clone (no import cache) the first import reports errors because the

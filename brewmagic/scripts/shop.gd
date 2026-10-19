@@ -44,10 +44,12 @@ extends Control
 ## while a station runs under its dim. Resume returns focus to the running
 ## station's Assist button, else to the control focused before pausing.
 ##
-## Mode help: the "?" next to each mode toggle opens ModeHelp, a flat button over
-## the whole pause panel with the mode's description in a callout above that row.
-## Any tap (on the panel or the dim around it), Enter or ui_cancel (its shortcut)
-## closes it and focus goes back to the "?".
+## Pause menu: the shared SettingsPanel (Modal: the mode toggles with their "?"
+## help, the Music and SFX volumes) with Resume and Quit to title added.
+##
+## Sound: every action and event plays its sound effect through Game.sfx in the same
+## frame as its visual feedback (each station cue through STATION_SOUNDS, each grade
+## stamp through STAMP_SOUNDS); the pour's fill sound stops with the pour.
 ##
 ## Codex: the Codex button (right of Brew) opens the Codex overlay and pauses the
 ## shift until it closes. Every delivery notes its request's hint words in the Codex,
@@ -78,6 +80,14 @@ const STATION_SCENES: Dictionary[String, PackedScene] = {
 	"mortar": preload("res://scenes/stations/mortar.tscn"),
 	"bellows": preload("res://scenes/stations/bellows.tscn"),
 }
+## The sound (Game.sfx) of each Station.feedback cue.
+const STATION_SOUNDS: Dictionary[StringName, StringName] = {
+	&"stir_rotation": &"stir", &"pour_start": &"pour_fill", &"pour_spill": &"pour_spill", &"pour_stop": &"pour_stop",
+	&"mortar_stroke": &"mortar", &"bellows_pump": &"bellows_pump", &"bellows_out": &"bellows_out",
+	&"station_success": &"success", &"station_sloppy": &"sloppy",
+}
+## The sound of each grade's stamp, per Brew.Grade.
+const STAMP_SOUNDS: Array[StringName] = [&"stamp_perfect", &"stamp_good", &"stamp_meh", &"stamp_misbrew"]
 const STAGE_SIZE := Vector2(270, 480)
 const POT_CAPACITY := Brew.MAX_INGREDIENTS
 const MIN_BREW := Brew.MIN_INGREDIENTS
@@ -116,8 +126,8 @@ const COIN_FLIGHTS_MAX := 8
 const POUR_LINE_MIN := 0.45
 const POUR_LINE_MAX := 0.85
 ## What each mode does: its toggle's tooltip, and the callout its "?" button opens.
-const ASSIST_INFO := "Auto stir, grind, pour & pump; scores Good, never Perfect"
-const GENTLE_INFO := "Stir, grind, pour & pump timing is %sx more forgiving" % GameState.GENTLE_TOLERANCE_SCALE
+const ASSIST_INFO := SettingsPanel.ASSIST_INFO
+const GENTLE_INFO := SettingsPanel.GENTLE_INFO
 const GOLD := Color("#ffc95c")
 const CREAM := Color("#fbedcd")
 const RED := Color("#c43c2c")
@@ -227,8 +237,6 @@ var _essence_counts: Array[Label] = []
 var _essence_marks: Array[Control] = []
 ## The control that had focus when the pause panel opened.
 var _focus_before_pause: Control
-## The "?" button whose mode help is open.
-var _help_opener: Button
 var _stamp_tween: Tween
 ## Set once the last customer has left and the day is handed to Game.finish_day(),
 ## or a Rush Hour run's reputation reached 0.
@@ -273,18 +281,8 @@ var _wave_tween: Tween
 @onready var _assist_tag: Label = $Column/Hud/AssistTag
 @onready var _pause_button: Button = $Column/Hud/PauseButton
 @onready var _fx: Node2D = $Fx
-@onready var _modal: Control = $Modal
-@onready var _modal_dim: ColorRect = $Modal/Dim
-@onready var _pause_panel: PanelContainer = $Modal/PausePanel
-@onready var _pause_list: Control = $Modal/PausePanel/List
-@onready var _assist_button: Button = $Modal/PausePanel/List/AssistRow/AssistButton
-@onready var _gentle_button: Button = $Modal/PausePanel/List/GentleRow/GentleButton
-@onready var _assist_help: Button = $Modal/PausePanel/List/AssistRow/AssistHelp
-@onready var _gentle_help: Button = $Modal/PausePanel/List/GentleRow/GentleHelp
-@onready var _mode_help: Button = $Modal/ModeHelp
-@onready var _help_callout: PanelContainer = $Modal/ModeHelp/Callout
-@onready var _help_text: Label = $Modal/ModeHelp/Callout/Text
-@onready var _help_tail: TextureRect = $Modal/ModeHelp/Tail
+## The pause menu: the shared settings panel with Resume and Quit to title added.
+@onready var _modal: SettingsPanel = $Modal
 @onready var _stamp: PanelContainer = $Column/Stage/Stamp
 @onready var _stamp_icon: TextureRect = $Column/Stage/Stamp/Row/Icon
 @onready var _stamp_text: Label = $Column/Stage/Stamp/Row/Text
@@ -309,16 +307,11 @@ func _ready() -> void:
 	for i in _slots.size():
 		_slots[i].pressed.connect(_on_slot_pressed.bind(i))
 	_pause_button.pressed.connect(open_pause)
-	$Modal/PausePanel/List/ResumeButton.pressed.connect(close_pause)
-	_assist_button.toggled.connect(_on_assist_toggled)
-	_gentle_button.toggled.connect(_on_gentle_toggled)
-	$Modal/PausePanel/List/QuitButton.pressed.connect(_on_quit_pressed)
-	_assist_button.tooltip_text = ASSIST_INFO
-	_gentle_button.tooltip_text = GENTLE_INFO
-	_assist_help.pressed.connect(open_mode_help.bind(_assist_help))
-	_gentle_help.pressed.connect(open_mode_help.bind(_gentle_help))
-	_mode_help.pressed.connect(close_mode_help)
-	_modal_dim.gui_input.connect(_on_modal_dim_input)
+	_modal.set_title("Paused")
+	_modal.add_button("ResumeButton", "Resume", true).pressed.connect(close_pause)
+	_modal.add_button("QuitButton", "Quit to title", false).pressed.connect(_on_quit_pressed)
+	_modal.assist_changed.connect(_on_assist_toggled)
+	_modal.gentle_changed.connect(_on_gentle_toggled)
 	_rng.randomize()
 	if _game.flow_args.has("rush"):
 		shift = Shift.rush(int(_game.flow_args["rush"]))
@@ -390,12 +383,14 @@ func add_to_pot(item: ShelfItem, from_canvas: Vector2) -> bool:
 	if _brewing or pot.size() >= POT_CAPACITY or stock[id] == 0:
 		Juice.shake(item, 2.0, 0.2)
 		Juice.shake(_slot_row, 2.0, 0.2)
+		_game.sfx(&"nope")
 		return false
 	pot.append(item.ingredient)
 	if stock[id] != ShelfItem.UNLIMITED:
 		stock[id] -= 1
 		item.set_stock(stock[id])
 	Juice.squash(item, 0.25)
+	_game.sfx(&"drop")
 	print("[Shop] Added %s to the pot (%d/%d), %s left" % [id, pot.size(), POT_CAPACITY, _stock_text(id)])
 	_update_pot()
 	_fly_ingredient(item.ingredient, from_canvas)
@@ -413,6 +408,7 @@ func remove_from_pot(index: int) -> void:
 		_shelf_items[item.id].set_stock(stock[item.id])
 	Juice.squash(_shelf_items[item.id], 0.25)
 	Juice.squash(_slots[index], 0.3)
+	_game.sfx(&"slot_remove")
 	print("[Shop] Took %s out of the pot (%d/%d), %s left" % [item.id, pot.size(), POT_CAPACITY, _stock_text(item.id)])
 	_update_pot()
 
@@ -428,19 +424,12 @@ func open_pause() -> void:
 	get_tree().paused = true
 	_update_pot()
 	_focus_before_pause = get_viewport().gui_get_focus_owner()
-	_column.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_DISABLED
-	_modal_dim.show()
-	_pause_panel.show()
-	Juice.squash(_pause_panel, 0.08)
-	($Modal/PausePanel/List/ResumeButton as Button).grab_focus(true)
+	_modal.open(_column, $Modal/Panel/List/ResumeButton as Button)
 	print("[Shop] Paused")
 
 
 func close_pause() -> void:
-	if _mode_help.visible:
-		close_mode_help()
-	_pause_panel.hide()
-	_modal_dim.hide()
+	_modal.close()
 	_resume()
 	print("[Shop] Resumed")
 
@@ -480,45 +469,6 @@ func _resume() -> void:
 		_focus_play()
 
 
-## Shows the description of `help`'s mode (ASSIST_INFO or GENTLE_INFO) in a
-## callout above its row, its tail pointing at `help`, and holds focus until closed.
-func open_mode_help(help: Button) -> void:
-	var text := ASSIST_INFO if help == _assist_help else GENTLE_INFO
-	_help_opener = help
-	_help_text.text = "\n".join(Content.wrap_bubble(text))
-	_mode_help.accessibility_name = text
-	_mode_help.position = _pause_panel.position
-	_mode_help.size = _pause_panel.size
-	_help_callout.size = Vector2.ZERO
-	var at := _mode_help.get_global_transform().affine_inverse() * help.get_global_rect()
-	var tail_x := at.get_center().x - _help_tail.size.x + 1.0
-	_help_tail.position = Vector2(tail_x, at.position.y - _help_tail.size.y).round()
-	var left := clampf(at.end.x - _help_callout.size.x, 0.0, _mode_help.size.x - _help_callout.size.x)
-	_help_callout.position = Vector2(left, _help_tail.position.y - _help_callout.size.y + 1.0).round()
-	_help_callout.pivot_offset = Vector2(tail_x - left, _help_callout.size.y)
-	_pause_list.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_DISABLED
-	_mode_help.show()
-	_mode_help.grab_focus(true)
-	Juice.squash(_help_callout, 0.12)
-	print("[Shop] Mode help: %s" % text)
-
-
-func close_mode_help() -> void:
-	_mode_help.hide()
-	_pause_list.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_INHERITED
-	if is_instance_valid(_help_opener):
-		_help_opener.grab_focus(true)
-		Juice.squash(_help_opener, 0.2)
-	_help_opener = null
-
-
-## A tap on the dim around the pause panel closes the mode help.
-func _on_modal_dim_input(event: InputEvent) -> void:
-	var touch := event as InputEventScreenTouch
-	if touch != null and touch.pressed and _mode_help.visible:
-		close_mode_help()
-
-
 func _setup_art() -> void:
 	($Column/Stage/Backdrop as TextureRect).texture = Art.texture("shop", "shop_backdrop")
 	($Column/Stage/Counter as TextureRect).texture = Art.texture("shop", "shop_counter")
@@ -529,14 +479,6 @@ func _setup_art() -> void:
 	_liquid.modulate = WATER_COLOR
 	_fire.texture = Art.texture("brewing", "fire_0")
 	_coin_icon.texture = Art.texture("ui", "coin_0")
-	var bubble := Art.texture("ui", "bubble")
-	var callout_style := StyleBoxTexture.new()
-	callout_style.texture = bubble.atlas
-	callout_style.region_rect = bubble.region
-	callout_style.set_texture_margin_all(4.0)
-	callout_style.set_content_margin_all(6.0)
-	_help_callout.add_theme_stylebox_override(&"panel", callout_style)
-	_help_tail.texture = Art.texture("ui", "bubble_tail")
 	for k in Content.ESSENCES.size():
 		var group := HBoxContainer.new()
 		group.add_theme_constant_override(&"separation", 2)
@@ -593,10 +535,6 @@ func _fit() -> void:
 	var column := _game.column_rect()
 	_column.position = column.position
 	_column.size = column.size
-	_modal.position = column.position
-	_modal.size = column.size
-	_modal_dim.position = screen.position - column.position
-	_modal_dim.size = screen.size
 	Juice.reset_shake(_stage)
 	_stage.position = Vector2(0.0, maxf(column.size.y - STAGE_SIZE.y, 0.0)).round()
 	var stage_rect := Rect2(column.position + _stage.position, STAGE_SIZE)
@@ -703,6 +641,7 @@ func turn_shelf(step: int) -> void:
 	if to == shelf_page:
 		return
 	set_shelf_page(to)
+	_game.sfx(&"page_flip")
 	for id: String in _shelf_pages[shelf_page]:
 		Juice.squash(_shelf_items[id], 0.12)
 	print("[Shop] Shelf page %d/%d: %s" % [shelf_page + 1, _shelf_pages.size(), ", ".join(_shelf_pages[shelf_page])])
@@ -794,6 +733,7 @@ func _spawn_next_customer() -> void:
 	_customers.move_child(visitor, 0)
 	_present += 1
 	visitor.enter(place)
+	_game.sfx(&"door_bell")
 	print("[Shop] Customer %s: %s wants %s (request %s, patience %.0fs, %s), place %d in line" % [_of_total(visitor.number), who.id, wants.id, says.id, visitor.patience_total, look.describe(), place])
 
 
@@ -999,6 +939,7 @@ func _fly_ingredient(item: Ingredient, from_canvas: Vector2) -> void:
 	tween.tween_callback(func() -> void:
 		Juice.burst(_cauldron, Vector2(0, -16), _liquid.modulate.lightened(0.2), 10, Vector2(0, 160))
 		Juice.squash(_cauldron, 0.15)
+		_game.sfx(&"splash")
 		sprite.queue_free())
 
 
@@ -1108,9 +1049,17 @@ func _end_step(finished_station: Station) -> void:
 	_start_step()
 
 
-## The single place station feedback cues land. Visual responses only; the
-## stations already animate their own part (the stream, the swirl, the pips).
+## The single place station feedback cues land: each plays its sound (STATION_SOUNDS)
+## and some add a visual response; the stations already animate their own part (the
+## stream, the swirl, the pips). The pour's fill sound runs from pour_start until the
+## pour stops or spills.
 func _on_station_feedback(kind: StringName) -> void:
+	if kind == &"pour_stop" or kind == &"pour_spill":
+		_game.stop_sfx(&"pour_fill")
+	if STATION_SOUNDS.has(kind):
+		_game.sfx(STATION_SOUNDS[kind])
+	else:
+		push_error("[Shop] Station feedback '%s' has no sound in STATION_SOUNDS" % kind)
 	match kind:
 		&"stir_rotation", &"mortar_stroke":
 			Juice.shake(_stage, 1.0, 0.08)
@@ -1123,6 +1072,16 @@ func _on_station_feedback(kind: StringName) -> void:
 		&"station_sloppy":
 			Juice.shake(_stage, 2.0, 0.2)
 			Juice.pop_text(_fx, station.get_global_rect().position + Vector2(135, 70), "Sloppy...", RED)
+
+
+## Drops the running station, if any (a storm-off, the end of a Rush Hour run), with its pour sound.
+func _drop_station() -> bool:
+	_game.stop_sfx(&"pour_fill")
+	if station == null:
+		return false
+	station.queue_free()
+	station = null
+	return true
 
 
 func _finish_brew() -> void:
@@ -1180,6 +1139,7 @@ func _deliver(grade: Brew.Grade, quality: float) -> void:
 		var effect: String = Content.MISBREW_EFFECTS[essence] if essence >= 0 else ""
 		customer.react(grade, effect)
 		Juice.shake(_stage, 4.0, 0.4)
+		_game.sfx(&"misbrew")
 		var narration := PackedStringArray()
 		for line in Content.misbrews_for(maxi(essence, 0)):
 			narration.append(line.text)
@@ -1191,8 +1151,10 @@ func _deliver(grade: Brew.Grade, quality: float) -> void:
 	var stage := _stage.get_global_transform()
 	if pay > 0:
 		Juice.fly_text(_fx, stage * PAY_FROM, _coin_icon.get_global_rect().get_center(), "+%d" % pay, GOLD, PAY_HOLD)
+		_game.sfx(&"coins")
 	if tip > 0:
 		Juice.fly_text(_fx, stage * (PAY_FROM + TIP_OFFSET), _coin_icon.get_global_rect().get_center(), "tip +%d" % tip, GOLD, PAY_HOLD + TIP_DELAY)
+		_game.sfx(&"tip")
 	_say(reaction, REACTION_HOLD, _send_off.bind(customer))
 
 
@@ -1206,6 +1168,7 @@ func _note_in_codex(grade: Brew.Grade) -> void:
 	if learned > 0:
 		Juice.pop_text(_fx, _codex_button.get_global_rect().get_center() - Vector2(0, 30), "Codex +%d" % learned, CREAM)
 		Juice.squash(_codex_button, 0.3)
+		_game.sfx(&"codex_new")
 
 
 ## Slams the grade stamp onto the counter front (overshooting scale, an ink puff,
@@ -1225,6 +1188,7 @@ func _show_stamp(grade: Brew.Grade) -> void:
 	_stamp.scale = Vector2(2.4, 2.4)
 	_stamp.modulate.a = 0.0
 	_stamp.show()
+	_game.sfx(STAMP_SOUNDS[grade])
 	_stamp_tween = _stamp.create_tween()
 	_stamp_tween.tween_property(_stamp, "modulate:a", 1.0, 0.08)
 	_stamp_tween.parallel().tween_property(_stamp, "scale", Vector2(0.9, 0.9), 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
@@ -1264,6 +1228,7 @@ func _coin_landed(coin: Sprite2D, last: bool, share: int) -> void:
 	_shown_coins = coins if last else mini(_shown_coins + share, coins)
 	_coins_label.text = str(_shown_coins)
 	Juice.squash(_coin_icon, 0.3, 0.16)
+	_game.sfx(&"coin_tick")
 
 
 func _on_patience_ran_out(who: Customer) -> void:
@@ -1272,10 +1237,7 @@ func _on_patience_ran_out(who: Customer) -> void:
 		return
 	stormed_off += 1
 	reputation += Economy.STORMED_OFF_REPUTATION
-	var dropped_station := station != null
-	if dropped_station:
-		station.queue_free()
-		station = null
+	var dropped_station := _drop_station()
 	_show_station_layer(false)
 	_brewing = false
 	_update_pot()
@@ -1283,6 +1245,7 @@ func _on_patience_ran_out(who: Customer) -> void:
 		_focus_play()
 	print("[Shop] Customer %s (%s) stormed off: reputation %+d" % [_of_total(customer.number), customer.archetype.id, Economy.STORMED_OFF_REPUTATION])
 	Juice.shake(_stage, 2.0, 0.3)
+	_game.sfx(&"storm_off")
 	_say(_reaction_line(customer, "stormed_off", Story.STORMED_OFF), STORMED_HOLD, _send_off.bind(customer))
 	_update_hud()
 	_check_rush_over()
@@ -1320,6 +1283,7 @@ func refuse_customer() -> void:
 	_update_pot()
 	_update_hud()
 	Juice.squash(_refuse_button, 0.2)
+	_game.sfx(&"refuse")
 	print("[Shop] Refused customer %s (%s): reputation %+d" % [_of_total(who.number), who.archetype.id, Economy.REFUSED_REPUTATION])
 	_say(_reaction_line(who, "refused", Story.REFUSED), REACTION_HOLD, _send_off.bind(who))
 	_focus_play()
@@ -1334,6 +1298,7 @@ func _storm_off_queue(who: Customer) -> void:
 	queue.erase(who)
 	print("[Shop] Customer %s (%s) stormed off from the queue: reputation %+d" % [_of_total(who.number), who.archetype.id, Economy.STORMED_OFF_REPUTATION])
 	_say_aside(_reaction_line(who, "stormed_off", Story.STORMED_OFF), who)
+	_game.sfx(&"storm_off")
 	who.leave()
 	_close_up_line()
 	_update_hud()
@@ -1431,6 +1396,7 @@ func _announce_wave() -> void:
 	_wave_tween.tween_property(_wave_banner, "modulate:a", 0.0, 0.3)
 	_wave_tween.tween_callback(_wave_banner.hide)
 	Juice.squash(_served_label, 0.3)
+	_game.sfx(&"wave")
 	print("[Shop] Rush Hour %s (%s): %s" % [Rush.WAVE_NAMES[index].to_lower(), Rush.WAVE_NOTES[index], ", ".join(potions)])
 
 
@@ -1469,9 +1435,7 @@ func _check_rush_over() -> void:
 	if not shift.is_rush() or _day_over or reputation > 0:
 		return
 	_day_over = true
-	if station != null:
-		station.queue_free()
-		station = null
+	_drop_station()
 	_show_station_layer(false)
 	_brewing = false
 	pot.clear()
@@ -1480,6 +1444,7 @@ func _check_rush_over() -> void:
 		if visitor != null and visitor.state != Customer.State.LEAVE and visitor.state != Customer.State.GONE:
 			visitor.leave()
 	Juice.shake(_stage, 4.0, 0.4)
+	_game.sfx(&"rush_over")
 	var result := rush_result()
 	print("[Shop] Rush Hour over: %s" % result)
 	get_tree().create_timer(RUSH_END_DELAY, false).timeout.connect(_game.finish_rush.bind(result))
@@ -1512,31 +1477,23 @@ func _update_hud() -> void:
 
 
 func _sync_setting_buttons() -> void:
-	_assist_button.set_pressed_no_signal(_game.assist_mode)
-	_gentle_button.set_pressed_no_signal(_game.gentle_mode)
-	_assist_button.text = "Assist mode: %s" % ("On" if _game.assist_mode else "Off")
-	_gentle_button.text = "Gentle mode: %s" % ("On" if _game.gentle_mode else "Off")
-	_assist_button.accessibility_name = _assist_button.text
-	_gentle_button.accessibility_name = _gentle_button.text
 	_assist_tag.visible = _game.assist_mode
 
 
 ## Assist changes restart a running station in the new mode (its progress is lost).
+## (The settings panel has already set and saved the mode.)
 func _on_assist_toggled(on: bool) -> void:
-	_game.assist_mode = on
 	_assisted = _assisted or on
-	_game.save_game()
 	print("[Shop] Assist mode %s" % ("on" if on else "off"))
 	_sync_setting_buttons()
 	if station != null and station.is_running():
+		_game.stop_sfx(&"pour_fill")
 		station.assist = on
 		station.begin(_station_params(customer.potion.steps[_step]))
 
 
 ## Gentle changes apply to the running station's scoring from now on.
 func _on_gentle_toggled(on: bool) -> void:
-	_game.gentle_mode = on
-	_game.save_game()
 	print("[Shop] Gentle mode %s" % ("on" if on else "off"))
 	_sync_setting_buttons()
 	if station != null:

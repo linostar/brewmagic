@@ -3,10 +3,12 @@
 ; bubble: 24x24 9-slice source, margins 4px (fill 6 cream); bubble_tail 8x6 attaches under the bottom edge, its
 ; top row overlaps the bubble's bottom outline. panel: 24x24 9-slice, margins 5px (wood frame, parchment fill).
 ; heart_*: patience, 9x9; hourglass: 9x9, labels the patience row (same outline style as the hearts).
-; Sprites added later go at the end so the packed regions of earlier ones (the theme hard-codes panel) never move.
+; Sprites added later go at the end so the packed regions of earlier ones (the theme hard-codes panel and the slider knobs) never move.
 ; grade_*: 9x9 grade stamp icons with distinct shapes (perfect sparkle, good check, meh tilde, misbrew cross).
 ; icon_*: 9x9 stat icons of the results screens (served bottle, tips coin stack, stormed-off storm cloud, refused
 ; prohibition sign, Rush Hour wave pennant), each its own shape.
+; slider_knob / slider_knob_hot: 10x14 volume slider grabber (a wooden peg like the buttons; hot = hovered or
+; focused, brass-gold, so the focused slider shows by colour and the theme's focus ring).
 
 @ essence_ember 9x9
 ...0.....
@@ -297,3 +299,35 @@ egeegeege
 .040.....
 .040.....
 00000....
+
+@ slider_knob 10x14
+.00000000.
+0555555540
+0544444430
+0543333430
+0544444430
+0543333430
+0544444430
+0543333430
+0544444430
+0544444430
+0444444330
+0333333320
+0222222220
+.00000000.
+
+@ slider_knob_hot 10x14
+.00000000.
+0666666650
+06dddddd50
+06d5555d50
+06dddddd50
+06d5555d50
+06dddddd50
+06d5555d50
+06dddddd50
+06dddddd50
+0ddddddd50
+0555555540
+0444444440
+.00000000.

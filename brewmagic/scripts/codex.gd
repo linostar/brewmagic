@@ -57,6 +57,7 @@ func _ready() -> void:
 	_close_button.pressed.connect(close)
 	show_tab(Tab.WORDS)
 	Juice.squash($Column/Panel, 0.08)
+	_game.sfx(&"codex_open")
 	_words_tab.grab_focus(true)
 	print("[Codex] Opened: %d hint words, %d recipes" % [_game.codex_words().size(), _game.codex_recipes().size()])
 
@@ -96,6 +97,7 @@ func _turn(step: int) -> void:
 	page = clampi(page + step, 0, page_count() - 1)
 	_render()
 	Juice.squash(_entries, 0.06)
+	_game.sfx(&"page_flip")
 
 
 ## The ids listed on the open tab, in data order: hint words (vocabulary order) or potions.

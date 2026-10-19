@@ -149,6 +149,11 @@ func _tests() -> Array[Callable]:
 		_test_shop_refuse_ends_day,
 		_test_bubble_blips,
 		_test_audio_unlock_and_voices,
+		_test_sfx_catalog_and_throttle,
+		_test_music_tracks,
+		_test_shop_sounds,
+		_test_volume_settings,
+		_test_settings_panels_layout,
 		_test_shop_mortar_and_bellows,
 		_test_shop_shelf_fits_without_pages,
 		_test_shop_shelf_pages,
@@ -178,6 +183,7 @@ func _run() -> void:
 	_check(_game.save_path == GameState.TOOL_SAVE_PATH, "tool runs use the tool save, never the player's", _game.save_path)
 	_delete_saves()
 	_game.load_game()
+	_game.unlock_audio()
 	await process_frame
 	for test in _tests():
 		await test.call()
@@ -916,7 +922,9 @@ func _test_shop_wrong_recipe_misbrews() -> void:
 			essences.append(Content.ingredient(id).essence)
 		var essence := Brew.misbrew_essence(Brew.combine(essences), wants.target)
 		var coins := shop.coins
+		_game.sfx_log.clear()
 		await _serve(shop, recipe, "misbrew")
+		_check(_heard(&"misbrew") and _heard(&"stamp_misbrew") and not _heard(&"coins"), "misbrew: the poof and the misbrew stamp sound, no coins", str(_game.sfx_log))
 		var bubble := shop.get_node("Column/Stage/Bubble") as SpeechBubble
 		var lines := PackedStringArray()
 		for line in Content.misbrews_for(essence):
@@ -936,8 +944,10 @@ func _test_shop_patience_timeout() -> void:
 	var shop := await _open_shop()
 	if await _wait_for_order(shop, "timeout"):
 		var who := shop.customer.archetype
+		_game.sfx_log.clear()
 		shop.customer.patience_left = 0.2
 		_check(await _until(func() -> bool: return shop.stormed_off == 1, FLOW_FRAMES), "patience timeout storms off", str(shop.stormed_off))
+		_check(_heard(&"storm_off"), "storming off plays its sound", str(_game.sfx_log))
 		var bubble := shop.get_node("Column/Stage/Bubble") as SpeechBubble
 		_check(bubble.text in who.reactions["stormed_off"], "storming off says a stormed_off line", bubble.text)
 		_check(shop.reputation == Economy.STORMED_OFF_REPUTATION and shop.coins == Content.day(1).starting_coins and shop.served == 0, "storming off costs reputation only", "%d %d" % [shop.reputation, shop.coins])
@@ -1002,16 +1012,16 @@ func _test_shop_pause_toggles() -> void:
 	if await _wait_for_order(shop, "pause"):
 		var pause := shop.get_node("Column/Hud/PauseButton") as Button
 		await _tap(pause)
-		_check(paused and (shop.get_node("Modal/PausePanel") as Control).visible, "pause button pauses", "paused %s" % paused)
+		_check(paused and (shop.get_node("Modal/Panel") as Control).visible, "pause button pauses", "paused %s" % paused)
 		var patience := shop.customer.patience_left
 		for i in 30:
 			await process_frame
 		_check(is_equal_approx(shop.customer.patience_left, patience), "patience stops while paused", "%f -> %f" % [patience, shop.customer.patience_left])
-		await _tap(shop.get_node("Modal/PausePanel/List/AssistRow/AssistButton") as Button)
-		await _tap(shop.get_node("Modal/PausePanel/List/GentleRow/GentleButton") as Button)
+		await _tap(shop.get_node("Modal/Panel/List/AssistRow/AssistButton") as Button)
+		await _tap(shop.get_node("Modal/Panel/List/GentleRow/GentleButton") as Button)
 		_check(_game.assist_mode and _game.gentle_mode, "pause toggles set the settings", "%s %s" % [_game.assist_mode, _game.gentle_mode])
 		_check((shop.get_node("Column/Hud/AssistTag") as Control).visible, "HUD shows the Assist tag", "hidden")
-		await _tap(shop.get_node("Modal/PausePanel/List/ResumeButton") as Button)
+		await _tap(shop.get_node("Modal/Panel/List/ResumeButton") as Button)
 		_check(not paused, "resume unpauses", "still paused")
 		for id in _exact_recipe(shop.customer.potion, shop.stock):
 			await _tap_item(shop, id)
@@ -1019,10 +1029,10 @@ func _test_shop_pause_toggles() -> void:
 		_check(await _until(func() -> bool: return shop.station != null and shop.station.is_running(), FLOW_FRAMES), "brew starts a station", "no station")
 		_check(shop.station.assist and is_equal_approx(shop.station.tolerance_scale, GameState.GENTLE_TOLERANCE_SCALE), "station gets the toggled settings", "%s %f" % [shop.station.assist, shop.station.tolerance_scale])
 		await _tap(pause)
-		await _tap(shop.get_node("Modal/PausePanel/List/AssistRow/AssistButton") as Button)
+		await _tap(shop.get_node("Modal/Panel/List/AssistRow/AssistButton") as Button)
 		await process_frame
 		_check(not _game.assist_mode and not shop.station.assist and shop.station.get_node_or_null("AssistButton") == null and shop.station.is_running(), "assist off restarts the station as a gesture", "assist %s" % shop.station.assist)
-		await _tap(shop.get_node("Modal/PausePanel/List/ResumeButton") as Button)
+		await _tap(shop.get_node("Modal/Panel/List/ResumeButton") as Button)
 	await _close_shop()
 
 
@@ -1097,8 +1107,8 @@ func _test_shop_pause_focus() -> void:
 	_game.assist_mode = true
 	var shop := await _open_shop()
 	if await _wait_for_order(shop, "pause focus"):
-		var panel := shop.get_node("Modal/PausePanel") as Control
-		var resume := shop.get_node("Modal/PausePanel/List/ResumeButton") as Button
+		var panel := shop.get_node("Modal/Panel") as Control
+		var resume := shop.get_node("Modal/Panel/List/ResumeButton") as Button
 		var ids: Array[String] = []
 		ids.assign(shop.stock.keys())
 		var item := shop.shelf_item(ids[1])
@@ -1125,7 +1135,7 @@ func _test_shop_pause_focus() -> void:
 			reached.append(root.gui_get_focus_owner())
 		_check(reached.all(func(control: Control) -> bool: return control not in under_dim), "Tab never reaches controls under the dim", str(reached))
 		await _tap(shop.get_node("Column/Hud/PauseButton") as Button)
-		var assist_toggle := shop.get_node("Modal/PausePanel/List/AssistRow/AssistButton") as Button
+		var assist_toggle := shop.get_node("Modal/Panel/List/AssistRow/AssistButton") as Button
 		await _tap(assist_toggle)
 		await _tap(assist_toggle)
 		await process_frame
@@ -1152,7 +1162,7 @@ func _test_shop_controls_size_and_zone() -> void:
 		for item in shop.get_node("Column/Stage/ShelfItems").get_children():
 			play.append(item as Control)
 		var pause_buttons: Array[Control] = []
-		for button in shop.get_node("Modal/PausePanel/List").find_children("*", "Button", true, false):
+		for button in shop.get_node("Modal/Panel/List").find_children("*", "Button", true, false):
 			pause_buttons.append(button as Control)
 		_check(pause_buttons.size() == 6, "layout: pause panel has Resume, two toggles with their \"?\" and Quit", str(pause_buttons))
 		for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
@@ -1382,8 +1392,8 @@ func _test_shop_menu_and_mode_info() -> void:
 	_check(not rect.intersects(tag_text), "Menu button clears the ASSIST tag", "%s vs %s" % [rect, tag_text])
 	shop.open_pause()
 	await _frames(5)
-	var list := shop.get_node("Modal/PausePanel/List")
-	var panel := shop.get_node("Modal/PausePanel") as Control
+	var list := shop.get_node("Modal/Panel/List")
+	var panel := shop.get_node("Modal/Panel") as Control
 	var help := shop.get_node("Modal/ModeHelp") as Button
 	var callout := shop.get_node("Modal/ModeHelp/Callout") as Control
 	var text := shop.get_node("Modal/ModeHelp/Callout/Text") as Label
@@ -2157,10 +2167,13 @@ func _test_save_round_trip() -> void:
 	_game.rush_best = 7
 	_game.assist_mode = true
 	_game.gentle_mode = true
+	_game.music_volume = 30
+	_game.sfx_volume = 0
 	_game.save_game()
 	_game.day = 1
 	_game.coins = 0
 	_game.assist_mode = false
+	_game.music_volume = 90
 	var errors := _game.reported_errors.size()
 	_game.load_game()
 	_check(_game.day == 2 and _game.at_market and _game.coins == 33 and _game.reputation == -4 and _game.rush_best == 7, "save round trip: day, market, coins, reputation, Rush best", "%d %s %d %d %d" % [_game.day, _game.at_market, _game.coins, _game.reputation, _game.rush_best])
@@ -2168,7 +2181,7 @@ func _test_save_round_trip() -> void:
 	_check(_game.flags.recursive_equal({"quill.inspection": "great", "vexley.opening": "refused"}, 1), "save round trip: story flags", str(_game.flags))
 	_check(_game.endings == (["cosy_corner", "guild_master"] as Array[String]) and _game.rush_hour_unlocked, "save round trip: endings reached and the Rush Hour unlock", "%s %s" % [_game.endings, _game.rush_hour_unlocked])
 	_check(_game.codex_words() == PackedStringArray(["hint_warm", "hint_calm"]) and _game.codex_recipes() == ({"hearthglow_tonic": PackedStringArray(["ember_pepper", "sunpetal"])} as Dictionary[String, PackedStringArray]), "save round trip: codex", str(_game.codex))
-	_check(_game.assist_mode and _game.gentle_mode and _game.reported_errors.size() == errors, "save round trip: settings, no errors", "%s %s" % [_game.assist_mode, _game.gentle_mode])
+	_check(_game.assist_mode and _game.gentle_mode and _game.music_volume == 30 and _game.sfx_volume == 0 and _game.reported_errors.size() == errors, "save round trip: settings, no errors", "%s %s %d %d" % [_game.assist_mode, _game.gentle_mode, _game.music_volume, _game.sfx_volume])
 	_game.rush_best = 7
 	_game.rush_best_assisted = true
 	_game.new_game()
@@ -2178,6 +2191,8 @@ func _test_save_round_trip() -> void:
 	_check(_game.codex_words() == PackedStringArray(["hint_warm", "hint_calm"]) and _game.codex_recipes().has("hearthglow_tonic"), "a new game keeps the Codex", str(_game.codex))
 	_game.assist_mode = false
 	_game.gentle_mode = false
+	_game.music_volume = GameState.DEFAULT_MUSIC_VOLUME
+	_game.sfx_volume = GameState.DEFAULT_SFX_VOLUME
 	_game.rush_best = 0
 	_game.rush_best_assisted = false
 	_game.codex = {}
@@ -2208,6 +2223,11 @@ func _test_save_missing_and_corrupt() -> void:
 		"upgrade level too high": JSON.stringify(_with(good, "upgrades", {"stir": 9})),
 		"day out of range": JSON.stringify(_with(good, "day", 0)),
 		"bad settings": JSON.stringify(_with(good, "settings", {"assist": true})),
+		"music volume above 100": JSON.stringify(_with(good, "settings", {"assist": false, "gentle": false, "music": 110, "sfx": 80})),
+		"negative sfx volume": JSON.stringify(_with(good, "settings", {"assist": false, "gentle": false, "music": 70, "sfx": -10})),
+		"fractional sfx volume": JSON.stringify(_with(good, "settings", {"assist": false, "gentle": false, "music": 70, "sfx": 55.5})),
+		"music volume not a number": JSON.stringify(_with(good, "settings", {"assist": false, "gentle": false, "music": "loud", "sfx": 80})),
+		"assist not a bool": JSON.stringify(_with(good, "settings", {"assist": 1, "gentle": false, "music": 70, "sfx": 80})),
 		"newer version": JSON.stringify(_with(good, "version", 99)),
 		"version 0": JSON.stringify(_with(good, "version", 0)),
 		"huge reputation": JSON.stringify(_with(good, "reputation", 1e300)),
@@ -2243,7 +2263,7 @@ func _test_save_missing_and_corrupt() -> void:
 		var reported := _game.reported_errors.slice(errors)
 		_check(reported.size() == 1 and "corrupt" in reported[0] and "save.corrupt.json" in reported[0] and error_label.visible, label + ": reported once and shown", str(reported))
 		_check(FileAccess.get_file_as_string(_game.backup_path()) == cases[case], label + ": backed up unchanged", _game.backup_path())
-		_check(_game.coins == 0 and _game.day == 1 and _game.stock.is_empty() and not _game.assist_mode, label + ": replaced by defaults", "%d %d" % [_game.coins, _game.day])
+		_check(_game.coins == 0 and _game.day == 1 and _game.stock.is_empty() and not _game.assist_mode and _game.music_volume == GameState.DEFAULT_MUSIC_VOLUME and _game.sfx_volume == GameState.DEFAULT_SFX_VOLUME, label + ": replaced by defaults", "%d %d" % [_game.coins, _game.day])
 		errors = _game.reported_errors.size()
 		_game.load_game()
 		_check(_game.reported_errors.size() == errors, label + ": the replacement loads cleanly", str(_game.reported_errors.slice(errors)))
@@ -2272,12 +2292,14 @@ func _test_save_migrations() -> void:
 	_check("newer" in GameState.migrate_save(newer, steps, 3) and newer == {"version": 4}, "a save from a newer game is refused unchanged", str(newer))
 	var v1 := {"version": 1, "day": 8, "at_market": false, "flags": {"quill.fair": "great", "ending": "cosy_corner", "rush_hour_unlocked": true}}
 	var upgraded := GameState.migrate_save(v1, GameState.save_migrations(), GameState.SAVE_VERSION)
-	_check(upgraded == "" and v1 == {"version": 3, "day": 8, "at_market": false, "flags": {"quill.fair": "great"}, "endings": ["cosy_corner"], "rush_hour_unlocked": true, "rush_best_assisted": false}, "version 1 -> 2: the ending and the Rush Hour unlock move out of the flags", "%s %s" % [upgraded, v1])
+	_check(upgraded == "" and v1 == {"version": 4, "day": 8, "at_market": false, "flags": {"quill.fair": "great"}, "endings": ["cosy_corner"], "rush_hour_unlocked": true, "rush_best_assisted": false}, "version 1 -> 2: the ending and the Rush Hour unlock move out of the flags", "%s %s" % [upgraded, v1])
 	var v1_plain := {"version": 1, "day": 2, "at_market": false, "flags": {}}
 	GameState.migrate_save(v1_plain, GameState.save_migrations(), GameState.SAVE_VERSION)
-	_check(v1_plain == {"version": 3, "day": 2, "at_market": false, "flags": {}, "endings": [], "rush_hour_unlocked": false, "rush_best_assisted": false}, "version 1 -> 2: a save without an ending gets none and no unlock", str(v1_plain))
+	_check(v1_plain == {"version": 4, "day": 2, "at_market": false, "flags": {}, "endings": [], "rush_hour_unlocked": false, "rush_best_assisted": false}, "version 1 -> 2: a save without an ending gets none and no unlock", str(v1_plain))
 	var v2 := {"version": 2, "rush_best": 40}
-	_check(GameState.migrate_save(v2, GameState.save_migrations(), GameState.SAVE_VERSION) == "" and v2 == {"version": 3, "rush_best": 40, "rush_best_assisted": false}, "version 2 -> 3: the Rush Hour best gains an assisted marker, false", str(v2))
+	_check(GameState.migrate_save(v2, GameState.save_migrations(), GameState.SAVE_VERSION) == "" and v2 == {"version": 4, "rush_best": 40, "rush_best_assisted": false}, "version 2 -> 3: the Rush Hour best gains an assisted marker, false", str(v2))
+	var v3 := {"version": 3, "settings": {"assist": true, "gentle": false}}
+	_check(GameState.migrate_save(v3, GameState.save_migrations(), GameState.SAVE_VERSION) == "" and v3 == {"version": 4, "settings": {"assist": true, "gentle": false, "music": GameState.DEFAULT_MUSIC_VOLUME, "sfx": GameState.DEFAULT_SFX_VOLUME}}, "version 3 -> 4: the settings gain the default music and SFX volumes", str(v3))
 	# A whole version 2 save file (the format before Rush Hour) loads, best kept and not assisted.
 	_game.new_game()
 	_game.rush_hour_unlocked = true
@@ -2291,6 +2313,18 @@ func _test_save_migrations() -> void:
 	var errors := _game.reported_errors.size()
 	_game.load_game()
 	_check(_game.reported_errors.size() == errors and _game.rush_best == 40 and not _game.rush_best_assisted and _game.rush_hour_unlocked, "a version 2 save file loads with its best, not assisted", "best %d assisted %s, errors %s" % [_game.rush_best, _game.rush_best_assisted, _game.reported_errors.slice(errors)])
+	# A whole version 3 save file (before the volume settings) loads with the default volumes.
+	_game.save_game()
+	var v3_file: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	v3_file["version"] = 3
+	(v3_file["settings"] as Dictionary).erase("music")
+	(v3_file["settings"] as Dictionary).erase("sfx")
+	_write_save(JSON.stringify(v3_file))
+	_game.music_volume = 10
+	_game.sfx_volume = 20
+	errors = _game.reported_errors.size()
+	_game.load_game()
+	_check(_game.reported_errors.size() == errors and _game.music_volume == GameState.DEFAULT_MUSIC_VOLUME and _game.sfx_volume == GameState.DEFAULT_SFX_VOLUME and _game.rush_best == 40, "a version 3 save file loads with the default volumes", "music %d sfx %d, errors %s" % [_game.music_volume, _game.sfx_volume, _game.reported_errors.slice(errors)])
 	_delete_saves()
 	_game.load_game()
 	var v1_two_day_end := {"version": 1, "day": 3.0, "at_market": false, "flags": {}}
@@ -2407,11 +2441,15 @@ func _test_market_purchases() -> void:
 	var ladle_card := market.upgrade_card(ladle.id)
 	_check(ladle_card.modulate == Market.UNAFFORDABLE_TINT and not ladle_card.disabled and market.stock_card("moonmoss").modulate == Color.WHITE, "10 coins: the ladle (%d) is faded but tappable, moonmoss (%d) is not faded" % [ladle.costs[0], price], "%s %s %s" % [ladle_card.modulate, ladle_card.disabled, market.stock_card("moonmoss").modulate])
 	await _tap(market.get_node("Column/Shop/Tabs/UpgradesTab") as Button)
+	_game.sfx_log.clear()
 	await _tap(ladle_card)
+	_check(_game.sfx_log == ([&"nope"] as Array[StringName]), "a refused buy plays only its own sound", str(_game.sfx_log))
 	var refusal := (market.get_node("Column/Info/Text") as Label).text
 	_check(_game.coins == 10 and _game.upgrades.is_empty() and "Not enough coins" in refusal and ladle.name in refusal, "a tap on a faded card buys nothing and says why", "%d %s '%s'" % [_game.coins, _game.upgrades, refusal])
 	await _tap(market.get_node("Column/Shop/Tabs/StockTab") as Button)
+	_game.sfx_log.clear()
 	await _tap(market.stock_card("moonmoss"))
+	_check(_game.sfx_log == ([&"buy"] as Array[StringName]), "a buy plays only its own sound", str(_game.sfx_log))
 	_check(_game.coins == 10 - price and _game.stock.get("moonmoss") == 1 and _read_save().get("coins") == float(10 - price), "a tap buys one moonmoss and saves", "%d %s" % [_game.coins, _game.stock])
 	_check((market.get_node("Column/Coins/Amount") as Label).text == str(10 - price) and "Moonmoss" in (market.get_node("Column/Info/Text") as Label).text, "the coins and the info card update", (market.get_node("Column/Info/Text") as Label).text)
 	await _tap(market.stock_card("moonmoss"))
@@ -2765,7 +2803,9 @@ func _test_shop_rush_run() -> void:
 		_check(not shop.customer.archetype.is_story() and shop.customer.potion in Rush.potions_of_wave(0), "rush run: the first customer is an ordinary voice asking for a wave-1 potion", "%s %s" % [shop.customer.archetype.id, shop.customer.potion.id])
 		shop.served = Rush.WAVE_SIZE - 1
 		var recipe := _exact_recipe(shop.customer.potion, _rush_stock())
+		_game.sfx_log.clear()
 		await _serve(shop, recipe, "rush run")
+		_check(_heard(&"wave"), "rush run: a new wave plays its stinger", str(_game.sfx_log))
 		_check(shop.coins > 0 and "wave 2" in served_label.text, "rush run: a serve pays into the score and starts wave 2", "%d coins, %s" % [shop.coins, served_label.text])
 		_check(shop.reputation == Rush.START_REPUTATION and reputation_label.text == str(Rush.START_REPUTATION), "rush run: a good serve leaves the run's reputation where it was", "%d" % shop.reputation)
 		var stamp := shop.get_node("Column/Stage/Stamp") as Control
@@ -2785,7 +2825,9 @@ func _test_shop_rush_run() -> void:
 		_check(brewing, "rush run: the second brew starts a station", str(shop.station))
 		shop.reputation = 1
 		shop.customer.patience_left = 0.01
+		_game.sfx_log.clear()
 		var over := await _until(func() -> bool: return shop.station == null and shop.reputation <= 0, FLOW_FRAMES)
+		_check(_heard(&"rush_over") and _heard(&"storm_off"), "rush run: the run's end plays the storm-off and the run-over sting", str(_game.sfx_log))
 		var walking := ([shop.customer] + shop.queue).all(func(visitor: Customer) -> bool: return visitor == null or visitor.state == Customer.State.LEAVE or visitor.state == Customer.State.GONE)
 		_check(over and walking and shop.brew_button().disabled, "rush run: reputation 0 mid-brew drops the station and the line walks out", "station %s, reputation %d" % [shop.station, shop.reputation])
 		var results := await _until(func() -> bool: return current_scene is Results and not _game.is_transitioning(), FLOW_FRAMES)
@@ -2829,7 +2871,7 @@ func _test_rush_screens() -> void:
 	if shop:
 		(current_scene as Shop).open_pause()
 		await _frames(3)
-		await _tap(current_scene.get_node("Modal/PausePanel/List/QuitButton") as Button)
+		await _tap(current_scene.get_node("Modal/Panel/List/QuitButton") as Button)
 		await _until(func() -> bool: return current_scene is Title and not _game.is_transitioning(), FLOW_FRAMES)
 		_check(current_scene is Title and _game.rush_best == 40 and _game.rush_best_assisted, "rush screens: quitting a run goes to the title and records nothing", "best %d" % _game.rush_best)
 	_game.finish_rush(results)
@@ -2877,7 +2919,7 @@ func _test_rush_keyboard_assist() -> void:
 		return
 	var shop := current_scene as Shop
 	if await _wait_for_order(shop, "rush keys"):
-		var assist_row := shop.get_node("Modal/PausePanel/List/AssistRow/AssistButton") as Button
+		var assist_row := shop.get_node("Modal/Panel/List/AssistRow/AssistButton") as Button
 		var menu := shop.get_node("Column/Hud/PauseButton") as Button
 		for i in 20:
 			if root.gui_get_focus_owner() == menu:
@@ -2887,7 +2929,7 @@ func _test_rush_keyboard_assist() -> void:
 		await _action(&"ui_accept")
 		var on_assist := await _focus_by_keys(assist_row)
 		await _action(&"ui_accept")
-		var on_resume := await _focus_by_keys(shop.get_node("Modal/PausePanel/List/ResumeButton") as Button)
+		var on_resume := await _focus_by_keys(shop.get_node("Modal/Panel/List/ResumeButton") as Button)
 		await _action(&"ui_accept")
 		_check(on_menu and on_assist and on_resume and _game.assist_mode and not paused, "rush keys: Assist switched on mid-run from the pause menu", "%s %s %s assist %s" % [on_menu, on_assist, on_resume, _game.assist_mode])
 		_refill_patience(shop)
@@ -2974,6 +3016,7 @@ func _test_summary_tally() -> void:
 		return
 	# Timed from the scene's arrival (its _ready starts the tally).
 	await process_frame
+	_game.sfx_log.clear()
 	frames = 1
 	var hidden := summary.is_tallying() and summary.tile("Served").modulate.a == 0.0 and (summary.get_node("Column/Layout/Grades") as CanvasItem).modulate.a == 0.0
 	while summary.is_tallying() and frames < FLOW_FRAMES:
@@ -2981,6 +3024,8 @@ func _test_summary_tally() -> void:
 		frames += 1
 	_check(hidden and frames <= ceili(Tally.MAX_TIME * 60.0), "summary: the tally starts hidden and finishes by itself within %.1f s" % Tally.MAX_TIME, "%d frames, hidden at start %s" % [frames, hidden])
 	_check(_tile_texts(summary) == ["4/6", "+63", "+7", "-2 now 12"], "summary: each tile's final text", str(_tile_texts(summary)))
+	var ticks := _game.sfx_log.count(&"coin_tick")
+	_check(ticks >= 4 and ticks <= ceili(Tally.MAX_TIME / GameState.SFX_MIN_GAP) and _heard(&"coins"), "summary: the tally ticks as it counts (throttled) and the coins tile jingles", "%d ticks, %s" % [ticks, _game.sfx_log])
 	_check(_grade_texts(summary) == PackedStringArray(["Perfect 1", "Good 2", "Meh 1", "Misbrew 0"]), "summary: the grade row", str(_grade_texts(summary)))
 	var icons_ok := true
 	for grade in Summary.GRADE_WORDS.size():
@@ -3269,7 +3314,9 @@ func _test_codex_panel() -> void:
 	root.size = BASE_WINDOW
 	await _frames(10)
 	var pages := codex.page_count()
+	_game.sfx_log.clear()
 	await _tap(codex.get_node("Column/Panel/List/Footer/NextButton") as Button)
+	_check(_game.sfx_log == ([&"page_flip"] as Array[StringName]), "codex: a page turn plays only the page flip", str(_game.sfx_log))
 	_check(pages == ceili(recipes.size() / float(Codex.RECIPES_PER_PAGE)) and codex.page == 1 and codex.entry_texts() != first_page, "codex: Next turns the page", "%d pages, page %d" % [pages, codex.page])
 	(codex.get_node("Column/Panel/List/Tabs/WordsTab") as Button).grab_focus()
 	_check(await _focus_stays_in(codex), "codex: keyboard focus stays in the Codex", str(root.gui_get_focus_owner()))
@@ -3595,7 +3642,11 @@ func _test_shop_shelf_pages() -> void:
 		_check(label.text == "%d/3" % pages and prev.disabled == (pages == 1) and next.disabled == (pages == 3), "shelf pages: page %d reads %d/3, arrows disabled only at the ends" % [pages, pages], "%s %s %s" % [label.text, prev.disabled, next.disabled])
 		if next.disabled:
 			break
+		# Turns closer than SFX_MIN_GAP share one flip sound.
+		await _frames(ceili(GameState.SFX_MIN_GAP * 60.0) + 1)
+		_game.sfx_log.clear()
 		await _tap(next)
+		_check(_game.sfx_log == ([&"page_flip"] as Array[StringName]), "shelf pages: a page turn plays only the page flip", str(_game.sfx_log))
 	seen.sort()
 	var all: Array[String] = []
 	for id: String in shop.stock:
@@ -3953,3 +4004,268 @@ func _check(condition: bool, test_name: String, detail: String) -> void:
 		print("test_gameplay: pass " + test_name)
 	else:
 		_failures.append("%s: %s" % [test_name, detail])
+
+
+## True when sound effect `id` is among the latest ones played (Game.sfx_log).
+func _heard(id: StringName) -> bool:
+	return id in _game.sfx_log
+
+
+## Every sound effect id has its synthesised file and nothing else sits in
+## audio/sfx/ but the voices; repeats of one sound inside SFX_MIN_GAP are dropped,
+## later ones play; nothing plays before the first input.
+func _test_sfx_catalog_and_throttle() -> void:
+	var missing := GameState.SFX_IDS.filter(func(id: StringName) -> bool: return not ResourceLoader.exists(GameState.SFX_PATH % id))
+	_check(missing.is_empty(), "every sound effect id has its file", str(missing))
+	var stray := PackedStringArray()
+	for file in DirAccess.get_files_at("res://audio/sfx"):
+		if file.ends_with(".wav") and not file.begins_with("voice_") and not StringName(file.get_basename()) in GameState.SFX_IDS:
+			stray.append(file)
+	_check(stray.is_empty(), "audio/sfx holds only voices and SFX_IDS sounds", str(stray))
+	var cued := Shop.STATION_SOUNDS.values().all(func(id: StringName) -> bool: return id in GameState.SFX_IDS) and Shop.STAMP_SOUNDS.all(func(id: StringName) -> bool: return id in GameState.SFX_IDS)
+	_check(cued and Shop.STAMP_SOUNDS.size() == Brew.Grade.size(), "station cues and stamps map to known sounds", str(Shop.STATION_SOUNDS))
+	var cues: Array[StringName] = [&"stir_rotation", &"pour_start", &"pour_spill", &"pour_stop", &"mortar_stroke", &"bellows_pump", &"bellows_out", &"station_success", &"station_sloppy"]
+	_check(Shop.STATION_SOUNDS.keys() == cues, "every Station.feedback cue has a sound", str(Shop.STATION_SOUNDS.keys()))
+	_game.sfx_log.clear()
+	_game.sfx(&"stir")
+	_game.sfx(&"stir")
+	await _frames(1)
+	_game.sfx(&"stir")
+	_check(_game.sfx_log == ([&"stir"] as Array[StringName]), "a sound repeated inside SFX_MIN_GAP is dropped", str(_game.sfx_log))
+	await _frames(ceili(GameState.SFX_MIN_GAP * 60.0) + 1)
+	_game.sfx(&"stir")
+	_game.sfx(&"coins")
+	_check(_game.sfx_log == ([&"stir", &"stir", &"coins"] as Array[StringName]), "after SFX_MIN_GAP it plays again; other sounds are not held back", str(_game.sfx_log))
+	_game.audio_unlocked = false
+	var played := _game.sfx_played
+	_game.sfx(&"door_bell")
+	_check(_game.sfx_played == played and not _heard(&"door_bell"), "no sound effect before the first input", str(_game.sfx_log))
+	_game.unlock_audio()
+	_check(GameState.SFX_VOICES >= 4 and GameState.SFX_MIN_GAP > 0.0 and GameState.SFX_JITTER.has(&"stir") and GameState.SFX_JITTER.has(&"coin_tick") and GameState.SFX_JITTER.has(&"bellows_pump"), "repeated sounds are throttled and pitch-jittered", str(GameState.SFX_JITTER))
+
+
+## Each flow state asks for its track (TITLE title; MORNING, story SHOP, SUMMARY,
+## MARKET shop; Rush Hour SHOP and RESULTS rush; ENDING ending); going between two
+## screens of one track keeps it playing (no new start); a new track crossfades
+## (at most 1 s); before the first input a track only waits and starts on unlock.
+func _test_music_tracks() -> void:
+	var expected: Dictionary[GameState.Flow, StringName] = {
+		GameState.Flow.TITLE: &"title", GameState.Flow.MORNING: &"shop", GameState.Flow.SHOP: &"shop", GameState.Flow.SUMMARY: &"shop",
+		GameState.Flow.MARKET: &"shop", GameState.Flow.ENDING: &"ending", GameState.Flow.RESULTS: &"rush",
+	}
+	for state: GameState.Flow in expected:
+		_check(GameState.track_for(state, {}) == expected[state], "music: %s plays %s" % [GameState.Flow.keys()[state], expected[state]], str(GameState.track_for(state, {})))
+	_check(GameState.track_for(GameState.Flow.SHOP, {"rush": 3}) == &"rush" and GameState.track_for(GameState.Flow.SHOP, {"day": 2}) == &"shop", "music: a Rush Hour shop plays rush, a story day shop", "")
+	for track: StringName in [&"title", &"shop", &"rush", &"ending"]:
+		var stream := load(GameState.MUSIC_PATH % track) as AudioStreamMP3
+		_check(stream != null and stream.loop, "music: %s is a looping MP3" % track, str(stream))
+	_check(AudioServer.get_bus_index(GameState.MUSIC_BUS) > 0 and AudioServer.get_bus_index(GameState.SFX_BUS) > 0 and AudioServer.get_bus_index(GameState.MUSIC_BUS) != AudioServer.get_bus_index(GameState.SFX_BUS), "music: Music and SFX are buses of their own", "")
+	_check(GameState.CROSSFADE_TIME > 0.0 and GameState.CROSSFADE_TIME <= 1.0, "music: a change of track crossfades within 1 s", str(GameState.CROSSFADE_TIME))
+	_game.new_game()
+	await _goto_scene(GameState.Flow.TITLE)
+	_check(_game.music_track == &"title" and _game.music_started == &"title", "music: the title plays title", "%s %s" % [_game.music_track, _game.music_started])
+	var changes := _game.music_changes
+	await _goto_scene(GameState.Flow.MORNING)
+	_check(_game.music_track == &"shop" and _game.music_changes == changes + 1, "music: the morning crossfades to shop", "%s %d" % [_game.music_track, _game.music_changes - changes])
+	await _goto_scene(GameState.Flow.SHOP, {"day": 1})
+	_check(_game.music_track == &"shop" and _game.music_changes == changes + 1, "music: the shop keeps the morning's track playing", "%s %d" % [_game.music_track, _game.music_changes - changes])
+	await _goto_scene(GameState.Flow.SHOP, {"rush": 11})
+	_check(_game.music_track == &"rush" and _game.music_started == &"rush" and _game.music_changes == changes + 2, "music: a Rush Hour shop plays rush", "%s %d" % [_game.music_track, _game.music_changes - changes])
+	await _goto_scene(GameState.Flow.TITLE)
+	_game.audio_unlocked = false
+	_game.play_music(&"ending")
+	_check(_game.music_track == &"ending" and _game.music_started == &"title", "music: before the first input a track waits", "%s %s" % [_game.music_track, _game.music_started])
+	_game.unlock_audio()
+	_check(_game.music_started == &"ending", "music: the first input starts the waiting track", str(_game.music_started))
+	_game.play_music(&"title")
+
+
+## Every sound of a shop shift plays as it happens: the door bell on arrival, the
+## drop and the splash of an ingredient, "nope" on a full pot, the pot-slot removal,
+## a button tap, the Codex opening, each station cue's sound (Shop.STATION_SOUNDS),
+## the stamp, coins, coin ticks and tip of a serve, "Codex +N", a refusal.
+func _test_shop_sounds() -> void:
+	_game.assist_mode = true
+	var shop := await _open_shop()
+	_game.sfx_log.clear()
+	if not await _wait_for_order(shop, "sounds"):
+		await _close_shop()
+		return
+	_check(_heard(&"door_bell"), "sounds: a customer walking in rings the door bell", str(_game.sfx_log))
+	var recipe := _exact_recipe(shop.customer.potion, shop.stock)
+	_game.sfx_log.clear()
+	await _tap_item(shop, recipe[0])
+	_check(_game.sfx_log == ([&"drop"] as Array[StringName]), "sounds: putting an ingredient in plays the drop at once (no tap)", str(_game.sfx_log))
+	await _frames(30)
+	_check(_heard(&"splash"), "sounds: the ingredient lands with a splash", str(_game.sfx_log))
+	_game.sfx_log.clear()
+	await _tap(shop.slot_button(0))
+	_check(_game.sfx_log == ([&"slot_remove"] as Array[StringName]), "sounds: taking it out plays the slot removal", str(_game.sfx_log))
+	var filler := ""
+	for id: String in shop.stock:
+		if shop.stock[id] >= 4:
+			filler = id
+			break
+	for i in Shop.POT_CAPACITY:
+		await _tap_item(shop, filler)
+		await _frames(4)
+	_game.sfx_log.clear()
+	await _tap_item(shop, filler)
+	_check(_game.sfx_log == ([&"nope"] as Array[StringName]), "sounds: a full pot refuses with nope", str(_game.sfx_log))
+	while not shop.pot.is_empty():
+		await _tap(shop.slot_button(0))
+		await _frames(4)
+	_game.sfx_log.clear()
+	await _tap(shop.get_node("Column/Hud/PauseButton") as Button)
+	_check(_game.sfx_log == ([&"tap"] as Array[StringName]), "sounds: a plain button press taps", str(_game.sfx_log))
+	shop.close_pause()
+	await _frames(4)
+	_game.sfx_log.clear()
+	await _tap(shop.get_node("Column/Stage/CodexButton") as Button)
+	_check(_game.sfx_log == ([&"codex_open"] as Array[StringName]), "sounds: the Codex opens with its own sound", str(_game.sfx_log))
+	if shop.codex != null:
+		shop.codex.close()
+	await _frames(4)
+	_refill_patience(shop)
+	for id in recipe:
+		await _tap_item(shop, id)
+	var words_before := _game.codex_words().size() + _game.codex_recipes().size()
+	await _tap(shop.brew_button())
+	if await _until(func() -> bool: return shop.station != null and shop.station.is_running(), FLOW_FRAMES):
+		for cue: StringName in Shop.STATION_SOUNDS:
+			_game.sfx_log.clear()
+			shop._on_station_feedback(cue)
+			_check(_game.sfx_log == ([Shop.STATION_SOUNDS[cue]] as Array[StringName]), "sounds: station cue %s plays %s" % [cue, Shop.STATION_SOUNDS[cue]], str(_game.sfx_log))
+			await _frames(4)
+	else:
+		_check(false, "sounds: the brew starts a station", "no station")
+	_game.sfx_log.clear()
+	var served := shop.served
+	for step in shop.customer.potion.steps.size():
+		if not await _until(func() -> bool: return shop.station != null and shop.station.assist_button() != null, FLOW_FRAMES):
+			break
+		await _tap(shop.station.assist_button())
+	_check(await _until(func() -> bool: return shop.served == served + 1, FLOW_FRAMES), "sounds: the customer is served", str(shop.served))
+	_check(_heard(&"success") and not _heard(&"tap"), "sounds: each Assist press plays the station's success, no tap", str(_game.sfx_log))
+	_check(_heard(&"stamp_good") and _heard(&"coins") and _heard(&"tip") == (shop.tips > 0), "sounds: the Good stamp, the coins and (with a tip) the tip", "tips %d, %s" % [shop.tips, _game.sfx_log])
+	_check(_heard(&"codex_new") == (_game.codex_words().size() + _game.codex_recipes().size() > words_before), "sounds: Codex +N chimes when the Codex learns something", str(_game.sfx_log))
+	await _frames(40)
+	_check(_heard(&"coin_tick"), "sounds: coins landing on the counter tick", str(_game.sfx_log))
+	for grade in Brew.Grade.size():
+		await _frames(4)
+		_game.sfx_log.clear()
+		shop._show_stamp(grade)
+		_check(_game.sfx_log == ([Shop.STAMP_SOUNDS[grade]] as Array[StringName]), "sounds: the %s stamp plays %s" % [Brew.Grade.keys()[grade], Shop.STAMP_SOUNDS[grade]], str(_game.sfx_log))
+	await _skip_lines(shop)
+	if await _wait_for_order(shop, "sounds: refuse"):
+		_game.sfx_log.clear()
+		await _tap(shop.get_node("Column/Stage/RefuseButton") as Button)
+		_check(_game.sfx_log == ([&"refuse"] as Array[StringName]), "sounds: refusing plays only the refuse sound", str(_game.sfx_log))
+	await _close_shop()
+
+
+## The volume settings: defaults 70 (music) and 80 (SFX); each set applies to its
+## bus at once (linear, 0 mutes it) and saves; the pause panel's sliders follow touch
+## (a tap sets the value under the finger) and the keyboard (ui_left/ui_right one
+## step), name the setting and its value, and play a sample tap.
+func _test_volume_settings() -> void:
+	_check(GameState.DEFAULT_MUSIC_VOLUME == 70 and GameState.DEFAULT_SFX_VOLUME == 80 and GameState.VOLUME_STEP == 10 and GameState.VOLUME_MAX == 100, "volumes: defaults 70 and 80, steps of 10 to 100", "")
+	var music_bus := AudioServer.get_bus_index(GameState.MUSIC_BUS)
+	var sfx_bus := AudioServer.get_bus_index(GameState.SFX_BUS)
+	_check(_game.music_volume == 70 and AudioServer.get_bus_volume_db(music_bus) < 0.0, "volumes: the music bus starts below 0 dB", str(AudioServer.get_bus_volume_db(music_bus)))
+	_game.set_music_volume(50)
+	_game.set_sfx_volume(0)
+	_check(is_equal_approx(AudioServer.get_bus_volume_linear(music_bus), 0.5) and not AudioServer.is_bus_mute(music_bus) and AudioServer.is_bus_mute(sfx_bus), "volumes: applied to the buses, 0 mutes", "%f %s" % [AudioServer.get_bus_volume_linear(music_bus), AudioServer.is_bus_mute(sfx_bus)])
+	var settings: Dictionary = _read_save().get("settings", {})
+	_check(settings.get("music") == 50.0 and settings.get("sfx") == 0.0, "volumes: saved at once", str(settings))
+	_game.set_sfx_volume(37)
+	_check(_game.sfx_volume == 40 and not AudioServer.is_bus_mute(sfx_bus), "volumes: snapped to the step, unmuted above 0", str(_game.sfx_volume))
+	_game.set_music_volume(GameState.DEFAULT_MUSIC_VOLUME)
+	_game.set_sfx_volume(GameState.DEFAULT_SFX_VOLUME)
+	var shop := await _open_shop()
+	shop.open_pause()
+	await _frames(5)
+	var music := shop.get_node("Modal/Panel/List/MusicRow/Slider") as VolumeSlider
+	var sfx := shop.get_node("Modal/Panel/List/SfxRow/Slider") as VolumeSlider
+	_check(music.value == 70 and sfx.value == 80 and music.accessibility_name == "Music volume 70 of 100" and sfx.accessibility_name == "Sound effects volume 80 of 100", "volumes: the sliders show the settings and name them", "%s / %s" % [music.accessibility_name, sfx.accessibility_name])
+	_check(music.get_theme_stylebox(&"focus") is StyleBoxFlat and (music.get_theme_stylebox(&"focus") as StyleBoxFlat).border_width_top >= 2, "volumes: a slider has a visible focus style", str(music.get_theme_stylebox(&"focus")))
+	music.grab_focus()
+	_game.sfx_log.clear()
+	await _action(&"ui_left")
+	_check(_game.music_volume == 60 and music.value == 60 and music.accessibility_name == "Music volume 60 of 100" and _heard(&"tap"), "volumes: Left lowers the music by a step with a sample tap", "%d %s" % [_game.music_volume, _game.sfx_log])
+	await _frames(4)
+	await _action(&"ui_right")
+	await _frames(4)
+	await _action(&"ui_right")
+	_check(_game.music_volume == 80 and root.gui_get_focus_owner() == music, "volumes: Right raises it a step at a time, focus stays", "%d %s" % [_game.music_volume, root.gui_get_focus_owner()])
+	var rect := sfx.get_global_rect()
+	await _tap_at(Vector2(rect.position.x + 1.0, rect.get_center().y))
+	_check(_game.sfx_volume == 0 and AudioServer.is_bus_mute(sfx_bus) and sfx.accessibility_name == "Sound effects volume 0 of 100 (muted)", "volumes: a tap at the slider's left end mutes the sound effects", "%d %s" % [_game.sfx_volume, sfx.accessibility_name])
+	await _drag_touch(Vector2(rect.position.x + 1.0, rect.get_center().y), Vector2(rect.get_center().x, rect.get_center().y))
+	_check(_game.sfx_volume == 50 and int(_read_save()["settings"]["sfx"]) == 50, "volumes: a drag to the middle sets 50 and saves it", "%d" % _game.sfx_volume)
+	await _tap_at(Vector2(rect.end.x - 1.0, rect.get_center().y))
+	_check(_game.sfx_volume == 100, "volumes: a tap at the right end sets 100", str(_game.sfx_volume))
+	shop.close_pause()
+	_game.set_music_volume(GameState.DEFAULT_MUSIC_VOLUME)
+	_game.set_sfx_volume(GameState.DEFAULT_SFX_VOLUME)
+	await _close_shop()
+
+
+## The settings rows (Assist and Gentle with their "?", the two volume sliders) on the
+## title's Settings panel and in the pause panel: every control 32x32 or more, inside
+## the safe area and in the thumb zone at 9:16, 9:19.5 and 16:9. The title's panel
+## opens from its Settings button, toggles Assist (saved), shows the mode help,
+## and closes with Close or Escape (focus back on Settings).
+func _test_settings_panels_layout() -> void:
+	await _goto_scene(GameState.Flow.TITLE)
+	var title := current_scene as Title
+	var open := title.get_node("Column/SettingsButton") as Button
+	var list := title.get_node("Settings/Panel/List")
+	var rows: Array[Control] = [open]
+	for path: String in ["AssistRow/AssistButton", "AssistRow/AssistHelp", "GentleRow/GentleButton", "GentleRow/GentleHelp", "MusicRow/Slider", "SfxRow/Slider", "CloseButton"]:
+		rows.append(list.get_node(path) as Control)
+	_check(list.get_child(list.get_child_count() - 1).name == "CloseButton" and open.accessibility_name != "", "settings: the title's panel ends with Close; Settings is named", str(list.get_children()))
+	for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
+		root.size = window
+		await _frames(10)
+		_check_targets([open] as Array[Control], null, "title Settings button at %s" % window)
+		await _tap(open)
+		await _frames(10)
+		_check_targets(rows.slice(1), null, "title settings panel at %s" % window)
+		await _key(KEY_ESCAPE)
+		await _frames(5)
+	root.size = BASE_WINDOW
+	await _frames(5)
+	await _tap(open)
+	var assist := list.get_node("AssistRow/AssistButton") as Button
+	_check((title.get_node("Settings/Panel") as Control).visible and root.gui_get_focus_owner() == assist, "settings: the title's Settings opens the panel, focus on Assist", str(root.gui_get_focus_owner()))
+	_check(await _focus_stays_in(title.get_node("Settings/Panel") as Control), "settings: focus stays in the title's panel", str(root.gui_get_focus_owner()))
+	await _tap(assist)
+	_check(_game.assist_mode and _read_save()["settings"]["assist"] == true and assist.text == "Assist mode: On", "settings: Assist toggled on the title is saved", assist.text)
+	await _tap(assist)
+	var help := list.get_node("GentleRow/GentleHelp") as Button
+	await _tap(help)
+	var mode_help := title.get_node("Settings/ModeHelp") as Button
+	_check(mode_help.visible and mode_help.accessibility_name == SettingsPanel.GENTLE_INFO, "settings: the title's \"?\" opens the mode help", str(mode_help.visible))
+	await _key(KEY_ESCAPE)
+	_check(not mode_help.visible and (title.get_node("Settings/Panel") as Control).visible and root.gui_get_focus_owner() == help, "settings: Escape closes the help first, the panel stays", str(root.gui_get_focus_owner()))
+	await _key(KEY_ESCAPE)
+	_check(not (title.get_node("Settings/Panel") as Control).visible and root.gui_get_focus_owner() == open, "settings: Escape then closes the panel, focus back on Settings", str(root.gui_get_focus_owner()))
+	await _tap(open)
+	await _tap(list.get_node("CloseButton") as Button)
+	_check(not (title.get_node("Settings/Panel") as Control).visible, "settings: Close closes the panel", "")
+	var shop := await _open_shop()
+	var pause := shop.get_node("Column/Hud/PauseButton") as Button
+	var pause_list := shop.get_node("Modal/Panel/List")
+	var pause_rows: Array[Control] = []
+	for path: String in ["ResumeButton", "AssistRow/AssistButton", "AssistRow/AssistHelp", "GentleRow/GentleButton", "GentleRow/GentleHelp", "MusicRow/Slider", "SfxRow/Slider", "QuitButton"]:
+		pause_rows.append(pause_list.get_node(path) as Control)
+	for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
+		root.size = window
+		shop.open_pause()
+		await _frames(10)
+		_check_targets(pause_rows, pause, "pause settings rows at %s" % window)
+		shop.close_pause()
+	root.size = BASE_WINDOW
+	await _frames(5)
+	await _close_shop()

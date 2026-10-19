@@ -1,8 +1,9 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/shop.gd" id="1_shop"]
 [ext_resource type="PackedScene" path="res://scenes/speech_bubble.tscn" id="2_bubble"]
 [ext_resource type="Script" path="res://scripts/ui/page_arrow.gd" id="3_arrow"]
+[ext_resource type="PackedScene" path="res://scenes/settings_panel.tscn" id="4_settings"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_stamp"]
 content_margin_left = 8.0
@@ -20,12 +21,6 @@ corner_radius_top_right = 4
 corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
 anti_aliasing = false
-
-[sub_resource type="InputEventAction" id="InputEventAction_cancel"]
-action = &"ui_cancel"
-
-[sub_resource type="Shortcut" id="Shortcut_cancel"]
-events = [SubResource("InputEventAction_cancel")]
 
 [node name="Shop" type="Control"]
 layout_mode = 3
@@ -148,7 +143,7 @@ offset_right = 189.0
 offset_bottom = 266.0
 mouse_filter = 2
 
-[node name="Slot0" type="Button" parent="Column/Stage/Slots"]
+[node name="Slot0" type="Button" parent="Column/Stage/Slots" groups=["own_sound"]]
 layout_mode = 0
 offset_right = 32.0
 offset_bottom = 32.0
@@ -157,7 +152,7 @@ theme_type_variation = &"SlotButton"
 disabled = true
 icon_alignment = 1
 
-[node name="Slot1" type="Button" parent="Column/Stage/Slots"]
+[node name="Slot1" type="Button" parent="Column/Stage/Slots" groups=["own_sound"]]
 layout_mode = 0
 offset_left = 38.0
 offset_right = 70.0
@@ -167,7 +162,7 @@ theme_type_variation = &"SlotButton"
 disabled = true
 icon_alignment = 1
 
-[node name="Slot2" type="Button" parent="Column/Stage/Slots"]
+[node name="Slot2" type="Button" parent="Column/Stage/Slots" groups=["own_sound"]]
 layout_mode = 0
 offset_left = 76.0
 offset_right = 108.0
@@ -201,7 +196,7 @@ offset_right = 270.0
 offset_bottom = 418.0
 mouse_filter = 2
 
-[node name="ShelfPrev" type="Button" parent="Column/Stage"]
+[node name="ShelfPrev" type="Button" parent="Column/Stage" groups=["own_sound"]]
 visible = false
 layout_mode = 0
 offset_left = 2.0
@@ -214,7 +209,7 @@ text = "<"
 script = ExtResource("3_arrow")
 direction = -1
 
-[node name="ShelfNext" type="Button" parent="Column/Stage"]
+[node name="ShelfNext" type="Button" parent="Column/Stage" groups=["own_sound"]]
 visible = false
 layout_mode = 0
 offset_left = 236.0
@@ -251,7 +246,7 @@ accessibility_name = "Brew"
 disabled = true
 text = "Brew!"
 
-[node name="RefuseButton" type="Button" parent="Column/Stage"]
+[node name="RefuseButton" type="Button" parent="Column/Stage" groups=["own_sound"]]
 layout_mode = 0
 offset_left = 6.0
 offset_top = 424.0
@@ -262,7 +257,7 @@ accessibility_name = "Refuse this customer"
 disabled = true
 text = "Refuse"
 
-[node name="CodexButton" type="Button" parent="Column/Stage"]
+[node name="CodexButton" type="Button" parent="Column/Stage" groups=["own_sound"]]
 layout_mode = 0
 offset_left = 186.0
 offset_top = 424.0
@@ -377,126 +372,4 @@ text = "Menu"
 [node name="Fx" type="Node2D" parent="."]
 z_index = 5
 
-[node name="Modal" type="Control" parent="."]
-process_mode = 3
-anchors_preset = 0
-offset_right = 270.0
-offset_bottom = 480.0
-mouse_filter = 2
-
-[node name="Dim" type="ColorRect" parent="Modal"]
-visible = false
-layout_mode = 0
-offset_right = 270.0
-offset_bottom = 480.0
-color = Color(0.11, 0.078, 0.125, 0.6)
-
-[node name="PausePanel" type="PanelContainer" parent="Modal"]
-visible = false
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.5
-anchor_top = 1.0
-anchor_right = 0.5
-anchor_bottom = 1.0
-offset_left = -128.0
-offset_top = -241.0
-offset_right = 128.0
-offset_bottom = -32.0
-grow_horizontal = 2
-grow_vertical = 0
-
-[node name="List" type="VBoxContainer" parent="Modal/PausePanel"]
-layout_mode = 2
-theme_override_constants/separation = 6
-
-[node name="Title" type="Label" parent="Modal/PausePanel/List"]
-layout_mode = 2
-theme_type_variation = &"DarkTitleLabel"
-text = "Paused"
-horizontal_alignment = 1
-
-[node name="ResumeButton" type="Button" parent="Modal/PausePanel/List"]
-custom_minimum_size = Vector2(0, 36)
-layout_mode = 2
-accessibility_name = "Resume"
-text = "Resume"
-
-[node name="AssistRow" type="HBoxContainer" parent="Modal/PausePanel/List"]
-layout_mode = 2
-theme_override_constants/separation = 6
-
-[node name="AssistButton" type="Button" parent="Modal/PausePanel/List/AssistRow"]
-custom_minimum_size = Vector2(0, 36)
-layout_mode = 2
-size_flags_horizontal = 3
-toggle_mode = true
-text = "Assist mode: Off"
-
-[node name="AssistHelp" type="Button" parent="Modal/PausePanel/List/AssistRow"]
-custom_minimum_size = Vector2(36, 36)
-layout_mode = 2
-pivot_offset = Vector2(18, 18)
-accessibility_name = "What does Assist mode do?"
-text = "?"
-
-[node name="GentleRow" type="HBoxContainer" parent="Modal/PausePanel/List"]
-layout_mode = 2
-theme_override_constants/separation = 6
-
-[node name="GentleButton" type="Button" parent="Modal/PausePanel/List/GentleRow"]
-custom_minimum_size = Vector2(0, 36)
-layout_mode = 2
-size_flags_horizontal = 3
-toggle_mode = true
-text = "Gentle mode: Off"
-
-[node name="GentleHelp" type="Button" parent="Modal/PausePanel/List/GentleRow"]
-custom_minimum_size = Vector2(36, 36)
-layout_mode = 2
-pivot_offset = Vector2(18, 18)
-accessibility_name = "What does Gentle mode do?"
-text = "?"
-
-[node name="QuitButton" type="Button" parent="Modal/PausePanel/List"]
-custom_minimum_size = Vector2(0, 36)
-layout_mode = 2
-accessibility_name = "Quit to title"
-text = "Quit to title"
-
-[node name="ModeHelp" type="Button" parent="Modal"]
-visible = false
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.5
-anchor_top = 1.0
-anchor_right = 0.5
-anchor_bottom = 1.0
-offset_left = -128.0
-offset_top = -241.0
-offset_right = 128.0
-offset_bottom = -32.0
-grow_horizontal = 2
-grow_vertical = 0
-shortcut_feedback = false
-shortcut_in_tooltip = false
-shortcut = SubResource("Shortcut_cancel")
-flat = true
-
-[node name="Callout" type="PanelContainer" parent="Modal/ModeHelp"]
-layout_mode = 0
-offset_right = 40.0
-offset_bottom = 24.0
-mouse_filter = 2
-
-[node name="Text" type="Label" parent="Modal/ModeHelp/Callout"]
-layout_mode = 2
-theme_type_variation = &"DarkLabel"
-horizontal_alignment = 1
-
-[node name="Tail" type="TextureRect" parent="Modal/ModeHelp"]
-layout_mode = 0
-offset_right = 8.0
-offset_bottom = 6.0
-mouse_filter = 2
-flip_h = true
+[node name="Modal" parent="." instance=ExtResource("4_settings")]

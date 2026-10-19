@@ -152,6 +152,8 @@ func _card(card_size: Vector2) -> Button:
 	card.custom_minimum_size = card_size
 	card.size = card_size
 	card.focus_mode = Control.FOCUS_ALL
+	# A buy plays "buy", a refused one "nope" (_bought, _refuse), not the generic tap.
+	card.add_to_group(GameState.OWN_SOUND_GROUP)
 	return card
 
 
@@ -240,6 +242,7 @@ func _on_upgrade_pressed(upgrade: Upgrade) -> void:
 ## Feedback for a tap on `card` the coins do not cover: a shake and the reason.
 func _refuse(card: Button, what: String, price: int) -> void:
 	Juice.shake(card, 2.0, 0.2)
+	_game.sfx(&"nope")
 	_info.text = "Not enough coins: %s costs %d, you have %d." % [what, price, _game.coins]
 
 
@@ -248,6 +251,7 @@ func _refuse(card: Button, what: String, price: int) -> void:
 func _bought(card: Button, price: int) -> void:
 	Juice.squash(card, 0.25)
 	Juice.squash(_coin_icon, 0.3, 0.16)
+	_game.sfx(&"buy")
 	Juice.pop_text(self, _coins_label.get_global_rect().get_center() + Vector2(0, 14), "-%d" % price, RED)
 	_refresh()
 	if card.disabled:

@@ -102,7 +102,11 @@ func finish() -> void:
 func _show_count(t: float) -> void:
 	var counted := roundi(value * t)
 	# A negative count starts at a plain "0", never "+0".
-	_number.text = "0" if counted == 0 and value < 0 else number_format % counted
+	var text := "0" if counted == 0 and value < 0 else number_format % counted
+	if text != _number.text and t > 0.0:
+		# A tick per step of the count (Game drops ticks closer than SFX_MIN_GAP).
+		(get_node(GameState.AUTOLOAD_PATH) as GameState).sfx(&"coin_tick")
+	_number.text = text
 
 
 func _kill_count() -> void:
@@ -112,6 +116,7 @@ func _kill_count() -> void:
 
 
 func _burst() -> void:
+	(get_node(GameState.AUTOLOAD_PATH) as GameState).sfx(&"coins")
 	var from := get_global_transform().affine_inverse() * _icon.get_global_rect().get_center()
 	for i in BURST_COINS:
 		var coin := Sprite2D.new()

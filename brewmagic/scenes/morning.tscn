@@ -112,7 +112,7 @@ grow_vertical = 2
 accessibility_name = "Open the shop"
 text = "Open the shop"
 
-[node name="CodexButton" type="Button" parent="Column"]
+[node name="CodexButton" type="Button" parent="Column" groups=["own_sound"]]
 custom_minimum_size = Vector2(140, 40)
 layout_mode = 1
 anchors_preset = -1

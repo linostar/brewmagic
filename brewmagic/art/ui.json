@@ -3,7 +3,7 @@
  "texture": "ui.png",
  "size": [
   256,
-  34
+  39
  ],
  "sprites": {
   "essence_ember": {
@@ -316,6 +316,32 @@
     "#b8804c",
     "#c43c2c",
     "#f07c2c"
+   ]
+  },
+  "slider_knob": {
+   "x": 10,
+   "y": 25,
+   "w": 10,
+   "h": 14,
+   "colors": [
+    "#1c1420",
+    "#5c3c30",
+    "#8a5a3c",
+    "#b8804c",
+    "#e6b46e"
+   ]
+  },
+  "slider_knob_hot": {
+   "x": 21,
+   "y": 25,
+   "w": 10,
+   "h": 14,
+   "colors": [
+    "#1c1420",
+    "#b8804c",
+    "#e6b46e",
+    "#fbedcd",
+    "#ffc95c"
    ]
   }
  }

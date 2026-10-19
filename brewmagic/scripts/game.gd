@@ -15,9 +15,15 @@ extends Node
 ## reported with push_error and a visible error label instead of crashing; a
 ## scene that cannot start redirects with abort_to().
 ##
-## Sound: play_sfx() plays on the SFX bus (default_bus_layout.tres). Browsers
-## refuse audio before the player's first input, so nothing plays until the
-## AudioUnlock child (scripts/ui/audio_unlock.gd) reports that input (unlock_audio).
+## Sound: sfx(id) plays a game sound effect (audio/sfx/<id>.wav, tools/sfx.py) and
+## play_sfx() any stream (voice blips) on the SFX bus, from a pool of SFX_VOICES
+## players; every Button's press plays "tap" unless the button is in OWN_SOUND_GROUP
+## (it plays its own sound). Music: one track per flow state (track_for), on the
+## Music bus, crossfading over CROSSFADE_TIME when the track changes and left alone
+## when it stays. The Music and SFX bus volumes are settings (0..100, 0 mutes).
+## Browsers refuse audio before the player's first input, so nothing plays until the
+## AudioUnlock child (scripts/ui/audio_unlock.gd) reports that input (unlock_audio);
+## the requested track starts then.
 
 signal transition_finished(state: Flow)
 ## Emitted when the visible rect or the safe area changes (resize, rotation).
@@ -44,8 +50,42 @@ const COLUMN_WIDTH := 270.0
 ## Station tolerance multiplier while Gentle mode is on.
 const GENTLE_TOLERANCE_SCALE := 1.5
 const SFX_BUS := &"SFX"
-## Sound effects that may overlap (voice blips, later the rest of the SFX).
-const SFX_VOICES := 4
+const MUSIC_BUS := &"Music"
+## Sound effects that may overlap; a new one beyond this takes the oldest one's player.
+const SFX_VOICES := 8
+## The game's sound effects (tools/sfx.py EFFECTS makes one file per id).
+const SFX_PATH := "res://audio/sfx/%s.wav"
+const SFX_IDS: Array[StringName] = [
+	&"tap", &"drop", &"splash", &"slot_remove", &"stir", &"pour_fill", &"pour_stop", &"pour_spill", &"mortar",
+	&"bellows_pump", &"bellows_out", &"success", &"sloppy", &"stamp_perfect", &"stamp_good", &"stamp_meh",
+	&"stamp_misbrew", &"coins", &"tip", &"coin_tick", &"misbrew", &"door_bell", &"storm_off", &"refuse",
+	&"page_flip", &"buy", &"nope", &"codex_open", &"codex_new", &"wave", &"rush_over",
+]
+## A sound repeated within this many seconds of its last start is dropped (bursts of
+## stir rotations, pumps, coin ticks never stack into noise).
+const SFX_MIN_GAP := 0.05
+## Sounds that repeat a lot vary their pitch this much either way, so repeats do not drone.
+const SFX_JITTER: Dictionary[StringName, float] = {
+	&"tap": 0.05, &"drop": 0.06, &"stir": 0.06, &"mortar": 0.08, &"bellows_pump": 0.08, &"coin_tick": 0.1,
+	&"door_bell": 0.03, &"page_flip": 0.08, &"splash": 0.06,
+}
+## sfx_log keeps the ids of this many latest sound effects (tests read it).
+const SFX_LOG_SIZE := 64
+## Buttons in this group play their own sound instead of the generic "tap".
+const OWN_SOUND_GROUP := &"own_sound"
+const MUSIC_PATH := "res://audio/music/%s.mp3"
+## The music of each flow state (tools/music.py); a Rush Hour shop plays "rush" (track_for).
+const MUSIC_TRACKS: Dictionary[Flow, StringName] = {
+	Flow.TITLE: &"title", Flow.MORNING: &"shop", Flow.SHOP: &"shop", Flow.SUMMARY: &"shop",
+	Flow.MARKET: &"shop", Flow.ENDING: &"ending", Flow.RESULTS: &"rush",
+}
+## Seconds a change of track takes to crossfade (at most 1 s).
+const CROSSFADE_TIME := 0.8
+## Volume settings: 0..VOLUME_MAX in steps of VOLUME_STEP (0 mutes the bus).
+const VOLUME_MAX := 100
+const VOLUME_STEP := 10
+const DEFAULT_MUSIC_VOLUME := 70
+const DEFAULT_SFX_VOLUME := 80
 ## The audio driver of headless runs (no device, never mixes).
 const SILENT_AUDIO_DRIVER := "Dummy"
 const SAVE_PATH := "user://save.json"
@@ -53,7 +93,7 @@ const SAVE_PATH := "user://save.json"
 const TOOL_SAVE_PATH := "user://tool_save.json"
 ## The save format's version. Every change to the format bumps it and appends one
 ## step to save_migrations(), so saves of older versions are upgraded, not discarded.
-const SAVE_VERSION := 3
+const SAVE_VERSION := 4
 ## Upper bounds a save's numbers must respect (anything else marks it corrupt);
 ## SAVE_SCORE_MAX bounds reputation (either sign) and rush_best.
 const SAVE_COINS_MAX := 999999
@@ -74,13 +114,18 @@ const V1_RUSH_HOUR_FLAG := "rush_hour_unlocked"
 ## A version 1 save from the two-day build at this day (market closed, no flags) had
 ## finished that build's story; the version 2 step reopens the market before it.
 const V1_STORY_OVER_DAY := 3
-const SETTINGS_KEYS: Array[String] = ["assist", "gentle"]
+## The saved settings: the modes (true or false) and the volumes (whole 0..VOLUME_MAX).
+const SETTINGS_KEYS: Array[String] = ["assist", "gentle", "music", "sfx"]
+const VOLUME_SETTINGS: Array[String] = ["music", "sfx"]
 const CODEX_WORDS := "words"
 const CODEX_RECIPES := "recipes"
 
 ## Settings, persisted in the save. Stations read them through the shop when they begin.
 var assist_mode := false
 var gentle_mode := false
+## Music and SFX bus volumes, 0..VOLUME_MAX (set_music_volume, set_sfx_volume).
+var music_volume := DEFAULT_MUSIC_VOLUME
+var sfx_volume := DEFAULT_SFX_VOLUME
 
 ## Progress, persisted in the save. `day` is the story day the next morning shows
 ## (past the last day once the story is done); `at_market` means the evening market
@@ -125,13 +170,35 @@ var state := Flow.TITLE
 var flow_args: Dictionary = {}
 ## True once the player has touched, clicked or pressed a key (sound may play).
 var audio_unlocked := false
-## How many play_sfx() calls played (tests count voice blips with it).
+## How many sounds played (sfx() and play_sfx(); tests count voice blips with it).
 var sfx_played := 0
+## The ids of the latest sfx() sounds that played, oldest first (SFX_LOG_SIZE at most).
+var sfx_log: Array[StringName] = []
+## The music track the flow asks for (MUSIC_TRACKS), "" before the first; it plays
+## once audio is unlocked. music_changes counts how often it changed (a crossfade each).
+var music_track := &""
+var music_changes := 0
+## The track last started (audible once audio is unlocked); "" before the first.
+## Without an audio device the track is only recorded here, never played.
+var music_started := &""
 
 var _transitioning := false
 var _visible_rect := Rect2()
 var _safe_rect := Rect2()
-var _sfx: AudioStreamPlayer
+var _sfx_players: Array[AudioStreamPlayer] = []
+## Per pool player: the Game clock when its sound started (the oldest is taken first).
+var _sfx_started: Array[float] = []
+var _sounds: Dictionary[StringName, AudioStream] = {}
+## Sound id -> the Game clock when it last started (SFX_MIN_GAP).
+var _sfx_last: Dictionary[StringName, float] = {}
+var _sfx_rng := RandomNumberGenerator.new()
+var _music_players: Array[AudioStreamPlayer] = []
+## The index in _music_players of the one playing (or fading in) the current track.
+var _music_current := 0
+var _music_fade: Tween
+var _tracks: Dictionary[StringName, AudioStream] = {}
+## Seconds since start, advanced in _process (also while paused): the SFX clock.
+var _clock := 0.0
 var _told_audio_locked := false
 
 @onready var _curtain: ColorRect = $Fade/Curtain
@@ -139,18 +206,31 @@ var _told_audio_locked := false
 
 
 func _ready() -> void:
-	if AudioServer.get_bus_index(SFX_BUS) < 0:
-		push_error("[Game] Audio bus '%s' is missing from default_bus_layout.tres; sound effects play on Master" % SFX_BUS)
-	_sfx = AudioStreamPlayer.new()
-	_sfx.name = "Sfx"
-	_sfx.bus = SFX_BUS
-	_sfx.max_polyphony = SFX_VOICES
-	add_child(_sfx)
+	for bus: StringName in [SFX_BUS, MUSIC_BUS]:
+		if AudioServer.get_bus_index(bus) < 0:
+			push_error("[Game] Audio bus '%s' is missing from default_bus_layout.tres; its sounds play on Master" % bus)
+	for i in SFX_VOICES:
+		var player := AudioStreamPlayer.new()
+		player.name = "Sfx%d" % i
+		player.bus = SFX_BUS
+		add_child(player)
+		_sfx_players.append(player)
+		_sfx_started.append(0.0)
+	for i in 2:
+		var player := AudioStreamPlayer.new()
+		player.name = "Music%d" % i
+		player.bus = MUSIC_BUS
+		add_child(player)
+		_music_players.append(player)
+	_sfx_rng.randomize()
+	get_tree().node_added.connect(_on_node_added)
 	# Tool runs (the tests, the project check, the headless main-scene run) drive the
 	# tree from a SceneTree script; they must never read or overwrite the player's save.
 	if get_tree().get_script() != null:
 		save_path = TOOL_SAVE_PATH
 	load_game()
+	# The first scene (the title) was loaded before this autoload's goto(); ask for its music.
+	play_music(track_for(state, flow_args))
 	_fit_window()
 	get_viewport().size_changed.connect(_update_screen_fit)
 	_update_screen_fit()
@@ -203,6 +283,7 @@ func goto(new_state: Flow, args: Dictionary = {}) -> void:
 		return
 	_transitioning = true
 	_log_transition("%s -> %s (%s) args=%s" % [from_name, to_name, path, args])
+	play_music(track_for(new_state, args))
 	_error_label.hide()
 	await _fade(1.0)
 	var error := get_tree().change_scene_to_file(path)
@@ -229,31 +310,163 @@ func abort_to(fallback: Flow, message: String) -> void:
 	_report_error(message)
 
 
-## Called on the player's first input; from then on play_sfx() plays.
+func _process(delta: float) -> void:
+	_clock += delta
+
+
+## Called on the player's first input; from then on sounds play and the music starts.
 func unlock_audio() -> void:
 	if audio_unlocked:
 		return
 	audio_unlocked = true
 	print("[Game] Audio unlocked by the first input")
+	_start_track()
 
 
-## Plays `stream` on the SFX bus at `pitch`. Before the first input (audio_unlocked)
-## it plays nothing (logged once), so browsers never see an autoplay attempt.
-## Without an audio device (the Dummy driver of headless runs) it only counts: that
-## driver never mixes, so its playbacks would never finish and leak at exit.
+## Plays sound effect `id` (one of SFX_IDS) on the SFX bus at `pitch`, varied by its
+## SFX_JITTER. Dropped when the same sound started less than SFX_MIN_GAP ago.
+func sfx(id: StringName, pitch := 1.0) -> void:
+	if not _sounds.has(id):
+		var path := SFX_PATH % id
+		var stream := load(path) as AudioStream if id in SFX_IDS and ResourceLoader.exists(path) else null
+		if stream == null:
+			push_error("[Game] No sound effect '%s' at %s (SFX_IDS, run python3 tools/sfx.py)" % [id, path])
+		_sounds[id] = stream
+	if _sounds[id] == null or (not audio_unlocked and _locked()):
+		return
+	if _clock - float(_sfx_last.get(id, -INF)) < SFX_MIN_GAP:
+		return
+	_sfx_last[id] = _clock
+	sfx_log.append(id)
+	if sfx_log.size() > SFX_LOG_SIZE:
+		sfx_log.pop_front()
+	var jitter: float = SFX_JITTER.get(id, 0.0)
+	play_sfx(_sounds[id], pitch * _sfx_rng.randf_range(1.0 - jitter, 1.0 + jitter))
+
+
+## Stops sound effect `id` wherever it is still playing (a pour's fill when it stops).
+func stop_sfx(id: StringName) -> void:
+	var stream: AudioStream = _sounds.get(id)
+	for player in _sfx_players:
+		if stream != null and player.stream == stream and player.playing:
+			player.stop()
+
+
+## Plays `stream` on the SFX bus at `pitch` on a free pool player (else the one that
+## started first). Before the first input (audio_unlocked) it plays nothing (logged
+## once), so browsers never see an autoplay attempt. Without an audio device (the
+## Dummy driver of headless runs) it only counts: that driver never mixes, so its
+## playbacks would never finish and leak at exit.
 func play_sfx(stream: AudioStream, pitch := 1.0) -> void:
-	if not audio_unlocked:
-		if not _told_audio_locked:
-			print("[Game] Sound skipped until the first input unlocks audio")
-			_told_audio_locked = true
+	if not audio_unlocked and _locked():
 		return
 	sfx_played += 1
 	if AudioServer.get_driver_name() == SILENT_AUDIO_DRIVER:
 		return
-	if _sfx.stream != stream:
-		_sfx.stream = stream
-	_sfx.pitch_scale = pitch
-	_sfx.play()
+	var pick := 0
+	for i in _sfx_players.size():
+		if not _sfx_players[i].playing:
+			pick = i
+			break
+		if _sfx_started[i] < _sfx_started[pick]:
+			pick = i
+	var player := _sfx_players[pick]
+	_sfx_started[pick] = _clock
+	player.stream = stream
+	player.pitch_scale = pitch
+	player.play()
+
+
+## Before the first input: logs once that sounds wait for it, and says so (true).
+func _locked() -> bool:
+	if not _told_audio_locked:
+		print("[Game] Sound skipped until the first input unlocks audio")
+		_told_audio_locked = true
+	return true
+
+
+## The music of flow state `to` entered with `args`: MUSIC_TRACKS, "rush" for a Rush Hour shop.
+static func track_for(to: Flow, args: Dictionary) -> StringName:
+	if to == Flow.SHOP and args.has("rush"):
+		return &"rush"
+	return MUSIC_TRACKS[to]
+
+
+## Asks for music `track` (MUSIC_TRACKS): the same track keeps playing; another one
+## crossfades in over CROSSFADE_TIME (once audio is unlocked; until then it waits).
+func play_music(track: StringName) -> void:
+	if track == music_track:
+		return
+	music_track = track
+	music_changes += 1
+	print("[Game] Music: %s" % track)
+	if audio_unlocked:
+		_start_track()
+
+
+## Crossfades from the playing track to music_track (nothing without an audio device).
+func _start_track() -> void:
+	if music_track == &"":
+		return
+	music_started = music_track
+	if AudioServer.get_driver_name() == SILENT_AUDIO_DRIVER:
+		return
+	if not _tracks.has(music_track):
+		var path := MUSIC_PATH % music_track
+		_tracks[music_track] = load(path) as AudioStream if ResourceLoader.exists(path) else null
+		if _tracks[music_track] == null:
+			push_error("[Game] No music '%s' at %s (run python3 tools/music.py)" % [music_track, path])
+	var stream := _tracks[music_track]
+	if stream == null:
+		return
+	if _music_fade != null:
+		_music_fade.kill()
+	var old := _music_players[_music_current]
+	_music_current = 1 - _music_current
+	var player := _music_players[_music_current]
+	player.stream = stream
+	player.volume_linear = 0.0
+	player.play()
+	_music_fade = create_tween().set_parallel()
+	_music_fade.tween_property(player, "volume_linear", 1.0, CROSSFADE_TIME)
+	if old.playing:
+		_music_fade.tween_property(old, "volume_linear", 0.0, CROSSFADE_TIME)
+		_music_fade.chain().tween_callback(old.stop)
+
+
+## Sets the music volume (0..VOLUME_MAX, snapped to VOLUME_STEP), applies it to the Music bus and saves.
+func set_music_volume(value: int) -> void:
+	music_volume = clampi(snappedi(value, VOLUME_STEP), 0, VOLUME_MAX)
+	_apply_volumes()
+	save_game()
+
+
+## Sets the sound effects volume (0..VOLUME_MAX, snapped to VOLUME_STEP), applies it to the SFX bus and saves.
+func set_sfx_volume(value: int) -> void:
+	sfx_volume = clampi(snappedi(value, VOLUME_STEP), 0, VOLUME_MAX)
+	_apply_volumes()
+	save_game()
+
+
+## Sets the Music and SFX buses to the volume settings (linear; 0 mutes the bus).
+func _apply_volumes() -> void:
+	for entry: Array in [[MUSIC_BUS, music_volume], [SFX_BUS, sfx_volume]]:
+		var bus := AudioServer.get_bus_index(entry[0])
+		if bus < 0:
+			continue
+		AudioServer.set_bus_volume_linear(bus, entry[1] / float(VOLUME_MAX))
+		AudioServer.set_bus_mute(bus, entry[1] == 0)
+
+
+## Every Button entering the tree plays "tap" when pressed, unless it plays its own sound.
+func _on_node_added(node: Node) -> void:
+	var button := node as BaseButton
+	if button != null and not button.is_in_group(OWN_SOUND_GROUP) and not button.pressed.is_connected(_on_button_pressed):
+		button.pressed.connect(_on_button_pressed)
+
+
+func _on_button_pressed() -> void:
+	sfx(&"tap")
 
 
 func is_transitioning() -> bool:
@@ -498,7 +711,7 @@ func save_game() -> void:
 		"version": SAVE_VERSION, "day": day, "at_market": at_market, "coins": coins, "reputation": reputation,
 		"stock": stock, "upgrades": upgrades, "codex": codex, "flags": flags, "endings": endings,
 		"rush_hour_unlocked": rush_hour_unlocked, "rush_best": rush_best, "rush_best_assisted": rush_best_assisted,
-		"settings": {"assist": assist_mode, "gentle": gentle_mode},
+		"settings": {"assist": assist_mode, "gentle": gentle_mode, "music": music_volume, "sfx": sfx_volume},
 	}
 	var temp := save_path + ".tmp"
 	var file := FileAccess.open(temp, FileAccess.WRITE)
@@ -516,18 +729,23 @@ func save_game() -> void:
 		DirAccess.remove_absolute(temp)
 		_report_error("Could not replace save '%s' with '%s': %s; the save is unchanged" % [save_path, temp, error_string(replaced)])
 		return
-	print("[Game] Saved to %s: day %d%s, %d coins, reputation %d, upgrades %s, flags %s, endings %s, Rush Hour %s (best %d%s), assist %s, gentle %s" % [
-		save_path, day, " (market)" if at_market else "", coins, reputation, upgrades, flags, endings, rush_hour_unlocked, rush_best, " assisted" if rush_best_assisted else "", assist_mode, gentle_mode])
+	print("[Game] Saved to %s: day %d%s, %d coins, reputation %d, upgrades %s, flags %s, endings %s, Rush Hour %s (best %d%s), assist %s, gentle %s, music %d, sfx %d" % [
+		save_path, day, " (market)" if at_market else "", coins, reputation, upgrades, flags, endings, rush_hour_unlocked, rush_best, " assisted" if rush_best_assisted else "", assist_mode, gentle_mode, music_volume, sfx_volume])
 
 
 ## Loads save_path into progress and settings. A missing save starts fresh silently
 ## (a log line only); an unreadable or corrupt one is reported (push_error and the
 ## error label), moved to backup_path() and replaced by defaults. A JSON instance
 ## reports parse errors as return values, so each problem is reported once, by us.
+## The volume settings then apply to the buses.
 func load_game() -> void:
+	_load_save()
+	_apply_volumes()
+
+
+func _load_save() -> void:
 	_reset_progress()
-	assist_mode = false
-	gentle_mode = false
+	_reset_settings()
 	if not FileAccess.file_exists(save_path):
 		print("[Game] No save at %s; starting fresh" % save_path)
 		return
@@ -547,12 +765,11 @@ func load_game() -> void:
 	var problem := _apply_save(json.data)
 	if problem != "":
 		_reset_progress()
-		assist_mode = false
-		gentle_mode = false
+		_reset_settings()
 		_discard_save("corrupt (%s)" % problem)
 		return
-	print("[Game] Loaded save from %s: day %d%s, %d coins, reputation %d, stock %s, upgrades %s, flags %s, endings %s, Rush Hour %s (best %d%s), assist %s, gentle %s" % [
-		save_path, day, " (market)" if at_market else "", coins, reputation, stock, upgrades, flags, endings, rush_hour_unlocked, rush_best, " assisted" if rush_best_assisted else "", assist_mode, gentle_mode])
+	print("[Game] Loaded save from %s: day %d%s, %d coins, reputation %d, stock %s, upgrades %s, flags %s, endings %s, Rush Hour %s (best %d%s), assist %s, gentle %s, music %d, sfx %d" % [
+		save_path, day, " (market)" if at_market else "", coins, reputation, stock, upgrades, flags, endings, rush_hour_unlocked, rush_best, " assisted" if rush_best_assisted else "", assist_mode, gentle_mode, music_volume, sfx_volume])
 
 
 ## Where a corrupt save is moved: save.json -> save.corrupt.json.
@@ -603,6 +820,13 @@ func _update_screen_fit() -> void:
 	_safe_rect = safe
 	print("[Game] ScreenFit: visible %s, safe %s, column %s" % [visible, safe, column_rect()])
 	screen_fit_changed.emit()
+
+
+func _reset_settings() -> void:
+	assist_mode = false
+	gentle_mode = false
+	music_volume = DEFAULT_MUSIC_VOLUME
+	sfx_volume = DEFAULT_SFX_VOLUME
 
 
 func _reset_progress() -> void:
@@ -687,10 +911,19 @@ func _apply_save(data: Variant) -> String:
 	rush_hour_unlocked = saved["rush_hour_unlocked"]
 	rush_best_assisted = saved["rush_best_assisted"]
 	var settings: Dictionary = saved["settings"]
-	if settings.size() != SETTINGS_KEYS.size() or not SETTINGS_KEYS.all(func(key: String) -> bool: return typeof(settings.get(key)) == TYPE_BOOL):
-		return "settings must be exactly %s, each true or false" % [SETTINGS_KEYS]
+	if settings.size() != SETTINGS_KEYS.size() or not SETTINGS_KEYS.all(func(key: String) -> bool: return settings.has(key)):
+		return "settings must be exactly %s" % [SETTINGS_KEYS]
+	for key in SETTINGS_KEYS:
+		var setting: Variant = settings[key]
+		if key in VOLUME_SETTINGS:
+			if not _is_whole(setting) or int(setting) < 0 or int(setting) > VOLUME_MAX:
+				return "settings.%s is not a whole number 0..%d" % [key, VOLUME_MAX]
+		elif typeof(setting) != TYPE_BOOL:
+			return "settings.%s is not true or false" % key
 	assist_mode = settings["assist"]
 	gentle_mode = settings["gentle"]
+	music_volume = int(settings["music"])
+	sfx_volume = int(settings["sfx"])
 	return ""
 
 
@@ -718,7 +951,7 @@ static func migrate_save(saved: Dictionary, migrations: Array[Callable], target:
 ## version i + 2. Steps run before the save is validated, so they must read keys
 ## with get() and leave anything malformed for the validation to report.
 static func save_migrations() -> Array[Callable]:
-	return [_save_v1_to_v2, _save_v2_to_v3]
+	return [_save_v1_to_v2, _save_v2_to_v3, _save_v3_to_v4]
 
 
 ## Version 1 -> 2: the ending reached and the Rush Hour unlock move out of the story's
@@ -741,6 +974,14 @@ static func _save_v1_to_v2(saved: Dictionary) -> void:
 ## best (Rush Hour did not exist), so it is false.
 static func _save_v2_to_v3(saved: Dictionary) -> void:
 	saved["rush_best_assisted"] = false
+
+
+## Version 3 -> 4: the settings gain the music and sound effects volumes, at their defaults.
+static func _save_v3_to_v4(saved: Dictionary) -> void:
+	var settings: Variant = saved.get("settings")
+	if settings is Dictionary:
+		settings["music"] = DEFAULT_MUSIC_VOLUME
+		settings["sfx"] = DEFAULT_SFX_VOLUME
 
 
 ## Reports `problem`, moves the bad save to backup_path() and writes defaults in
