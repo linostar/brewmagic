@@ -1,0 +1,184 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/settings_panel.gd" id="1_settings"]
+[ext_resource type="Script" path="res://scripts/ui/volume_slider.gd" id="2_slider"]
+
+[sub_resource type="InputEventAction" id="InputEventAction_cancel"]
+action = &"ui_cancel"
+
+[sub_resource type="Shortcut" id="Shortcut_cancel"]
+events = [SubResource("InputEventAction_cancel")]
+
+[node name="SettingsPanel" type="Control"]
+process_mode = 3
+layout_mode = 3
+anchors_preset = 0
+offset_right = 270.0
+offset_bottom = 480.0
+mouse_filter = 2
+script = ExtResource("1_settings")
+
+[node name="Dim" type="ColorRect" parent="."]
+visible = false
+layout_mode = 0
+offset_right = 270.0
+offset_bottom = 480.0
+color = Color(0.11, 0.078, 0.125, 0.6)
+
+[node name="Panel" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -128.0
+offset_top = -48.0
+offset_right = 128.0
+offset_bottom = -14.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="List" type="VBoxContainer" parent="Panel"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Title" type="Label" parent="Panel/List"]
+layout_mode = 2
+theme_type_variation = &"DarkTitleLabel"
+text = "Settings"
+horizontal_alignment = 1
+
+[node name="AssistRow" type="HBoxContainer" parent="Panel/List"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="AssistButton" type="Button" parent="Panel/List/AssistRow"]
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+text = "Assist mode: Off"
+
+[node name="AssistHelp" type="Button" parent="Panel/List/AssistRow"]
+custom_minimum_size = Vector2(34, 34)
+layout_mode = 2
+pivot_offset = Vector2(17, 17)
+accessibility_name = "What does Assist mode do?"
+text = "?"
+
+[node name="GentleRow" type="HBoxContainer" parent="Panel/List"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="GentleButton" type="Button" parent="Panel/List/GentleRow"]
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+text = "Gentle mode: Off"
+
+[node name="GentleHelp" type="Button" parent="Panel/List/GentleRow"]
+custom_minimum_size = Vector2(34, 34)
+layout_mode = 2
+pivot_offset = Vector2(17, 17)
+accessibility_name = "What does Gentle mode do?"
+text = "?"
+
+[node name="MusicRow" type="HBoxContainer" parent="Panel/List"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Label" type="Label" parent="Panel/List/MusicRow"]
+custom_minimum_size = Vector2(52, 0)
+layout_mode = 2
+theme_type_variation = &"DarkLabel"
+text = "Music"
+vertical_alignment = 1
+
+[node name="Slider" type="HSlider" parent="Panel/List/MusicRow"]
+custom_minimum_size = Vector2(96, 34)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+max_value = 100.0
+step = 10.0
+value = 70.0
+scrollable = false
+script = ExtResource("2_slider")
+
+[node name="Value" type="Label" parent="Panel/List/MusicRow"]
+custom_minimum_size = Vector2(28, 0)
+layout_mode = 2
+theme_type_variation = &"DarkLabel"
+text = "70"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="SfxRow" type="HBoxContainer" parent="Panel/List"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Label" type="Label" parent="Panel/List/SfxRow"]
+custom_minimum_size = Vector2(52, 0)
+layout_mode = 2
+theme_type_variation = &"DarkLabel"
+text = "Sounds"
+vertical_alignment = 1
+
+[node name="Slider" type="HSlider" parent="Panel/List/SfxRow"]
+custom_minimum_size = Vector2(96, 34)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+max_value = 100.0
+step = 10.0
+value = 80.0
+scrollable = false
+script = ExtResource("2_slider")
+
+[node name="Value" type="Label" parent="Panel/List/SfxRow"]
+custom_minimum_size = Vector2(28, 0)
+layout_mode = 2
+theme_type_variation = &"DarkLabel"
+text = "80"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="ModeHelp" type="Button" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -128.0
+offset_top = -277.0
+offset_right = 128.0
+offset_bottom = -14.0
+grow_horizontal = 2
+grow_vertical = 0
+shortcut_feedback = false
+shortcut_in_tooltip = false
+shortcut = SubResource("Shortcut_cancel")
+flat = true
+
+[node name="Callout" type="PanelContainer" parent="ModeHelp"]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 24.0
+mouse_filter = 2
+
+[node name="Text" type="Label" parent="ModeHelp/Callout"]
+layout_mode = 2
+theme_type_variation = &"DarkLabel"
+horizontal_alignment = 1
+
+[node name="Tail" type="TextureRect" parent="ModeHelp"]
+layout_mode = 0
+offset_right = 8.0
+offset_bottom = 6.0
+mouse_filter = 2
+flip_h = true

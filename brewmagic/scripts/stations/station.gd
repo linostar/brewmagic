@@ -185,6 +185,8 @@ func _show_assist_prompt() -> void:
 	_assist_button.text = _assist_caption()
 	_assist_button.accessibility_name = _assist_button.text
 	_assist_button.focus_mode = Control.FOCUS_ALL
+	# Its press finishes the station, whose success cue plays the sound (no generic tap).
+	_assist_button.add_to_group(GameState.OWN_SOUND_GROUP)
 	_assist_button.anchor_left = 0.5
 	_assist_button.anchor_right = 0.5
 	_assist_button.anchor_top = 1.0

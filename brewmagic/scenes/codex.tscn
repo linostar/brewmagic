@@ -108,7 +108,7 @@ text = "Recipes"
 layout_mode = 2
 theme_override_constants/separation = 4
 
-[node name="PrevButton" type="Button" parent="Column/Panel/List/Footer"]
+[node name="PrevButton" type="Button" parent="Column/Panel/List/Footer" groups=["own_sound"]]
 custom_minimum_size = Vector2(36, 36)
 layout_mode = 2
 accessibility_name = "Previous page"
@@ -122,7 +122,7 @@ text = "Page 1/1"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="NextButton" type="Button" parent="Column/Panel/List/Footer"]
+[node name="NextButton" type="Button" parent="Column/Panel/List/Footer" groups=["own_sound"]]
 custom_minimum_size = Vector2(36, 36)
 layout_mode = 2
 accessibility_name = "Next page"

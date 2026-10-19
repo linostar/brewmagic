@@ -11,6 +11,9 @@ extends Control
 ## starts a new game.
 ## Once the story has been finished (Game.rush_hour_unlocked) RushButton starts a
 ## Rush Hour run, with the best score under it (RushBest, "assisted" when set with Assist).
+## SettingsButton (bottom) opens the shared settings panel (Settings: the mode toggles
+## with their "?" help and the Music and SFX volumes) with a Close button (also
+## ui_cancel); closing it gives focus back to SettingsButton.
 
 const CONTENT_ERROR_MESSAGE := "Content error: %d problem(s) in data/*.json, see the log. The shop stays closed."
 const NEW_GAME_TEXT := "New game"
@@ -26,6 +29,8 @@ var _confirm_timer: SceneTreeTimer
 @onready var _new_game_button: Button = $Column/NewGameButton
 @onready var _rush_button: Button = $Column/RushButton
 @onready var _rush_best: Label = $Column/RushBest
+@onready var _settings_button: Button = $Column/SettingsButton
+@onready var _settings: SettingsPanel = $Settings
 
 
 func _ready() -> void:
@@ -35,6 +40,15 @@ func _ready() -> void:
 	_open_button.pressed.connect(_on_open_pressed)
 	_new_game_button.pressed.connect(_on_new_game_pressed)
 	_rush_button.pressed.connect(_on_rush_pressed)
+	_settings_button.pressed.connect(open_settings)
+	_settings.set_title("Settings")
+	var close := _settings.add_button("CloseButton", "Close", false)
+	close.shortcut = Shortcut.new()
+	var cancel := InputEventAction.new()
+	cancel.action = &"ui_cancel"
+	close.shortcut.events = [cancel]
+	close.shortcut_feedback = false
+	close.pressed.connect(close_settings)
 	var content_errors := Content.errors()
 	if not content_errors.is_empty():
 		print("[Title] Content has %d problem(s); the shop stays closed" % content_errors.size())
@@ -54,6 +68,20 @@ func _ready() -> void:
 	_rush_best.accessibility_name = "Rush Hour best: %s" % _rush_best.text.trim_prefix("Best: ")
 	# Keyboard users can press Enter straight away; the focus ring shows once they navigate.
 	_open_button.grab_focus(true)
+
+
+## Opens the settings panel over the title; its first toggle takes focus.
+func open_settings() -> void:
+	_settings.open(_column, $Settings/Panel/List/AssistRow/AssistButton as Button)
+	print("[Title] Settings opened")
+
+
+func close_settings() -> void:
+	if not _settings.is_open():
+		return
+	_settings.close()
+	_settings_button.grab_focus(true)
+	print("[Title] Settings closed")
 
 
 ## Shows `message` in the banner at the top of the screen.
