@@ -166,6 +166,10 @@ func _tests() -> Array[Callable]:
 		_test_shop_rush_run,
 		_test_rush_screens,
 		_test_rush_keyboard_assist,
+		_test_stat_tile_fits,
+		_test_summary_tally,
+		_test_results_tally,
+		_test_results_screens_layout,
 	]
 
 
@@ -805,17 +809,14 @@ func _test_shop_day1_assist() -> void:
 	var result := _game.flow_args
 	_check(result.get("served") == 3 and result.get("customers") == 3 and str(result.get("grades")) == "[0, 3, 0, 0]" and result.get("earned") == 27 and result.get("tips") == expected_tips and result.get("reputation") == 3 and result.get("stormed_off") == 0, "summary numbers", str(result))
 	_check(_game.day == 2 and _game.at_market and _game.coins == expected_coins and _game.stock == left and _game.reputation == 3, "finish_day commits the day and opens the day-2 market", "day %d market %s coins %d rep %d stock %s" % [_game.day, _game.at_market, _game.coins, _game.reputation, _game.stock])
-	var summary := current_scene
-	var served_text := (summary.get_node("Column/Card/List/Served") as Label).text
-	var money := (summary.get_node("Column/Card/List/Money") as Label).text
-	_check(served_text == "Served 3 of 3" and "Coins earned: +27" in money and ("Tips: +%d" % expected_tips) in money and "Reputation: +3" in money and "Stormed off: 0" in money, "summary shows the day", "%s / %s" % [served_text, money])
-	var grade_texts := PackedStringArray()
-	for cell in summary.get_node("Column/Card/List/Grades").get_children():
-		grade_texts.append((cell.get_child(1) as Label).text)
-	_check(grade_texts == PackedStringArray(["Perfect: 0", "Good: 3", "Meh: 0", "Misbrew: 0"]), "summary counts each grade with its icon", str(grade_texts))
+	var summary := current_scene as Summary
+	await _until(func() -> bool: return not summary.is_tallying(), FLOW_FRAMES)
+	var shown := _tile_texts(summary)
+	_check(shown == ["3/3", "+27", "+%d" % expected_tips, "+3 now 3"] and _row_text(summary, "Counts/StormedOff") == "Stormed off: 0", "summary shows the day on its tiles", str(shown))
+	_check(_grade_texts(summary) == PackedStringArray(["Perfect 0", "Good 3", "Meh 0", "Misbrew 0"]), "summary counts each grade with its icon", str(_grade_texts(summary)))
 	var saved := _read_save()
 	_check(saved.get("day") == 2.0 and saved.get("at_market") == true and saved.get("coins") == float(expected_coins), "the finished day is saved", str(saved))
-	await _tap(summary.get_node("Column/ContinueButton") as Button)
+	await _tap(summary.get_node("Column/Layout/ContinueButton") as Button)
 	await _until(func() -> bool: return _game.state == GameState.Flow.MARKET and not _game.is_transitioning(), FLOW_FRAMES)
 	var market := current_scene as Market
 	if market == null:
@@ -886,10 +887,11 @@ func _test_shop_last_day_storm_off() -> void:
 	_check(result.get("served") == count - 1 and result.get("stormed_off") == 1 and result.get("reputation") == reputation, "last day: summary numbers count the storm-off", str(result))
 	_check(_game.stock == expected_stock, "last day: the ingredients left in the pot are back in stock", "%s, expected %s" % [_game.stock, expected_stock])
 	_check(_game.day == last + 1 and not _game.at_market and not _game.can_continue(), "last day: the story is over (no market, nothing to continue)", "day %d market %s" % [_game.day, _game.at_market])
-	var summary := current_scene
-	var money := (summary.get_node("Column/Card/List/Money") as Label).text
-	_check(("Reputation: %+d" % reputation) in money and "Stormed off: 1" in money, "last day: the summary shows the storm-off and the reputation change", money)
-	var button := summary.get_node("Column/ContinueButton") as Button
+	var summary := current_scene as Summary
+	await _until(func() -> bool: return not summary.is_tallying(), FLOW_FRAMES)
+	var money := "%s / %s" % [summary.tile("Reputation").number_text(), _row_text(summary, "Counts/StormedOff")]
+	_check(money == "%+d / Stormed off: 1" % reputation, "last day: the summary shows the storm-off and the reputation change", money)
+	var button := summary.get_node("Column/Layout/ContinueButton") as Button
 	_check(button.text == "The ending", "last day: the summary leads to the ending", button.text)
 	var recorded := _read_save()
 	var reached := Story.ending(_game.flags, _game.reputation)
@@ -1335,8 +1337,14 @@ func _test_shop_keyboard_day1_assist() -> void:
 			await _action(&"ui_accept")
 		_check(await _until(func() -> bool: return shop.served == served + 1, FLOW_FRAMES), label + ": served", "served %d" % shop.served)
 	_check(shop.served == day.customers.size() and shop.stormed_off == 0, "keyboard day 1 serves everyone", "%d %d" % [shop.served, shop.stormed_off])
-	var on_summary := await _until(func() -> bool: return current_scene is Summary and not _game.is_transitioning() and root.gui_get_focus_owner() == current_scene.get_node("Column/ContinueButton"), FLOW_FRAMES)
+	var on_summary := await _until(func() -> bool: return current_scene is Summary and not _game.is_transitioning() and root.gui_get_focus_owner() == current_scene.get_node("Column/Layout/ContinueButton"), FLOW_FRAMES)
 	_check(on_summary, "keyboard day 1 ends on the summary's focused To the market button", str(root.gui_get_focus_owner()))
+	if on_summary:
+		# The first Enter completes the tally (the numbers final, still on the summary), the second continues.
+		var summary := current_scene as Summary
+		var tallying := summary.is_tallying()
+		await _action(&"ui_accept")
+		_check(tallying and current_scene == summary and not summary.is_tallying() and not _game.is_transitioning() and _tile_texts(summary)[0] == "3/3" and _tile_texts(summary)[1] == "+%d" % summary.tile("Coins earned").value, "keyboard: the first Enter completes the summary's tally", "%s %s" % [tallying, _tile_texts(summary)])
 	await _action(&"ui_accept")
 	await _until(func() -> bool: return current_scene is Market and not _game.is_transitioning(), FLOW_FRAMES)
 	var market := current_scene as Market
@@ -1930,8 +1938,8 @@ func _test_shop_refuse() -> void:
 	_check(result.get("refused") == 2, "refuse: the day's result counts refusals", str(result))
 	_game.goto(GameState.Flow.SUMMARY, result)
 	await _game.transition_finished
-	var money := (current_scene.get_node("Column/Card/List/Money") as Label).text
-	_check("Refused: 2" in money, "refuse: the summary shows the refusals", money)
+	var money := _row_text(current_scene, "Counts/Refused")
+	_check(money == "Refused: 2", "refuse: the summary shows the refusals", money)
 	await _close_shop()
 
 
@@ -2473,7 +2481,7 @@ func _test_morning_missing_day_returns_to_title() -> void:
 func _test_loop_screens_size_and_zone() -> void:
 	var screens: Array[Array] = [
 		[GameState.Flow.MORNING, {}, ["Column/OpenShopButton", "Column/CodexButton"]],
-		[GameState.Flow.SUMMARY, {"day": 1, "title": "Test", "customers": 3, "served": 2, "stormed_off": 1, "refused": 1, "grades": [1, 1, 0, 0], "earned": 20, "tips": 2, "reputation": 1, "coins": 42}, ["Column/ContinueButton"]],
+		[GameState.Flow.SUMMARY, {"day": 1, "title": "Test", "customers": 3, "served": 2, "stormed_off": 1, "refused": 1, "grades": [1, 1, 0, 0], "earned": 20, "tips": 2, "reputation": 1, "coins": 42}, ["Column/Layout/ContinueButton"]],
 		[GameState.Flow.MARKET, {}, ["Column/Shop/Tabs/StockTab", "Column/Shop/Tabs/UpgradesTab", "Column/Shop/CodexButton", "Column/Shop/NextDayButton"]],
 		[GameState.Flow.TITLE, {}, ["Column/OpenShopButton", "Column/NewGameButton"]],
 	]
@@ -2784,7 +2792,7 @@ func _test_shop_rush_run() -> void:
 		var args := _game.flow_args
 		_check(results and int(args.get("score", -1)) == score and args.get("new_best") == true and int(args.get("best", -1)) == score and args.get("assisted") == true, "rush run: the results show the score as the new best, assisted", str(args))
 		_check(_game.rush_best == score and _game.rush_best_assisted and int(_read_save().get("rush_best", -1)) == score and _read_save().get("rush_best_assisted") == true, "rush run: the best and its assisted marker are saved", "%d %s" % [_game.rush_best, _game.rush_best_assisted])
-		_check(results and (current_scene.get_node("Column/NewBest") as Label).visible and root.gui_get_focus_owner() == current_scene.get_node("Column/AgainButton"), "rush run: New best! shows and Again has focus", str(root.gui_get_focus_owner()))
+		_check(results and (current_scene.get_node("Column/Layout/Header/NewBest") as Label).visible and root.gui_get_focus_owner() == current_scene.get_node("Column/Layout/AgainButton"), "rush run: New best! shows and Again has focus", str(root.gui_get_focus_owner()))
 	_check([_game.coins, _game.stock, _game.reputation, _game.day] == story, "rush run: the story's coins, stock, reputation and day are untouched", "%s vs %s" % [[_game.coins, _game.stock, _game.reputation, _game.day], story])
 	_game.assist_mode = false
 	await _goto_scene(GameState.Flow.TITLE)
@@ -2827,24 +2835,25 @@ func _test_rush_screens() -> void:
 	_game.finish_rush(results)
 	await _game.transition_finished
 	var screen := current_scene as Results
-	_check(screen != null and _game.rush_best == 40 and _game.rush_best_assisted and not (screen.get_node("Column/NewBest") as Label).visible and "Best: 40 coins (assisted)" in (screen.get_node("Column/Card/List/Details") as Label).text, "rush screens: a lower score keeps the best (and its marker)", str(_game.flow_args))
+	_check(screen != null and _game.rush_best == 40 and _game.rush_best_assisted and not (screen.get_node("Column/Layout/Header/NewBest") as Label).visible and (screen.get_node("Column/Layout/Best") as Label).text == "Best: 40 coins (assisted)", "rush screens: a lower score keeps the best (and its marker)", str(_game.flow_args))
 	if screen != null:
-		var buttons: Array[Control] = [screen.get_node("Column/AgainButton") as Control, screen.get_node("Column/TitleButton") as Control]
+		var buttons: Array[Control] = [screen.get_node("Column/Layout/AgainButton") as Control, screen.get_node("Column/Layout/TitleButton") as Control]
 		for control in buttons:
 			_check(control.focus_mode == Control.FOCUS_ALL and (control as Button).accessibility_name != "", "rush screens: results %s focusable and named" % control.name, "")
 		for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
 			root.size = window
 			await _frames(10)
 			_check_targets(buttons, null, "rush screens: results at %s" % window)
-			_check(not (screen.get_node("Column/Card") as Control).get_global_rect().intersects(buttons[0].get_global_rect()), "rush screens: the results card clears Again at %s" % window, "")
 		root.size = BASE_WINDOW
 		await _frames(5)
+		await _until(func() -> bool: return not screen.is_tallying(), FLOW_FRAMES)
 		await _tap(buttons[0])
 		var again := await _until(func() -> bool: return current_scene is Shop and not _game.is_transitioning(), FLOW_FRAMES)
 		_check(again and (current_scene as Shop).shift.is_rush(), "rush screens: Again starts a new run", str(current_scene))
 		_game.finish_rush(results)
 		await _game.transition_finished
-		await _tap(current_scene.get_node("Column/TitleButton") as Button)
+		(current_scene as Results).complete_tally()
+		await _tap(current_scene.get_node("Column/Layout/TitleButton") as Button)
 		_check(await _until(func() -> bool: return current_scene is Title and not _game.is_transitioning(), FLOW_FRAMES), "rush screens: Title goes back to the title", str(current_scene))
 	_game.new_game()
 
@@ -2905,13 +2914,190 @@ func _test_rush_keyboard_assist() -> void:
 		var on_refuse := await _focus_by_keys(refuse)
 		await _action(&"ui_accept")
 		var results := on_refuse and await _until(func() -> bool: return current_scene is Results and not _game.is_transitioning(), FLOW_FRAMES)
-		_check(results and root.gui_get_focus_owner() == current_scene.get_node("Column/AgainButton") and _game.flow_args.get("assisted") == true, "rush keys: refusing at reputation 1 ends the run on the results, Again focused", str(root.gui_get_focus_owner()))
+		_check(results and root.gui_get_focus_owner() == current_scene.get_node("Column/Layout/AgainButton") and _game.flow_args.get("assisted") == true, "rush keys: refusing at reputation 1 ends the run on the results, Again focused", str(root.gui_get_focus_owner()))
 		if results:
-			var on_title := await _focus_by_keys(current_scene.get_node("Column/TitleButton") as Button)
+			# Enter on Again during the tally completes it rather than starting a run.
+			await _action(&"ui_accept")
+			_check(current_scene is Results and not (current_scene as Results).is_tallying() and not _game.is_transitioning(), "rush keys: the first Enter completes the results' tally", str(current_scene))
+			var on_title := await _focus_by_keys(current_scene.get_node("Column/Layout/TitleButton") as Button)
 			await _action(&"ui_accept")
 			_check(on_title and await _until(func() -> bool: return current_scene is Title and not _game.is_transitioning(), FLOW_FRAMES), "rush keys: Down and Enter on Title go back to the title", str(current_scene))
 	_game.assist_mode = false
 	await _goto_scene(GameState.Flow.TITLE)
+
+
+## A sample day result for the summary tests (Shop.day_result() keys).
+const SAMPLE_DAY := {"day": 3, "title": "The Guild Comes Calling", "customers": 6, "served": 4, "stormed_off": 1, "refused": 1, "grades": [1, 2, 1, 0], "earned": 63, "tips": 7, "reputation": -2, "coins": 142}
+## A sample run result for the results tests (Shop.rush_result() plus Game.finish_rush).
+const SAMPLE_RUN := {"score": 238, "served": 14, "stormed_off": 2, "refused": 1, "grades": [3, 8, 2, 1], "tips": 19, "wave": 3, "assisted": true, "best": 238, "best_assisted": true, "new_best": true}
+
+
+## A stat tile stays TILE_WIDTH wide and shows its number whole up to 6 digits plus a
+## sign; count_up() ends on the exact value.
+func _test_stat_tile_fits() -> void:
+	var grid := GridContainer.new()
+	grid.columns = 2
+	root.add_child(grid)
+	var tiles := Summary.add_tiles(grid, [["coin_0", "Coins earned", -999999, "%+d", "now -999999"], ["icon_tips", "Tips", 999999, "%+d", ""]])
+	await _frames(2)
+	for stat in tiles:
+		var number := stat.get_node("List/Number") as Label
+		var whole := number.get_minimum_size().x <= number.size.x and number.size.x <= stat.size.x and number.get_line_count() == 1
+		_check(is_equal_approx(stat.size.x, StatTile.TILE_WIDTH) and whole, "stat tile %s: %s fits in %d" % [stat.name, stat.number_text(), int(StatTile.TILE_WIDTH)], "tile %s, number %s needs %s" % [stat.size, number.size, number.get_minimum_size()])
+	_check(tiles[0].number_text() == "-999999" and tiles[1].number_text() == "+999999" and tiles[0].sub_text() == "now -999999", "stat tile: final texts", "%s %s" % [tiles[0].number_text(), tiles[1].number_text()])
+	tiles[0].count_up(0.2)
+	await _frames(3)
+	var counting := tiles[0].is_counting() and tiles[0].number_text() != tiles[0].final_text()
+	await _until(func() -> bool: return not tiles[0].is_counting(), 60)
+	_check(counting and tiles[0].number_text() == "-999999", "stat tile: count_up counts and ends on the exact value", tiles[0].number_text())
+	grid.queue_free()
+	await process_frame
+
+
+## The summary: tiles, grade row, counts and till for a sample day; the reveal hides
+## them, runs by itself within Tally.MAX_TIME and ends on the exact numbers; a tap
+## outside the button completes it at once (staying on the summary); Enter on the
+## focused button completes it first, a second Enter goes to the market.
+func _test_summary_tally() -> void:
+	_game.new_game()
+	_game.day = 4
+	_game.at_market = true
+	_game.reputation = 12
+	_game.goto(GameState.Flow.SUMMARY, SAMPLE_DAY)
+	var frames := 0
+	while current_scene is not Summary and frames < FLOW_FRAMES:
+		await process_frame
+		frames += 1
+	var summary := current_scene as Summary
+	if summary == null:
+		_check(false, "summary: opens", str(current_scene))
+		return
+	# Timed from the scene's arrival (its _ready starts the tally).
+	await process_frame
+	frames = 1
+	var hidden := summary.is_tallying() and summary.tile("Served").modulate.a == 0.0 and (summary.get_node("Column/Layout/Grades") as CanvasItem).modulate.a == 0.0
+	while summary.is_tallying() and frames < FLOW_FRAMES:
+		await process_frame
+		frames += 1
+	_check(hidden and frames <= ceili(Tally.MAX_TIME * 60.0), "summary: the tally starts hidden and finishes by itself within %.1f s" % Tally.MAX_TIME, "%d frames, hidden at start %s" % [frames, hidden])
+	_check(_tile_texts(summary) == ["4/6", "+63", "+7", "-2 now 12"], "summary: each tile's final text", str(_tile_texts(summary)))
+	_check(_grade_texts(summary) == PackedStringArray(["Perfect 1", "Good 2", "Meh 1", "Misbrew 0"]), "summary: the grade row", str(_grade_texts(summary)))
+	var icons_ok := true
+	for grade in Summary.GRADE_WORDS.size():
+		icons_ok = icons_ok and (summary.get_node("Column/Layout/Grades/Row/%s/Icon" % Summary.GRADE_WORDS[grade]) as TextureRect).texture == Art.texture("ui", Shop.STAMP_ICONS[grade])
+	_check(icons_ok, "summary: each grade shows its stamp icon", "")
+	var rows := [_row_text(summary, "Counts/StormedOff"), _row_text(summary, "Counts/Refused"), _row_text(summary, "Till")]
+	var row_icons := (summary.get_node("Column/Layout/Counts/StormedOff/Icon") as TextureRect).texture == Art.texture("ui", "icon_stormed") and (summary.get_node("Column/Layout/Counts/Refused/Icon") as TextureRect).texture == Art.texture("ui", "icon_refused") and (summary.get_node("Column/Layout/Till/Icon") as TextureRect).texture == Art.texture("ui", "coin_0")
+	_check(rows == ["Stormed off: 1", "Refused: 1", "In the till: 142"] and row_icons, "summary: the counts and the till with their icons", str(rows))
+	_check((summary.get_node("Column/Layout/Header/DayLabel") as Label).text == "Day 3 done!" and (summary.get_node("Column/Layout/Header/TitleLabel") as Label).text == "The Guild Comes Calling", "summary: the header", "")
+	# A tap outside the button completes the tally at once.
+	summary = await _goto_scene(GameState.Flow.SUMMARY, SAMPLE_DAY) as Summary
+	var tallying := summary.is_tallying()
+	await _tap(summary.get_node("Column/Layout/Grades") as Control)
+	_check(tallying and not summary.is_tallying() and current_scene == summary and _tile_texts(summary) == ["4/6", "+63", "+7", "-2 now 12"] and summary.tile("Tips").modulate.a == 1.0 and (summary.get_node("Column/Layout/Till") as CanvasItem).modulate.a == 1.0, "summary: a tap completes the tally with the exact numbers", str(_tile_texts(summary)))
+	# Enter twice: the first completes the tally, the second continues.
+	summary = await _goto_scene(GameState.Flow.SUMMARY, SAMPLE_DAY) as Summary
+	var button := summary.get_node("Column/Layout/ContinueButton") as Button
+	var focused := root.gui_get_focus_owner() == button and summary.is_tallying()
+	await _action(&"ui_accept")
+	_check(focused and current_scene == summary and not summary.is_tallying() and not _game.is_transitioning() and _tile_texts(summary)[1] == "+63", "summary: the focused button's first Enter completes the tally", "focused %s" % focused)
+	await _action(&"ui_accept")
+	_check(await _until(func() -> bool: return current_scene is Market and not _game.is_transitioning(), FLOW_FRAMES), "summary: a second Enter goes to the market", str(current_scene))
+	_game.new_game()
+	await _goto_scene(GameState.Flow.TITLE)
+
+
+## The Rush Hour results: tiles (Score with "with Assist", Served, Wave reached, Tips),
+## grade row, counts and the best line for a sample run; the reveal finishes by itself
+## within Tally.MAX_TIME and a tap completes it.
+func _test_results_tally() -> void:
+	_game.new_game()
+	var screen := await _goto_scene(GameState.Flow.RESULTS, SAMPLE_RUN) as Results
+	var started := screen.is_tallying()
+	var waited := await _until(func() -> bool: return not screen.is_tallying(), ceili(Tally.MAX_TIME * 60.0))
+	_check(started and waited, "results: the tally finishes by itself within %.1f s" % Tally.MAX_TIME, "")
+	_check(_tile_texts(screen) == ["238 with Assist", "14", "3", "+19"], "results: each tile's final text", str(_tile_texts(screen)))
+	_check(_grade_texts(screen) == PackedStringArray(["Perfect 3", "Good 8", "Meh 2", "Misbrew 1"]) and _row_text(screen, "Counts/StormedOff") == "Stormed off: 2" and _row_text(screen, "Counts/Refused") == "Refused: 1", "results: the grade row and counts", str(_grade_texts(screen)))
+	_check((screen.get_node("Column/Layout/Best") as Label).text == "Best: 238 coins (assisted)" and (screen.get_node("Column/Layout/Header/NewBest") as Label).visible and root.gui_get_focus_owner() == screen.get_node("Column/Layout/AgainButton"), "results: the best line, New best! and Again focused", (screen.get_node("Column/Layout/Best") as Label).text)
+	screen = await _goto_scene(GameState.Flow.RESULTS, SAMPLE_RUN) as Results
+	var tallying := screen.is_tallying()
+	await _tap(screen.get_node("Column/Layout/Tiles") as Control)
+	_check(tallying and current_scene == screen and not screen.is_tallying() and _tile_texts(screen)[0] == "238 with Assist", "results: a tap completes the tally", str(_tile_texts(screen)))
+	# Enter twice on the focused Again: the first completes the tally, the second starts a run.
+	screen = await _goto_scene(GameState.Flow.RESULTS, SAMPLE_RUN) as Results
+	tallying = screen.is_tallying() and root.gui_get_focus_owner() == screen.get_node("Column/Layout/AgainButton")
+	await _action(&"ui_accept")
+	_check(tallying and current_scene == screen and not screen.is_tallying() and not _game.is_transitioning(), "results: the first Enter on Again completes the tally", "")
+	await _action(&"ui_accept")
+	_check(await _until(func() -> bool: return current_scene is Shop and (current_scene as Shop).shift.is_rush() and not _game.is_transitioning(), FLOW_FRAMES), "results: a second Enter on Again starts a run", str(current_scene))
+	await _close_shop()
+
+
+## Both results screens at 9:16, 9:19.5 and 16:9: header, tiles, rows and buttons do
+## not overlap and sit in the safe area and the column, the buttons in the thumb zone;
+## the column is filled (no gap between blocks taller than a tile); a 26-character
+## day title wraps whole inside the column.
+func _test_results_screens_layout() -> void:
+	_game.new_game()
+	_game.day = 4
+	_game.at_market = true
+	var long_day := SAMPLE_DAY.duplicate()
+	long_day["title"] = "The Grandest Guild Fair Ye"
+	var screens: Array[Array] = [
+		[GameState.Flow.SUMMARY, long_day, ["Header", "Tiles", "Grades", "Counts", "Till", "ContinueButton"], ["ContinueButton"]],
+		[GameState.Flow.RESULTS, SAMPLE_RUN, ["Header", "Tiles", "Grades", "Counts", "Best", "AgainButton", "TitleButton"], ["AgainButton", "TitleButton"]],
+	]
+	for screen in screens:
+		var scene := await _goto_scene(screen[0], screen[1])
+		var name: String = GameState.Flow.keys()[screen[0]]
+		scene.call(&"complete_tally")
+		for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
+			root.size = window
+			await _frames(10)
+			var blocks: Array[Control] = []
+			for path: String in screen[2]:
+				blocks.append(scene.get_node("Column/Layout/" + path) as Control)
+			var safe := _game.safe_rect()
+			var column := _game.column_rect()
+			var tile_height := ((scene.get_node("Column/Layout/Tiles") as Control).get_child(0) as Control).size.y
+			for i in blocks.size():
+				var rect := blocks[i].get_global_rect()
+				_check(safe.encloses(rect) and column.encloses(rect), "%s %s inside the safe area and column at %s" % [name, blocks[i].name, window], "%s not in %s" % [rect, column])
+				if i + 1 < blocks.size():
+					var below := blocks[i + 1].get_global_rect()
+					_check(not rect.intersects(below) and below.position.y - rect.end.y <= tile_height, "%s %s and %s do not overlap, no wide gap, at %s" % [name, blocks[i].name, blocks[i + 1].name, window], "%s / %s" % [rect, below])
+			var buttons: Array[Control] = []
+			for path: String in screen[3]:
+				buttons.append(scene.get_node("Column/Layout/" + path) as Control)
+			_check_targets(buttons, null, "%s at %s" % [name, window])
+			if scene is Summary:
+				var title := scene.get_node("Column/Layout/Header/TitleLabel") as Label
+				_check(title.get_line_count() == title.get_visible_line_count() and title.get_line_count() <= 2 and column.encloses(title.get_global_rect()), "summary: a 26-character title wraps whole in the column at %s" % window, "%d lines, %d visible" % [title.get_line_count(), title.get_visible_line_count()])
+	root.size = BASE_WINDOW
+	await _frames(5)
+	_game.new_game()
+	await _goto_scene(GameState.Flow.TITLE)
+
+
+## Each stat tile's number with its small line ("-2 now 12"), in grid order.
+func _tile_texts(screen: Node) -> Array[String]:
+	var texts: Array[String] = []
+	for stat: StatTile in screen.get_node("Column/Layout/Tiles").get_children():
+		texts.append(" ".join(PackedStringArray([stat.number_text(), stat.sub_text()])).strip_edges())
+	return texts
+
+
+## "<Grade> <count>" per cell of a results screen's grade row.
+func _grade_texts(screen: Node) -> PackedStringArray:
+	var texts := PackedStringArray()
+	for cell in screen.get_node("Column/Layout/Grades/Row").get_children():
+		texts.append("%s %s" % [(cell.get_node("Word") as Label).text, (cell.get_node("Count") as Label).text])
+	return texts
+
+
+## The text of a results screen's icon row ("Counts/Refused", "Till").
+func _row_text(screen: Node, row: String) -> String:
+	return (screen.get_node("Column/Layout/%s/Text" % row) as Label).text
 
 
 ## Story rules (Story): outcomes per grade, flag conditions (an unrecorded flag counts
@@ -3272,7 +3458,9 @@ func _play_story(refuse_beats: bool, expected_ending: String, beats: Dictionary[
 			_check(false, "%s: day %d summary" % [label, number], str(current_scene))
 			finished = false
 			break
-		await _tap(current_scene.get_node("Column/ContinueButton") as Button)
+		var day_summary := current_scene as Summary
+		await _until(func() -> bool: return not day_summary.is_tallying(), FLOW_FRAMES)
+		await _tap(day_summary.get_node("Column/Layout/ContinueButton") as Button)
 		if number == Content.days().size():
 			break
 		await _until(func() -> bool: return current_scene is Market and not _game.is_transitioning(), FLOW_FRAMES)

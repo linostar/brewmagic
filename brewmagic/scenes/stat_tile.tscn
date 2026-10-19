@@ -1,0 +1,49 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/stat_tile.gd" id="1_tile"]
+
+[node name="StatTile" type="PanelContainer"]
+custom_minimum_size = Vector2(124, 0)
+offset_right = 124.0
+offset_bottom = 52.0
+size_flags_vertical = 3
+mouse_filter = 2
+script = ExtResource("1_tile")
+
+[node name="List" type="VBoxContainer" parent="."]
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_constants/separation = 0
+
+[node name="Caption" type="HBoxContainer" parent="List"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 3
+alignment = 1
+
+[node name="Icon" type="TextureRect" parent="List/Caption"]
+custom_minimum_size = Vector2(9, 9)
+layout_mode = 2
+mouse_filter = 2
+stretch_mode = 5
+
+[node name="Text" type="Label" parent="List/Caption"]
+layout_mode = 2
+theme_type_variation = &"DarkLabel"
+text = "Caption"
+vertical_alignment = 1
+
+[node name="Number" type="Label" parent="List"]
+layout_mode = 2
+theme_type_variation = &"DarkLabel"
+theme_override_font_sizes/font_size = 25
+text = "0"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Sub" type="Label" parent="List"]
+visible = false
+layout_mode = 2
+theme_type_variation = &"DarkLabel"
+horizontal_alignment = 1
