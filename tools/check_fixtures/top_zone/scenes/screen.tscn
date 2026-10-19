@@ -28,3 +28,10 @@ offset_left = 100.0
 offset_top = 400.0
 offset_right = 160.0
 offset_bottom = 450.0
+
+[node name="MusicToggle" type="Button" parent="."]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 38.0
+offset_bottom = 38.0

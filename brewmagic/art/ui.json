@@ -343,6 +343,60 @@
     "#fbedcd",
     "#ffc95c"
    ]
+  },
+  "icon_music": {
+   "x": 32,
+   "y": 25,
+   "w": 9,
+   "h": 9,
+   "colors": [
+    "#1c1420",
+    "#fbedcd"
+   ]
+  },
+  "icon_music_off": {
+   "x": 42,
+   "y": 25,
+   "w": 9,
+   "h": 9,
+   "colors": [
+    "#1c1420",
+    "#6e2028",
+    "#c43c2c",
+    "#fbedcd"
+   ]
+  },
+  "icon_sound": {
+   "x": 52,
+   "y": 25,
+   "w": 9,
+   "h": 9,
+   "colors": [
+    "#1c1420",
+    "#fbedcd"
+   ]
+  },
+  "icon_sound_off": {
+   "x": 62,
+   "y": 25,
+   "w": 9,
+   "h": 9,
+   "colors": [
+    "#1c1420",
+    "#6e2028",
+    "#c43c2c",
+    "#fbedcd"
+   ]
+  },
+  "icon_menu": {
+   "x": 72,
+   "y": 25,
+   "w": 9,
+   "h": 9,
+   "colors": [
+    "#1c1420",
+    "#fbedcd"
+   ]
   }
  }
 }

@@ -20,7 +20,8 @@ extends Node
 ## players; every Button's press plays "tap" unless the button is in OWN_SOUND_GROUP
 ## (it plays its own sound). Music: one track per flow state (track_for), on the
 ## Music bus, crossfading over CROSSFADE_TIME when the track changes and left alone
-## when it stays. The Music and SFX bus volumes are settings (0..100, 0 mutes).
+## when it stays. The Music and SFX bus volumes are settings (0..100, 0 mutes),
+## and each bus can be muted without losing its volume (the shop's HUD toggles).
 ## Browsers refuse audio before the player's first input, so nothing plays until the
 ## AudioUnlock child (scripts/ui/audio_unlock.gd) reports that input (unlock_audio);
 ## the requested track starts then.
@@ -28,6 +29,8 @@ extends Node
 signal transition_finished(state: Flow)
 ## Emitted when the visible rect or the safe area changes (resize, rotation).
 signal screen_fit_changed
+## Emitted when a volume or a mute setting changes (the shop's toggles follow it).
+signal audio_settings_changed
 
 enum Flow { TITLE, MORNING, SHOP, SUMMARY, MARKET, ENDING, RESULTS }
 
@@ -95,7 +98,7 @@ const SAVE_PATH := "user://save.json"
 const TOOL_SAVE_PATH := "user://tool_save.json"
 ## The save format's version. Every change to the format bumps it and appends one
 ## step to save_migrations(), so saves of older versions are upgraded, not discarded.
-const SAVE_VERSION := 4
+const SAVE_VERSION := 5
 ## Upper bounds a save's numbers must respect (anything else marks it corrupt);
 ## SAVE_SCORE_MAX bounds reputation (either sign) and rush_best.
 const SAVE_COINS_MAX := 999999
@@ -116,8 +119,8 @@ const V1_RUSH_HOUR_FLAG := "rush_hour_unlocked"
 ## A version 1 save from the two-day build at this day (market closed, no flags) had
 ## finished that build's story; the version 2 step reopens the market before it.
 const V1_STORY_OVER_DAY := 3
-## The saved settings: the modes (true or false) and the volumes (whole 0..VOLUME_MAX).
-const SETTINGS_KEYS: Array[String] = ["assist", "gentle", "music", "sfx"]
+## The saved settings: the modes and the mutes (true or false) and the volumes (whole 0..VOLUME_MAX).
+const SETTINGS_KEYS: Array[String] = ["assist", "gentle", "music", "sfx", "music_muted", "sfx_muted"]
 const VOLUME_SETTINGS: Array[String] = ["music", "sfx"]
 const CODEX_WORDS := "words"
 const CODEX_RECIPES := "recipes"
@@ -128,6 +131,9 @@ var gentle_mode := false
 ## Music and SFX bus volumes, 0..VOLUME_MAX (set_music_volume, set_sfx_volume).
 var music_volume := DEFAULT_MUSIC_VOLUME
 var sfx_volume := DEFAULT_SFX_VOLUME
+## A muted bus is silent but keeps its volume (set_music_muted, set_sfx_muted).
+var music_muted := false
+var sfx_muted := false
 
 ## Progress, persisted in the save. `day` is the story day the next morning shows
 ## (past the last day once the story is done); `at_market` means the evening market
@@ -465,27 +471,60 @@ func _start_track() -> void:
 
 
 ## Sets the music volume (0..VOLUME_MAX, snapped to VOLUME_STEP), applies it to the Music bus and saves.
+## A volume above 0 also unmutes the music (the player turned it up).
 func set_music_volume(value: int) -> void:
 	music_volume = clampi(snappedi(value, VOLUME_STEP), 0, VOLUME_MAX)
+	if music_volume > 0:
+		music_muted = false
 	_apply_volumes()
 	save_game()
 
 
 ## Sets the sound effects volume (0..VOLUME_MAX, snapped to VOLUME_STEP), applies it to the SFX bus and saves.
+## A volume above 0 also unmutes the sound effects.
 func set_sfx_volume(value: int) -> void:
 	sfx_volume = clampi(snappedi(value, VOLUME_STEP), 0, VOLUME_MAX)
+	if sfx_volume > 0:
+		sfx_muted = false
 	_apply_volumes()
 	save_game()
 
 
-## Sets the Music and SFX buses to the volume settings (linear; 0 mutes the bus).
+## Mutes or unmutes the Music bus, keeping music_volume; saves.
+func set_music_muted(on: bool) -> void:
+	music_muted = on
+	print("[Game] Music %s" % ("muted" if on else "unmuted"))
+	_apply_volumes()
+	save_game()
+
+
+## Mutes or unmutes the SFX bus (sound effects and voices), keeping sfx_volume; saves.
+func set_sfx_muted(on: bool) -> void:
+	sfx_muted = on
+	print("[Game] Sound effects %s" % ("muted" if on else "unmuted"))
+	_apply_volumes()
+	save_game()
+
+
+## True when the Music bus is silent (muted or at volume 0).
+func music_silent() -> bool:
+	return music_muted or music_volume == 0
+
+
+## True when the SFX bus is silent (muted or at volume 0).
+func sfx_silent() -> bool:
+	return sfx_muted or sfx_volume == 0
+
+
+## Sets the Music and SFX buses to the volume settings (linear); a bus at 0 or muted is muted.
 func _apply_volumes() -> void:
-	for entry: Array in [[MUSIC_BUS, music_volume], [SFX_BUS, sfx_volume]]:
+	for entry: Array in [[MUSIC_BUS, music_volume, music_silent()], [SFX_BUS, sfx_volume, sfx_silent()]]:
 		var bus := AudioServer.get_bus_index(entry[0])
 		if bus < 0:
 			continue
 		AudioServer.set_bus_volume_linear(bus, entry[1] / float(VOLUME_MAX))
-		AudioServer.set_bus_mute(bus, entry[1] == 0)
+		AudioServer.set_bus_mute(bus, entry[2])
+	audio_settings_changed.emit()
 
 
 ## Every Button entering the tree plays "tap" when pressed, unless it plays its own sound.
@@ -741,7 +780,7 @@ func save_game() -> void:
 		"version": SAVE_VERSION, "day": day, "at_market": at_market, "coins": coins, "reputation": reputation,
 		"stock": stock, "upgrades": upgrades, "codex": codex, "flags": flags, "endings": endings,
 		"rush_hour_unlocked": rush_hour_unlocked, "rush_best": rush_best, "rush_best_assisted": rush_best_assisted,
-		"settings": {"assist": assist_mode, "gentle": gentle_mode, "music": music_volume, "sfx": sfx_volume},
+		"settings": {"assist": assist_mode, "gentle": gentle_mode, "music": music_volume, "sfx": sfx_volume, "music_muted": music_muted, "sfx_muted": sfx_muted},
 	}
 	var temp := save_path + ".tmp"
 	var file := FileAccess.open(temp, FileAccess.WRITE)
@@ -759,8 +798,8 @@ func save_game() -> void:
 		DirAccess.remove_absolute(temp)
 		_report_error("Could not replace save '%s' with '%s': %s; the save is unchanged" % [save_path, temp, error_string(replaced)])
 		return
-	print("[Game] Saved to %s: day %d%s, %d coins, reputation %d, upgrades %s, flags %s, endings %s, Rush Hour %s (best %d%s), assist %s, gentle %s, music %d, sfx %d" % [
-		save_path, day, " (market)" if at_market else "", coins, reputation, upgrades, flags, endings, rush_hour_unlocked, rush_best, " assisted" if rush_best_assisted else "", assist_mode, gentle_mode, music_volume, sfx_volume])
+	print("[Game] Saved to %s: day %d%s, %d coins, reputation %d, upgrades %s, flags %s, endings %s, Rush Hour %s (best %d%s), assist %s, gentle %s, music %d%s, sfx %d%s" % [
+		save_path, day, " (market)" if at_market else "", coins, reputation, upgrades, flags, endings, rush_hour_unlocked, rush_best, " assisted" if rush_best_assisted else "", assist_mode, gentle_mode, music_volume, " muted" if music_muted else "", sfx_volume, " muted" if sfx_muted else ""])
 
 
 ## Loads save_path into progress and settings. A missing save starts fresh silently
@@ -798,8 +837,8 @@ func _load_save() -> void:
 		_reset_settings()
 		_discard_save("corrupt (%s)" % problem)
 		return
-	print("[Game] Loaded save from %s: day %d%s, %d coins, reputation %d, stock %s, upgrades %s, flags %s, endings %s, Rush Hour %s (best %d%s), assist %s, gentle %s, music %d, sfx %d" % [
-		save_path, day, " (market)" if at_market else "", coins, reputation, stock, upgrades, flags, endings, rush_hour_unlocked, rush_best, " assisted" if rush_best_assisted else "", assist_mode, gentle_mode, music_volume, sfx_volume])
+	print("[Game] Loaded save from %s: day %d%s, %d coins, reputation %d, stock %s, upgrades %s, flags %s, endings %s, Rush Hour %s (best %d%s), assist %s, gentle %s, music %d%s, sfx %d%s" % [
+		save_path, day, " (market)" if at_market else "", coins, reputation, stock, upgrades, flags, endings, rush_hour_unlocked, rush_best, " assisted" if rush_best_assisted else "", assist_mode, gentle_mode, music_volume, " muted" if music_muted else "", sfx_volume, " muted" if sfx_muted else ""])
 
 
 ## Where a corrupt save is moved: save.json -> save.corrupt.json.
@@ -857,6 +896,8 @@ func _reset_settings() -> void:
 	gentle_mode = false
 	music_volume = DEFAULT_MUSIC_VOLUME
 	sfx_volume = DEFAULT_SFX_VOLUME
+	music_muted = false
+	sfx_muted = false
 
 
 func _reset_progress() -> void:
@@ -954,6 +995,8 @@ func _apply_save(data: Variant) -> String:
 	gentle_mode = settings["gentle"]
 	music_volume = int(settings["music"])
 	sfx_volume = int(settings["sfx"])
+	music_muted = settings["music_muted"]
+	sfx_muted = settings["sfx_muted"]
 	return ""
 
 
@@ -981,7 +1024,7 @@ static func migrate_save(saved: Dictionary, migrations: Array[Callable], target:
 ## version i + 2. Steps run before the save is validated, so they must read keys
 ## with get() and leave anything malformed for the validation to report.
 static func save_migrations() -> Array[Callable]:
-	return [_save_v1_to_v2, _save_v2_to_v3, _save_v3_to_v4]
+	return [_save_v1_to_v2, _save_v2_to_v3, _save_v3_to_v4, _save_v4_to_v5]
 
 
 ## Version 1 -> 2: the ending reached and the Rush Hour unlock move out of the story's
@@ -1012,6 +1055,14 @@ static func _save_v3_to_v4(saved: Dictionary) -> void:
 	if settings is Dictionary:
 		settings["music"] = DEFAULT_MUSIC_VOLUME
 		settings["sfx"] = DEFAULT_SFX_VOLUME
+
+
+## Version 4 -> 5: the settings gain the music and sound effects mutes, both off.
+static func _save_v4_to_v5(saved: Dictionary) -> void:
+	var settings: Variant = saved.get("settings")
+	if settings is Dictionary:
+		settings["music_muted"] = false
+		settings["sfx_muted"] = false
 
 
 ## Reports `problem`, moves the bad save to backup_path() and writes defaults in
