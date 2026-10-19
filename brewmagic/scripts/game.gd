@@ -10,10 +10,13 @@ extends Node
 ## (finish_rush) -> again or title.
 ## The shop commits a finished day with finish_day(); quitting mid-shift keeps the
 ## progress from before that day.
-## Every flow change goes through goto(), which fades out, swaps the scene,
-## fades in and logs the transition. A flow state whose scene is missing is
-## reported with push_error and a visible error label instead of crashing; a
-## scene that cannot start redirects with abort_to().
+## The game opens on the splash (the main scene), which goes to the title.
+## Every flow change goes through goto(), which closes a potion swirl wipe over the
+## screen (touches blocked), swaps the scene, reopens the wipe while the new
+## screen's content slides in, and logs the transition. A flow state whose scene is
+## missing is reported with push_error and a visible error label instead of
+## crashing; a scene that cannot start redirects with abort_to().
+## Every Button press also squashes the button (unless it is in OWN_SQUASH_GROUP).
 ##
 ## Sound: sfx(id) plays a game sound effect (audio/sfx/<id>.wav, tools/sfx.py) and
 ## play_sfx() any stream (voice blips) on the SFX bus, from a pool of SFX_VOICES
@@ -32,7 +35,7 @@ signal screen_fit_changed
 ## Emitted when a volume or a mute setting changes (the shop's toggles follow it).
 signal audio_settings_changed
 
-enum Flow { TITLE, MORNING, SHOP, SUMMARY, MARKET, ENDING, RESULTS }
+enum Flow { TITLE, MORNING, SHOP, SUMMARY, MARKET, ENDING, RESULTS, SPLASH }
 
 ## Where the autoload lives. Scripts fetch it through this path instead of the
 ## global "Game" name, which does not exist yet when test scripts compile.
@@ -45,9 +48,17 @@ const SCENE_PATHS: Dictionary[Flow, String] = {
 	Flow.MARKET: "res://scenes/market.tscn",
 	Flow.ENDING: "res://scenes/ending_screen.tscn",
 	Flow.RESULTS: "res://scenes/results.tscn",
+	Flow.SPLASH: "res://scenes/splash.tscn",
 }
-## Seconds for each half of a transition (fade out, then fade in).
-const FADE_TIME := 0.18
+## Seconds for each half of a transition (the swirl closing, then reopening); the
+## whole transition takes twice this plus the frame the new scene loads in (< 0.5 s).
+const WIPE_TIME := 0.2
+## How far below its place (base units) a new screen's content starts as it slides in.
+const ENTER_OFFSET := 14.0
+## Buttons in this group animate their own press; the global squash leaves them alone.
+const OWN_SQUASH_GROUP := &"own_squash"
+## The global squash's peak (Juice.squash strength) on every other Button press.
+const PRESS_SQUASH := 0.12
 ## Width of the gameplay column in base units (the base viewport width).
 const COLUMN_WIDTH := 270.0
 ## Station tolerance multiplier while Gentle mode is on.
@@ -80,7 +91,7 @@ const MUSIC_PATH := "res://audio/music/%s.mp3"
 ## The music of each flow state (tools/music.py); a Rush Hour shop plays "rush" (track_for).
 const MUSIC_TRACKS: Dictionary[Flow, StringName] = {
 	Flow.TITLE: &"title", Flow.MORNING: &"shop", Flow.SHOP: &"shop", Flow.SUMMARY: &"shop",
-	Flow.MARKET: &"shop", Flow.ENDING: &"ending", Flow.RESULTS: &"rush",
+	Flow.MARKET: &"shop", Flow.ENDING: &"ending", Flow.RESULTS: &"rush", Flow.SPLASH: &"title",
 }
 ## Seconds a change of track takes to crossfade (at most 1 s).
 const CROSSFADE_TIME := 0.8
@@ -182,6 +193,11 @@ var audio_unlocked := false
 var sfx_played := 0
 ## The ids of the latest sfx() sounds that played, oldest first (SFX_LOG_SIZE at most).
 var sfx_log: Array[StringName] = []
+## The sound ids held by pause_sfx (a pour's fill while the shift is paused), until
+## resume_sfx or stop_sfx; tests read it (the Dummy driver of headless runs plays nothing).
+var sfx_paused: Array[StringName] = []
+## The potion colour of the latest transition's swirl wipe (each picks one at random).
+var wipe_color := Color.WHITE
 ## The music track the flow asks for (MUSIC_TRACKS), "" before the first; it plays
 ## once audio is unlocked. music_changes counts how often it changed (a crossfade each).
 var music_track := &""
@@ -208,8 +224,10 @@ var _tracks: Dictionary[StringName, AudioStream] = {}
 ## Seconds since start, advanced in _process (also while paused): the SFX clock.
 var _clock := 0.0
 var _told_audio_locked := false
+var _wipe_rng := RandomNumberGenerator.new()
 
-@onready var _curtain: ColorRect = $Fade/Curtain
+@onready var _wipe: ColorRect = $Fade/Wipe
+@onready var _wipe_material: ShaderMaterial = $Fade/Wipe.material
 @onready var _error_label: Label = $Fade/ErrorLabel
 
 
@@ -231,6 +249,7 @@ func _ready() -> void:
 		add_child(player)
 		_music_players.append(player)
 	_sfx_rng.randomize()
+	_wipe_rng.randomize()
 	# Closing the window quits through _quit_quietly, after the audio has stopped.
 	get_tree().set_auto_accept_quit(false)
 	get_tree().node_added.connect(_on_node_added)
@@ -239,7 +258,7 @@ func _ready() -> void:
 	if get_tree().get_script() != null:
 		save_path = TOOL_SAVE_PATH
 	load_game()
-	# The first scene (the title) was loaded before this autoload's goto(); ask for its music.
+	# The first scene (the splash, Splash._ready sets state) was loaded without a goto(); ask for its music.
 	play_music(track_for(state, flow_args))
 	_fit_window()
 	get_viewport().size_changed.connect(_update_screen_fit)
@@ -305,8 +324,11 @@ static func fit_window_rect(base: Vector2i, density: float, usable: Rect2i, fram
 	return Rect2i(framed_position + client_offset, client)
 
 
-## Fades to the scene of `new_state`, passing `args` through flow_args.
-## Ignored (with a log line) while a transition is running.
+## Wipes to the scene of `new_state`, passing `args` through flow_args: the potion
+## swirl closes (WIPE_TIME), the scene changes, then the swirl reopens while the new
+## screen's content slides in (enter_screen), so it is at rest when transition_finished
+## fires. Touches are blocked until then. Ignored (with a log line) while a transition
+## is running.
 func goto(new_state: Flow, args: Dictionary = {}) -> void:
 	var path: String = scene_paths[new_state]
 	var from_name: String = Flow.keys()[state]
@@ -321,19 +343,69 @@ func goto(new_state: Flow, args: Dictionary = {}) -> void:
 	_log_transition("%s -> %s (%s) args=%s" % [from_name, to_name, path, args])
 	play_music(track_for(new_state, args))
 	_error_label.hide()
-	await _fade(1.0)
+	_start_wipe()
+	await _wipe_to(1.0)
 	var error := get_tree().change_scene_to_file(path)
 	if error != OK:
 		_report_error("Failed to load scene '%s' for %s: %s" % [path, to_name, error_string(error)])
-		await _fade(0.0)
-		_transitioning = false
+		await _wipe_to(0.0)
+		_end_wipe()
 		return
 	state = new_state
 	flow_args = args
-	await _fade(0.0)
-	_transitioning = false
+	# The new scene enters the tree (and runs its _ready) at the end of this frame.
+	await get_tree().scene_changed
+	enter_screen(get_tree().current_scene)
+	await _wipe_to(0.0)
+	_end_wipe()
 	print("[Game] Arrived at %s" % to_name)
 	transition_finished.emit(new_state)
+
+
+## The arrival animation of a flow screen: its content (the scene's "Column", the
+## gameplay column every screen lays out in) slides up ENTER_OFFSET into place and
+## fades in over WIPE_TIME, with a slight overshoot. A scene without one is left alone.
+func enter_screen(scene: Node) -> void:
+	var content := scene.get_node_or_null(^"Column") as Control if scene != null else null
+	if content == null:
+		return
+	var rest := content.position
+	content.position.y = rest.y + ENTER_OFFSET
+	content.modulate.a = 0.0
+	var tween := content.create_tween().set_parallel()
+	tween.tween_property(content, "position:y", rest.y, WIPE_TIME).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(content, "modulate:a", 1.0, WIPE_TIME * 0.6)
+
+
+## Readies the swirl wipe: a potion colour of the content (else gloom), the wipe's size,
+## and touches blocked until _end_wipe.
+func _start_wipe() -> void:
+	var potions := Content.potions()
+	wipe_color = potions[_wipe_rng.randi_range(0, potions.size() - 1)].color if not potions.is_empty() else Color("#9058c0")
+	_wipe_material.set_shader_parameter(&"liquid", wipe_color)
+	_wipe_material.set_shader_parameter(&"deep", wipe_color.darkened(0.45))
+	_wipe_material.set_shader_parameter(&"rim", wipe_color.lightened(0.55))
+	_wipe_material.set_shader_parameter(&"rect_size", _wipe.size)
+	_wipe.mouse_filter = Control.MOUSE_FILTER_STOP
+	_wipe.show()
+
+
+func _end_wipe() -> void:
+	_wipe.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_wipe.hide()
+	_transitioning = false
+
+
+## Tweens the wipe to `progress` (1 covers the screen, 0 clears it) over WIPE_TIME.
+func _wipe_to(progress: float) -> void:
+	var tween := create_tween()
+	tween.tween_property(_wipe_material, "shader_parameter/progress", progress, WIPE_TIME).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT if progress > 0.5 else Tween.EASE_OUT)
+	await tween.finished
+
+
+## How far the wipe covers the screen: 0 clear, 1 covered (tests read it).
+func wipe_progress() -> float:
+	return float(_wipe_material.get_shader_parameter(&"progress"))
 
 
 ## For a scene that cannot start (it calls this from its _ready, during the
@@ -380,12 +452,41 @@ func sfx(id: StringName, pitch := 1.0) -> void:
 	play_sfx(_sounds[id], pitch * _sfx_rng.randf_range(1.0 - jitter, 1.0 + jitter))
 
 
-## Stops sound effect `id` wherever it is still playing (a pour's fill when it stops).
+## Stops sound effect `id` wherever it is still playing or held (a pour's fill when it stops).
 func stop_sfx(id: StringName) -> void:
+	sfx_paused.erase(id)
 	var stream: AudioStream = _sounds.get(id)
 	for player in _sfx_players:
-		if stream != null and player.stream == stream and player.playing:
+		if stream != null and player.stream == stream and (player.playing or player.stream_paused):
+			player.stream_paused = false
 			player.stop()
+
+
+## Holds sound effect `id` where it is (a pour's fill while the shift is paused: the
+## pool players run while the tree is paused, so they are held by hand); resume_sfx
+## continues it, stop_sfx ends it.
+func pause_sfx(id: StringName) -> void:
+	if id in sfx_paused:
+		return
+	sfx_paused.append(id)
+	print("[Game] Sound %s held" % id)
+	_hold_sfx(id, true)
+
+
+## Continues sound effect `id` held by pause_sfx.
+func resume_sfx(id: StringName) -> void:
+	if not id in sfx_paused:
+		return
+	sfx_paused.erase(id)
+	print("[Game] Sound %s continues" % id)
+	_hold_sfx(id, false)
+
+
+func _hold_sfx(id: StringName, held: bool) -> void:
+	var stream: AudioStream = _sounds.get(id)
+	for player in _sfx_players:
+		if stream != null and player.stream == stream and (player.playing or player.stream_paused):
+			player.stream_paused = held
 
 
 ## Plays `stream` on the SFX bus at `pitch` on a free pool player (else the one that
@@ -401,7 +502,8 @@ func play_sfx(stream: AudioStream, pitch := 1.0) -> void:
 		return
 	var pick := 0
 	for i in _sfx_players.size():
-		if not _sfx_players[i].playing:
+		# A held player (pause_sfx) is not free: its sound continues later.
+		if not _sfx_players[i].playing and not _sfx_players[i].stream_paused:
 			pick = i
 			break
 		if _sfx_started[i] < _sfx_started[pick]:
@@ -527,15 +629,32 @@ func _apply_volumes() -> void:
 	audio_settings_changed.emit()
 
 
-## Every Button entering the tree plays "tap" when pressed, unless it plays its own sound.
+## Every Button entering the tree plays "tap" when pressed, unless it plays its own
+## sound, and squashes when pressed, unless it animates its own press (checked at the
+## press, so a group added after the button entered the tree still counts).
 func _on_node_added(node: Node) -> void:
 	var button := node as BaseButton
-	if button != null and not button.is_in_group(OWN_SOUND_GROUP) and not button.pressed.is_connected(_on_button_pressed):
+	if button == null:
+		return
+	if not button.is_in_group(OWN_SOUND_GROUP) and not button.pressed.is_connected(_on_button_pressed):
 		button.pressed.connect(_on_button_pressed)
+	# A bound callable never compares equal to the plain one, so a meta marks the hook
+	# (a button re-entering the tree keeps one connection).
+	if not button.has_meta(&"game_press_squash"):
+		button.set_meta(&"game_press_squash", true)
+		button.pressed.connect(_squash_pressed.bind(button))
 
 
 func _on_button_pressed() -> void:
 	sfx(&"tap")
+
+
+## The global press squash (PRESS_SQUASH) around the button's centre, drawn only
+## (Juice.press), so keyboard focus moves from a squashing button as from a still one.
+func _squash_pressed(button: BaseButton) -> void:
+	if button.is_in_group(OWN_SQUASH_GROUP) or not button.is_inside_tree():
+		return
+	Juice.press(button, PRESS_SQUASH)
 
 
 func is_transitioning() -> bool:
@@ -1085,12 +1204,6 @@ func _discard_save(problem: String) -> void:
 ## saturates, x86-64 gives INT64_MIN), so range checks after it could be fooled.
 static func _is_whole(value: Variant) -> bool:
 	return value is int or (value is float and is_finite(value) and value == floorf(value) and absf(value) <= SAVE_EXACT_MAX)
-
-
-func _fade(alpha: float) -> void:
-	var tween := create_tween()
-	tween.tween_property(_curtain, "color:a", alpha, FADE_TIME)
-	await tween.finished
 
 
 func _log_transition(entry: String) -> void:

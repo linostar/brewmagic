@@ -17,7 +17,10 @@ func _run() -> void:
 	var frames := int(OS.get_environment("RUN_FRAMES")) if OS.get_environment("RUN_FRAMES") != "" else 300
 	for i in frames:
 		await process_frame
+	# The main scene (the splash) moves on by itself; say where the flow got to.
+	var game := root.get_node_or_null("Game") as GameState
+	var at := str(GameState.Flow.keys()[game.state]) if game != null else "no Game autoload"
 	current_scene.queue_free()
 	await process_frame
-	print("run_main: OK (%s, %d frames)" % [path, frames])
+	print("run_main: OK (%s, %d frames, flow at %s)" % [path, frames, at])
 	quit(0)

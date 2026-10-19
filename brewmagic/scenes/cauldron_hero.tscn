@@ -1,0 +1,88 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/cauldron_hero.gd" id="1_hero"]
+
+[sub_resource type="Gradient" id="Gradient_bubbles"]
+offsets = PackedFloat32Array(0, 0.15, 0.8, 1)
+colors = PackedColorArray(1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0)
+
+[sub_resource type="Gradient" id="Gradient_steam"]
+offsets = PackedFloat32Array(0, 0.25, 1)
+colors = PackedColorArray(1, 1, 1, 0, 1, 1, 1, 0.6, 1, 1, 1, 0)
+
+[sub_resource type="Curve" id="Curve_steam"]
+_data = [Vector2(0, 0.5), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[node name="CauldronHero" type="Control"]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 112.0
+offset_bottom = 88.0
+mouse_filter = 2
+script = ExtResource("1_hero")
+
+[node name="Steam" type="CPUParticles2D" parent="."]
+position = Vector2(56, 10)
+amount = 9
+lifetime = 2.6
+preprocess = 2.6
+emission_shape = 3
+emission_rect_extents = Vector2(26, 2)
+direction = Vector2(0, -1)
+spread = 12.0
+gravity = Vector2(0, -3)
+initial_velocity_min = 7.0
+initial_velocity_max = 13.0
+scale_amount_min = 1.0
+scale_amount_max = 2.0
+scale_amount_curve = SubResource("Curve_steam")
+color_ramp = SubResource("Gradient_steam")
+
+[node name="Fire" type="TextureRect" parent="."]
+layout_mode = 0
+offset_left = 14.0
+offset_top = 62.0
+offset_right = 98.0
+offset_bottom = 88.0
+mouse_filter = 2
+
+[node name="Pot" type="TextureRect" parent="."]
+layout_mode = 0
+offset_right = 112.0
+offset_bottom = 86.0
+mouse_filter = 2
+
+[node name="Liquid" type="TextureRect" parent="."]
+layout_mode = 0
+offset_right = 112.0
+offset_bottom = 86.0
+mouse_filter = 2
+
+[node name="Bubbles" type="CPUParticles2D" parent="."]
+position = Vector2(56, 14)
+amount = 10
+lifetime = 1.2
+preprocess = 1.2
+emission_shape = 3
+emission_rect_extents = Vector2(34, 3)
+direction = Vector2(0, -1)
+spread = 14.0
+gravity = Vector2(0, -16)
+initial_velocity_min = 10.0
+initial_velocity_max = 22.0
+color_ramp = SubResource("Gradient_bubbles")
+
+[node name="BigBubbles" type="CPUParticles2D" parent="."]
+position = Vector2(56, 14)
+amount = 4
+lifetime = 1.6
+preprocess = 1.6
+emission_shape = 3
+emission_rect_extents = Vector2(28, 2)
+direction = Vector2(0, -1)
+spread = 10.0
+gravity = Vector2(0, -10)
+initial_velocity_min = 8.0
+initial_velocity_max = 16.0
+color_ramp = SubResource("Gradient_bubbles")

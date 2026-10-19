@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://scripts/ui/shelf_item.gd" id="1_item"]
 
-[node name="ShelfItem" type="Button" groups=["own_sound"]]
+[node name="ShelfItem" type="Button" groups=["own_sound", "own_squash"]]
 custom_minimum_size = Vector2(40, 52)
 offset_right = 40.0
 offset_bottom = 52.0

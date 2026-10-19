@@ -14,16 +14,34 @@ extends Control
 ## SettingsButton (bottom) opens the shared settings panel (Settings: the mode toggles
 ## with their "?" help and the Music and SFX volumes) with a Close button (also
 ## ui_cancel); closing it gives focus back to SettingsButton.
+## The reading zone (above the buttons) is the hero: the BrewMagic logo (art_src/title.px)
+## pops in on arrival and then bobs, over the big animated cauldron (CauldronHero:
+## bubbles and steam cycling through the essence colours).
 
 const CONTENT_ERROR_MESSAGE := "Content error: %d problem(s) in data/*.json, see the log. The shop stays closed."
 const NEW_GAME_TEXT := "New game"
 const NEW_GAME_CONFIRM_TEXT := "Sure? Tap again"
 const NEW_GAME_CONFIRM_TIME := 3.0
+## The logo's top and the cauldron's centre, as fractions of the column height (both
+## in the reading zone, above the tagline at 0.36).
+const LOGO_TOP := 0.045
+const POT_CENTER := 0.24
+## The logo's pop-in on arrival (from POP_SCALE), then a bob of BOB_HEIGHT base units
+## up and down every BOB_TIME seconds.
+const POP_SCALE := 0.3
+const POP_TIME := 0.45
+const BOB_HEIGHT := 2.0
+const BOB_TIME := 1.6
 
 var _game: GameState
 var _confirm_timer: SceneTreeTimer
+var _logo_rest := Vector2.ZERO
+var _bob_time := 0.0
 
 @onready var _column: Control = $Column
+@onready var _hero: CauldronHero = $Column/Hero
+@onready var _logo: TextureRect = $Column/Logo
+@onready var _motes: CPUParticles2D = $Column/Motes
 @onready var _banner: Label = $Column/ContentErrorBanner
 @onready var _open_button: Button = $Column/OpenShopButton
 @onready var _new_game_button: Button = $Column/NewGameButton
@@ -35,8 +53,13 @@ var _confirm_timer: SceneTreeTimer
 
 func _ready() -> void:
 	_game = get_node(GameState.AUTOLOAD_PATH) as GameState
+	_logo.texture = Art.texture("title", "logo")
+	_logo.size = _logo.texture.get_size()
+	_logo.pivot_offset = _logo.size / 2.0
 	_game.screen_fit_changed.connect(_fit_column)
 	_fit_column()
+	_logo.scale = Vector2(POP_SCALE, POP_SCALE)
+	_logo.create_tween().tween_property(_logo, "scale", Vector2.ONE, POP_TIME).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_open_button.pressed.connect(_on_open_pressed)
 	_new_game_button.pressed.connect(_on_new_game_pressed)
 	_rush_button.pressed.connect(_on_rush_pressed)
@@ -90,10 +113,23 @@ func show_content_error(message: String) -> void:
 	_banner.show()
 
 
+## The logo bobs gently once it has popped in.
+func _process(delta: float) -> void:
+	_bob_time += delta
+	_logo.position.y = roundf(_logo_rest.y - sin(_bob_time * TAU / BOB_TIME) * BOB_HEIGHT)
+
+
+## The reading zone's art sits on whole base units (pixel art never lands between pixels).
 func _fit_column() -> void:
 	var column := _game.column_rect()
 	_column.position = column.position
 	_column.size = column.size
+	_logo_rest = Vector2(roundf((column.size.x - _logo.size.x) / 2.0), roundf(column.size.y * LOGO_TOP))
+	_logo.position = _logo_rest
+	_hero.position = Vector2(roundf((column.size.x - CauldronHero.SIZE.x) / 2.0), roundf(column.size.y * POT_CENTER - CauldronHero.SIZE.y / 2.0))
+	# Magic motes drift up over the whole column, behind everything.
+	_motes.position = column.size / 2.0
+	_motes.emission_rect_extents = column.size / 2.0
 
 
 func _on_open_pressed() -> void:

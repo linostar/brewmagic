@@ -2,6 +2,46 @@ class_name Juice
 ## Static feedback helpers (CLAUDE.md "Juice"). Every helper starts its effect
 ## on the call frame, so feedback lands well under 100 ms.
 
+## The longest hit-stop, in seconds.
+const HIT_STOP_MAX := 0.1
+
+## How many hit-stops have started (tests read it).
+static var hit_stops := 0
+## The real-time length of the latest hit-stop, in seconds.
+static var last_hit_stop := 0.0
+## Hit-stops still running (overlapping ones extend the freeze) and the time scale to
+## restore when the last ends (the story playthrough tests run the game at 4x).
+static var _stops_running := 0
+static var _scale_before := 1.0
+
+
+## Freezes game motion for `duration` seconds of real time (at most HIT_STOP_MAX): the
+## engine's time scale drops to 0, so tweens, timers, particles and stations stand still,
+## while input keeps arriving (events are never time-scaled). A timer that ignores the
+## time scale ends it and restores the scale it found.
+static func hit_stop(tree: SceneTree, duration := 0.08) -> void:
+	var length := clampf(duration, 0.0, HIT_STOP_MAX)
+	if length <= 0.0:
+		return
+	if _stops_running == 0:
+		_scale_before = Engine.time_scale
+	_stops_running += 1
+	hit_stops += 1
+	last_hit_stop = length
+	Engine.time_scale = 0.0
+	tree.create_timer(length, true, false, true).timeout.connect(_end_hit_stop)
+
+
+## True while a hit-stop freezes the game.
+static func is_hit_stopped() -> bool:
+	return _stops_running > 0
+
+
+static func _end_hit_stop() -> void:
+	_stops_running -= 1
+	if _stops_running == 0:
+		Engine.time_scale = _scale_before
+
 
 ## Squash then stretch `target` (a Node2D or Control) back to its rest scale: the
 ## scale it had at its first squash. A new squash replaces a running one, so
@@ -17,6 +57,32 @@ static func squash(target: CanvasItem, strength := 0.2, duration := 0.24) -> Twe
 	tween.tween_property(target, "scale", rest * Vector2(1.0 - strength * 0.5, 1.0 + strength * 0.5), duration * 0.25)
 	tween.tween_property(target, "scale", rest, duration * 0.5).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	return tween
+
+
+## The press squash of a Control (every Button press, Game._on_node_added): squash then
+## stretch about its centre like squash(), but drawn only: the Control's canvas item is
+## given the squashed transform while its own scale stays 1, so its rect, its touch
+## area and keyboard focus navigation (which reads the node's transform) never move
+## while it plays. The visual scale is kept in the meta "juice_press_scale" (tests).
+static func press(target: Control, strength := 0.12, duration := 0.24) -> Tween:
+	if target.has_meta(&"juice_press"):
+		(target.get_meta(&"juice_press") as Tween).kill()
+	var tween := target.create_tween()
+	target.set_meta(&"juice_press", tween)
+	var wide := Vector2(1.0 + strength, 1.0 - strength)
+	var tall := Vector2(1.0 - strength * 0.5, 1.0 + strength * 0.5)
+	tween.tween_method(_draw_scaled.bind(target), Vector2.ONE, wide, duration * 0.25)
+	tween.tween_method(_draw_scaled.bind(target), wide, tall, duration * 0.25)
+	tween.tween_method(_draw_scaled.bind(target), tall, Vector2.ONE, duration * 0.5).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	return tween
+
+
+## Draws `target` scaled by `drawn` about its centre, on top of its own transform.
+static func _draw_scaled(drawn: Vector2, target: Control) -> void:
+	var centre := target.size / 2.0
+	var local := Transform2D(0.0, drawn, 0.0, centre - centre * drawn)
+	RenderingServer.canvas_item_set_transform(target.get_canvas_item(), target.get_transform() * local)
+	target.set_meta(&"juice_press_scale", drawn)
 
 
 ## A one-shot particle burst of `amount` square pixels at `at` (in `parent`'s

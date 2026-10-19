@@ -142,6 +142,9 @@ const STAMP_ICONS: Array[String] = ["grade_perfect", "grade_good", "grade_meh", 
 ## Stage-space centre of the stamp: the counter front, under the customer and the bubble.
 const STAMP_CENTER := Vector2(135, 168)
 const STAMP_HOLD := 1.2
+## Per Brew.Grade: the hit-stop (Juice.hit_stop, seconds) as the stamp lands; the
+## best and the worst grade freeze the moment, Good and Meh do not.
+const STAMP_HIT_STOPS: Array[float] = [0.08, 0.0, 0.0, 0.1]
 ## Stage-space point "+pay" pops at before flying to the coin counter (where the
 ## patience row was, right of the customer's head).
 const PAY_FROM := Vector2(186, 116)
@@ -237,6 +240,9 @@ var _essence_counts: Array[Label] = []
 var _essence_marks: Array[Control] = []
 ## The control that had focus when the pause panel opened.
 var _focus_before_pause: Control
+## True while the pour's fill sound runs (pour_start until the pour stops, spills or is
+## dropped): pausing the shift holds it, resuming continues it.
+var _pour_sounding := false
 var _stamp_tween: Tween
 ## Set once the last customer has left and the day is handed to Game.finish_day(),
 ## or a Rush Hour run's reputation reached 0.
@@ -432,6 +438,7 @@ func open_pause() -> void:
 	if _day_over:
 		return
 	get_tree().paused = true
+	_hold_pour_sound(true)
 	_update_pot()
 	_focus_before_pause = get_viewport().gui_get_focus_owner()
 	_modal.open(_column, $Modal/Panel/List/ResumeButton as Button)
@@ -449,6 +456,7 @@ func open_codex() -> void:
 	if _day_over or codex != null or get_tree().paused:
 		return
 	get_tree().paused = true
+	_hold_pour_sound(true)
 	_update_pot()
 	# Closing the Codex returns to the button that opened it.
 	_focus_before_pause = _codex_button
@@ -469,6 +477,7 @@ func _on_codex_closed() -> void:
 ## else to the control focused before the pause (or the Codex) opened.
 func _resume() -> void:
 	get_tree().paused = false
+	_hold_pour_sound(false)
 	_update_pot()
 	_column.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_INHERITED
 	var before := _focus_before_pause
@@ -1062,10 +1071,12 @@ func _end_step(finished_station: Station) -> void:
 ## The single place station feedback cues land: each plays its sound (STATION_SOUNDS)
 ## and some add a visual response; the stations already animate their own part (the
 ## stream, the swirl, the pips). The pour's fill sound runs from pour_start until the
-## pour stops or spills.
+## pour stops or spills (held while the shift is paused).
 func _on_station_feedback(kind: StringName) -> void:
 	if kind == &"pour_stop" or kind == &"pour_spill":
-		_game.stop_sfx(&"pour_fill")
+		_stop_pour_sound()
+	elif kind == &"pour_start":
+		_pour_sounding = true
 	if STATION_SOUNDS.has(kind):
 		_game.sfx(STATION_SOUNDS[kind])
 	else:
@@ -1086,7 +1097,7 @@ func _on_station_feedback(kind: StringName) -> void:
 
 ## Drops the running station, if any (a storm-off, the end of a Rush Hour run), with its pour sound.
 func _drop_station() -> bool:
-	_game.stop_sfx(&"pour_fill")
+	_stop_pour_sound()
 	if station == null:
 		return false
 	station.queue_free()
@@ -1182,7 +1193,8 @@ func _note_in_codex(grade: Brew.Grade) -> void:
 
 
 ## Slams the grade stamp onto the counter front (overshooting scale, an ink puff,
-## a shake for a Misbrew), holds it STAMP_HOLD seconds, then fades it out.
+## a shake for a Misbrew, a hit-stop for Perfect and Misbrew as it lands), holds it
+## STAMP_HOLD seconds, then fades it out.
 func _show_stamp(grade: Brew.Grade) -> void:
 	if _stamp_tween != null:
 		_stamp_tween.kill()
@@ -1205,7 +1217,9 @@ func _show_stamp(grade: Brew.Grade) -> void:
 	_stamp_tween.tween_callback(func() -> void:
 		Juice.burst(_stage, STAMP_CENTER, color, 16)
 		if grade == Brew.Grade.MISBREW:
-			Juice.shake(_stamp, 3.0, 0.3))
+			Juice.shake(_stamp, 3.0, 0.3)
+		# The impact freezes for a beat (the stamp, coins and sounds already started on the delivery frame).
+		Juice.hit_stop(get_tree(), STAMP_HIT_STOPS[grade]))
 	_stamp_tween.tween_property(_stamp, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_stamp_tween.tween_interval(STAMP_HOLD)
 	_stamp_tween.tween_property(_stamp, "modulate:a", 0.0, 0.25)
@@ -1532,7 +1546,7 @@ func _on_assist_toggled(on: bool) -> void:
 	print("[Shop] Assist mode %s" % ("on" if on else "off"))
 	_sync_setting_buttons()
 	if station != null and station.is_running():
-		_game.stop_sfx(&"pour_fill")
+		_stop_pour_sound()
 		station.assist = on
 		station.begin(_station_params(customer.potion.steps[_step]))
 
@@ -1547,4 +1561,21 @@ func _on_gentle_toggled(on: bool) -> void:
 
 func _on_quit_pressed() -> void:
 	get_tree().paused = false
+	_stop_pour_sound()
 	_game.goto(GameState.Flow.TITLE)
+
+
+## Ends the pour's fill sound wherever it is (playing or held).
+func _stop_pour_sound() -> void:
+	_pour_sounding = false
+	_game.stop_sfx(&"pour_fill")
+
+
+## Holds (pausing) or continues (resuming) the pour's fill sound, if a pour is filling.
+func _hold_pour_sound(held: bool) -> void:
+	if not _pour_sounding:
+		return
+	if held:
+		_game.pause_sfx(&"pour_fill")
+	else:
+		_game.resume_sfx(&"pour_fill")
