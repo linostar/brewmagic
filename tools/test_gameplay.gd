@@ -19,6 +19,9 @@ const SPEECH_BUBBLE_SCENE := preload("res://scenes/speech_bubble.tscn")
 const POTION_COLOR := Color("#f07c2c")
 ## One synthetic input frame for the station streams.
 const FRAME := 1.0 / 60.0
+## Every synthetic touch uses this index: a web build's index is the browser's
+## Touch.identifier, which iOS Safari makes large and never 0 (playtest 2026-10-19).
+const TOUCH_INDEX := 7
 ## Frames per Mortar scrub stroke in the tests (0.3 s).
 const SCRUB_FRAMES := 18
 ## A station-local point low in the station, where a thumb holds to pour.
@@ -80,6 +83,7 @@ func _tests() -> Array[Callable]:
 		_test_brew_misbrew_essence,
 		_test_brew_gesture_quality,
 		_test_brew_final_grade,
+		_test_finger_follows_pressing_touch,
 		_test_stir_perfect,
 		_test_stir_hold_then_stir,
 		_test_stir_sloppy,
@@ -323,6 +327,7 @@ func _test_title_button_tap_goes_to_shop() -> void:
 	var logged := _game.transition_log.size()
 	for pressed: bool in [true, false]:
 		var touch := InputEventScreenTouch.new()
+		touch.index = TOUCH_INDEX
 		touch.position = screen_point
 		touch.pressed = pressed
 		Input.parse_input_event(touch)
@@ -402,6 +407,25 @@ func _test_brew_final_grade() -> void:
 		var quality: float = entry[1]
 		var grade := Brew.final_grade(tier, quality)
 		_check(grade == entry[2], "final grade %s at quality %.2f" % [Brew.Grade.keys()[tier], quality], Brew.Grade.keys()[grade])
+
+
+## Finger follows whichever touch pressed (iOS indices are never 0): its drags and
+## release count, a second finger's do not, and a new press takes over (a lost
+## release never locks a control).
+func _test_finger_follows_pressing_touch() -> void:
+	var finger := Finger.new()
+	var other := InputEventScreenDrag.new()
+	other.index = 3
+	var first := _touch(Vector2.ZERO, true)
+	_check(finger.follows(first) and finger.follows(_drag(Vector2.ONE)), "finger follows its own press and drag", "ignored index %d" % TOUCH_INDEX)
+	_check(not finger.follows(other), "finger ignores another finger's drag", "followed index 3")
+	var takeover := InputEventScreenTouch.new()
+	takeover.index = 3
+	takeover.pressed = true
+	_check(finger.follows(takeover) and finger.follows(other), "a new press takes over", "kept index %d" % TOUCH_INDEX)
+	_check(not finger.follows(_touch(Vector2.ZERO, false)) and not finger.follows(_drag(Vector2.ONE)), "the old finger's release and drag are ignored", "followed index %d" % TOUCH_INDEX)
+	takeover.pressed = false
+	_check(finger.follows(takeover) and not finger.follows(other), "release ends the follow", "still following index 3")
 
 
 ## A clean circle at RING_RADIUS (the ghost's arrows) at exactly the asked tempo scores Perfect.
@@ -745,6 +769,7 @@ func _test_stations_assist_tap() -> void:
 		var screen_point := root.get_final_transform() * rect.get_center()
 		for pressed: bool in [true, false]:
 			var touch := InputEventScreenTouch.new()
+			touch.index = TOUCH_INDEX
 			touch.position = screen_point
 			touch.pressed = pressed
 			Input.parse_input_event(touch)
@@ -1650,6 +1675,7 @@ func _test_shop_stir_real_touch() -> void:
 				var centre := stir.get_global_transform() * Stir.CENTRE
 				var screen := root.get_final_transform()
 				var touch := InputEventScreenTouch.new()
+				touch.index = TOUCH_INDEX
 				touch.position = screen * (centre + Vector2(Stir.RING_RADIUS, 0))
 				touch.pressed = true
 				Input.parse_input_event(touch)
@@ -1658,10 +1684,12 @@ func _test_shop_stir_real_touch() -> void:
 					if not stir.is_running():
 						break
 					var drag := InputEventScreenDrag.new()
+					drag.index = TOUCH_INDEX
 					drag.position = screen * (centre + Vector2.from_angle(i * FRAME * Stir.DEFAULT_TEMPO * TAU) * Stir.RING_RADIUS)
 					Input.parse_input_event(drag)
 					await process_frame
 				var release := InputEventScreenTouch.new()
+				release.index = TOUCH_INDEX
 				release.position = touch.position
 				Input.parse_input_event(release)
 				await process_frame
@@ -3780,6 +3808,7 @@ func _tap_at(point: Vector2) -> void:
 	var at := root.get_final_transform() * point
 	for pressed: bool in [true, false]:
 		var touch := InputEventScreenTouch.new()
+		touch.index = TOUCH_INDEX
 		touch.position = at
 		touch.pressed = pressed
 		Input.parse_input_event(touch)
@@ -3887,16 +3916,19 @@ func _check_targets(controls: Array[Control], top_exception: Control, label: Str
 func _drag_touch(from: Vector2, to: Vector2) -> void:
 	var screen := root.get_final_transform()
 	var touch := InputEventScreenTouch.new()
+	touch.index = TOUCH_INDEX
 	touch.position = screen * from
 	touch.pressed = true
 	Input.parse_input_event(touch)
 	await process_frame
 	for i in range(1, 9):
 		var drag := InputEventScreenDrag.new()
+		drag.index = TOUCH_INDEX
 		drag.position = screen * from.lerp(to, i / 8.0)
 		Input.parse_input_event(drag)
 		await process_frame
 	var release := InputEventScreenTouch.new()
+	release.index = TOUCH_INDEX
 	release.position = screen * to
 	Input.parse_input_event(release)
 	await process_frame
@@ -4010,6 +4042,7 @@ func _pour_to(pour: Pour, level: float) -> void:
 
 func _touch(at: Vector2, pressed: bool) -> InputEventScreenTouch:
 	var touch := InputEventScreenTouch.new()
+	touch.index = TOUCH_INDEX
 	touch.position = at
 	touch.pressed = pressed
 	return touch
@@ -4017,6 +4050,7 @@ func _touch(at: Vector2, pressed: bool) -> InputEventScreenTouch:
 
 func _drag(at: Vector2) -> InputEventScreenDrag:
 	var drag := InputEventScreenDrag.new()
+	drag.index = TOUCH_INDEX
 	drag.position = at
 	return drag
 

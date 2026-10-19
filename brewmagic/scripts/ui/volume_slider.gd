@@ -8,11 +8,15 @@ extends HSlider
 ## step it through HSlider's own handling. Touch handling lives here (scripts/ui/)
 ## per the project's input rule.
 
+var _finger := Finger.new()
+
 
 func _gui_input(event: InputEvent) -> void:
+	if not _finger.follows(event):
+		return
 	var touch := event as InputEventScreenTouch
 	var drag := event as InputEventScreenDrag
-	if (touch == null or not touch.pressed or touch.index != 0) and (drag == null or drag.index != 0):
+	if touch != null and not touch.pressed:
 		return
 	var x: float = touch.position.x if touch != null else drag.position.x
 	var knob := get_theme_icon(&"grabber").get_width()

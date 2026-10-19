@@ -10,7 +10,7 @@ extends Control
 ## waits for `finished(quality)` (0..1, emitted once per begin()). Touches reach the
 ## station through _gui_input -> feed(); tests call feed() with synthetic
 ## InputEventScreenTouch/Drag in station-local coordinates and advance(delta) to
-## move time deterministically. Only touch index 0 is used (one thumb).
+## move time deterministically. Only the finger that pressed is followed (one thumb).
 ##
 ## Subclasses override _station_begin, _station_input, _station_advance and
 ## _station_finished, call _finish(quality) once, and contain no Assist code:
@@ -52,6 +52,7 @@ var assist := false
 var tolerance_scale := 1.0
 
 var _running := false
+var _finger := Finger.new()
 var _assist_button: Button
 
 
@@ -74,13 +75,11 @@ func begin(params: Dictionary) -> void:
 
 
 ## Hands one input event to the station. Ignored unless it is a touch or drag
-## of index 0 while the gesture runs (Assist mode has no gesture).
+## of the finger that pressed (`Finger`) while the gesture runs (Assist mode has no gesture).
 func feed(event: InputEvent) -> void:
 	if not _running or assist:
 		return
-	var touch := event as InputEventScreenTouch
-	var drag := event as InputEventScreenDrag
-	if (touch != null and touch.index == 0) or (drag != null and drag.index == 0):
+	if _finger.follows(event):
 		_station_input(event)
 
 
