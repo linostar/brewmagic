@@ -116,23 +116,6 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_banner")
 text = "Content error"
 autowrap_mode = 3
 
-[node name="GrimoireButton" type="Button" parent="Column"]
-custom_minimum_size = Vector2(150, 34)
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.5
-anchor_top = 0.45
-anchor_right = 0.5
-anchor_bottom = 0.45
-offset_left = -75.0
-offset_top = -17.0
-offset_right = 75.0
-offset_bottom = 17.0
-grow_horizontal = 2
-grow_vertical = 2
-accessibility_name = "Grimoire of Making: how Claude made this game"
-text = "Grimoire"
-
 [node name="RushButton" type="Button" parent="Column" groups=["own_squash"]]
 visible = false
 custom_minimum_size = Vector2(180, 40)

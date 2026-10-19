@@ -182,10 +182,6 @@ func _tests() -> Array[Callable]:
 		_test_transition_wipe,
 		_test_hit_stop,
 		_test_button_press_squash,
-		_test_grimoire_pages,
-		_test_grimoire_counts_and_sounds,
-		_test_grimoire_layout,
-		_test_atlas_sidecar_rows,
 		_test_pour_sound_pause,
 	]
 
@@ -4525,7 +4521,7 @@ func _test_title_hero_layout() -> void:
 			var rect := piece.get_global_rect().grow_individual(0, Title.BOB_HEIGHT, 0, Title.BOB_HEIGHT)
 			_check(rect.end.y <= reading_end and column.grow(1.0).encloses(rect), "%s: %s in the reading zone, inside the column" % [label, piece.name], "%s, reading zone ends at %.0f" % [rect, reading_end])
 		var buttons: Array[Control] = []
-		for node: String in ["GrimoireButton", "RushButton", "OpenShopButton", "NewGameButton", "SettingsButton"]:
+		for node: String in ["RushButton", "OpenShopButton", "NewGameButton", "SettingsButton"]:
 			buttons.append(title.get_node("Column/" + node) as Control)
 		_check_targets(buttons, null, label)
 		var banner := title.get_node("Column/ContentErrorBanner") as Control
@@ -4544,8 +4540,6 @@ func _test_title_hero_layout() -> void:
 				if buttons[i].get_global_rect().intersects(buttons[j].get_global_rect()):
 					overlaps.append("%s/%s" % [buttons[i].name, buttons[j].name])
 		_check(overlaps.is_empty(), label + ": no two buttons overlap", str(overlaps))
-		var grimoire := title.get_node("Column/GrimoireButton") as Button
-		_check(grimoire.accessibility_name != "" and grimoire.focus_mode == Control.FOCUS_ALL and grimoire.get_theme_stylebox("focus") is StyleBoxFlat, label + ": the Grimoire button is named and focusable", grimoire.accessibility_name)
 		_check(root.gui_get_focus_owner() == title.get_node("Column/OpenShopButton"), label + ": Open the shop (Continue) has the focus first", str(root.gui_get_focus_owner()))
 		var particles := ["Steam", "Bubbles", "BigBubbles"].all(func(node: String) -> bool: return (hero.get_node(node) as CPUParticles2D).emitting)
 		_check(particles and (hero.get_node("Steam") as CPUParticles2D).color.is_equal_approx(hero.tint().lightened(0.6)) and (hero.get_node("Liquid") as TextureRect).modulate.is_equal_approx(hero.tint()), label + ": bubbles and steam rise in the cauldron's tint", str(hero.tint()))
@@ -4668,213 +4662,6 @@ func _test_button_press_squash() -> void:
 		_check(root.gui_get_focus_owner() == shop.get_node("Modal/Panel/List/ResumeButton"), "press squash: Up right after toggling Assist goes to Resume, not the \"?\"", str(root.gui_get_focus_owner()))
 		shop.close_pause()
 	await _close_shop()
-
-
-## The Grimoire of Making opens from the title's Grimoire button (by touch and by Enter),
-## Next/Prev turn its five pages by touch and keyboard (no wrap; a page button that runs
-## out hands the focus over), focus stays in the book, the Pixel Art page browses sprites
-## with their letter grids, and ui_cancel or Close closes it with focus back on the button.
-func _test_grimoire_pages() -> void:
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
-	var title := current_scene as Title
-	var open := title.get_node("Column/GrimoireButton") as Button
-	await _tap(open)
-	var book := title.grimoire
-	_check(book != null and root.gui_get_focus_owner() == book.get_node("Column/Panel/List/Footer/NextButton") and _heard(&"codex_open"), "grimoire: the title's Grimoire button opens it, Next focused", str(root.gui_get_focus_owner()))
-	if book == null:
-		return
-	var prev := book.get_node("Column/Panel/List/Footer/PrevButton") as Button
-	var next := book.get_node("Column/Panel/List/Footer/NextButton") as Button
-	var headings := PackedStringArray()
-	for i in Grimoire.PAGE_TITLES.size():
-		headings.append(book.page_texts()[0])
-		if i == Grimoire.Page.PIXEL_ART:
-			var shown := Grimoire.showcase()
-			var grid := book.find_children("*", "Control", true, false).filter(func(node: Node) -> bool: return node is Grimoire.SourceGrid)
-			_check(grid.size() == 1 and (grid[0] as Grimoire.SourceGrid).rows == Art.rows(shown[0][0], shown[0][1]), "grimoire: the Pixel Art page shows the first sprite's letter grid", str(shown[0]))
-			# A page's (or sprite's) new controls are laid out on the next frames.
-			await _frames(2)
-			await _tap(book.find_child("SpriteNext", true, false) as Button)
-			grid = book.find_children("*", "Control", true, false).filter(func(node: Node) -> bool: return node is Grimoire.SourceGrid)
-			_check(book.sprite_index == 1 and grid.size() == 1 and (grid[0] as Grimoire.SourceGrid).rows == Art.rows(shown[1][0], shown[1][1]), "grimoire: > shows the next sprite and its grid", str(book.sprite_index))
-			await _frames(2)
-			await _tap(book.find_child("SpritePrev", true, false) as Button)
-			await _frames(2)
-			await _tap(book.find_child("SpritePrev", true, false) as Button)
-			_check(book.sprite_index == shown.size() - 1, "grimoire: < from the first sprite wraps to the last", str(book.sprite_index))
-		if i < Grimoire.PAGE_TITLES.size() - 1:
-			await _tap(next)
-	_check(headings == PackedStringArray(Grimoire.PAGE_TITLES) and _heard(&"page_flip"), "grimoire: Next by touch turns through every page", str(headings))
-	_check(next.disabled and not prev.disabled and book.page == Grimoire.Page.TOOLS, "grimoire: the last page disables Next", str(book.page))
-	await _tap(prev)
-	_check(book.page == Grimoire.Page.WORDS, "grimoire: Prev by touch turns back", str(book.page))
-	prev.grab_focus()
-	await _action(&"ui_accept")
-	_check(book.page == Grimoire.Page.SOUND, "grimoire: Enter on Prev turns back", str(book.page))
-	next.grab_focus()
-	await _action(&"ui_accept")
-	_check(book.page == Grimoire.Page.WORDS, "grimoire: Enter on Next turns on", str(book.page))
-	_check(await _focus_stays_in(book.get_node("Column/Panel") as Control), "grimoire: keyboard focus stays in the book", str(root.gui_get_focus_owner()))
-	prev.grab_focus()
-	for i in Grimoire.PAGE_TITLES.size():
-		if book.page != Grimoire.Page.COVER:
-			await _action(&"ui_accept")
-	_check(book.page == Grimoire.Page.COVER and prev.disabled and root.gui_get_focus_owner() == next, "grimoire: Prev run out on the cover hands the focus to Next", str(root.gui_get_focus_owner()))
-	# Shortcuts (Close's is ui_cancel) only see key events, as a real Escape is.
-	await _key(KEY_ESCAPE)
-	_check(title.grimoire == null and not is_instance_valid(book) and root.gui_get_focus_owner() == open, "grimoire: Escape (ui_cancel) closes it, focus back on the Grimoire button", str(root.gui_get_focus_owner()))
-	await _action(&"ui_accept")
-	book = title.grimoire
-	_check(book != null, "grimoire: Enter on the Grimoire button opens it", "")
-	if book != null:
-		await _tap(book.get_node("Column/Panel/List/Footer/CloseButton") as Button)
-		_check(title.grimoire == null and not is_instance_valid(book), "grimoire: Close by touch closes it", "")
-
-
-## Every number in the Grimoire matches a recount of the shipped data (atlas sidecars,
-## palette.hex, the sound catalogs, Content) and shows on its pages; the Sound page plays
-## effects and voices on the SFX bus and a loop as the music, which gives way to the
-## title's track when the book closes.
-func _test_grimoire_counts_and_sounds() -> void:
-	var expected: Dictionary[String, int] = {}
-	var atlases := 0
-	var sprites := 0
-	for file in DirAccess.get_files_at("res://art/"):
-		if file.get_extension() == "json":
-			atlases += 1
-			var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://art/" + file))
-			sprites += (data["sprites"] as Dictionary).size()
-	expected["atlases"] = atlases
-	expected["sprites"] = sprites
-	var palette := 0
-	for raw in FileAccess.get_file_as_string(ProjectSettings.globalize_path("res://").path_join("../art_src/palette.hex")).split("\n"):
-		if raw.get_slice(";", 0).strip_edges() != "":
-			palette += 1
-	expected["palette"] = palette
-	expected["effect"] = GameState.SFX_IDS.size()
-	expected["voice"] = Content.archetypes().size()
-	var tracks := {}
-	for state: GameState.Flow in GameState.MUSIC_TRACKS:
-		tracks[GameState.MUSIC_TRACKS[state]] = true
-	expected["music"] = tracks.size()
-	var reactions := 0
-	for who in Content.archetypes():
-		for grade in who.reactions:
-			reactions += who.reactions[grade].size()
-	var beats := 0
-	var mornings := 0
-	for day in Content.days():
-		mornings += (1 if day.morning_note != "" else 0) + day.morning_notes.size()
-		for visit in day.customers:
-			beats += visit.lines.size()
-	var pages := 0
-	for ending in Content.endings():
-		pages += ending.pages.size()
-	expected["requests"] = Content.requests().size()
-	expected["reactions"] = reactions
-	expected["misbrews"] = Content.misbrews().size()
-	expected["beats"] = beats
-	expected["mornings"] = mornings
-	expected["endings"] = pages
-	expected["hint words"] = Content.hint_words().size()
-	expected["lines"] = expected["requests"] + reactions + expected["misbrews"] + beats + mornings + pages
-	var counts := Grimoire.counts()
-	var wrong := PackedStringArray()
-	for key in expected:
-		if counts.get(key, -1) != expected[key]:
-			wrong.append("%s %s, recounted %d" % [key, counts.get(key, -1), expected[key]])
-	_check(wrong.is_empty() and expected["sprites"] > 100 and expected["lines"] > 400, "grimoire: every count matches a recount of the shipped data (%d sprites, %d sounds, %d lines)" % [sprites, expected["effect"] + expected["voice"] + expected["music"], expected["lines"]], "\n".join(wrong))
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
-	var title := current_scene as Title
-	title.open_grimoire()
-	await process_frame
-	var book := title.grimoire
-	var shown: Array[Array] = [["sprites", "atlases", "effect", "voice", "music", "lines"], ["sprites", "atlases", "palette"], ["effect", "voice", "music"],
-		["requests", "reactions", "misbrews", "beats", "mornings", "endings", "hint words", "lines"], ["atlases", "music"]]
-	for page in shown.size():
-		var text := " ".join(book.page_texts())
-		var missing: Array = shown[page].filter(func(key: String) -> bool: return not (" %d " % counts[key] in " %s " % text.replace(",", " ").replace(".", " ")))
-		_check(missing.is_empty(), "grimoire: page %s shows its counts" % Grimoire.PAGE_TITLES[page], "%s missing from: %s" % [missing, text])
-		book.turn(1)
-	book.turn(-2)
-	# The page's new controls are laid out on the next frames.
-	await _frames(2)
-	_check(book.page == Grimoire.Page.SOUND, "grimoire: back on the Sound page", str(book.page))
-	var list := Grimoire.sounds()
-	await _tap(book.find_child("SoundNext", true, false) as Button)
-	_check(book.sound_index == 1 and _game.sfx_log.back() == StringName(list[1]["id"]) and book.played == "effect %s" % list[1]["id"], "grimoire: > picks the next sound and plays it", "%s, last %s" % [book.played, _game.sfx_log.back()])
-	await _frames(ceili(GameState.SFX_MIN_GAP / FRAME) + 2)
-	var count := _game.sfx_log.size()
-	await _tap(book.find_child("PlayButton", true, false) as Button)
-	_check(_game.sfx_log.size() == count + 1 and _game.sfx_log.back() == StringName(list[1]["id"]), "grimoire: Play plays the sound again", str(_game.sfx_log.slice(-3)))
-	var voice := list.map(func(sound: Dictionary) -> String: return sound["kind"]).find("voice")
-	var played := _game.sfx_played
-	book.pick_sound(voice)
-	_check(_game.sfx_played == played + 1 and book.played == "voice %s" % list[voice]["id"], "grimoire: a voice plays on the SFX bus", book.played)
-	var loop := list.map(func(sound: Dictionary) -> String: return sound["kind"]).rfind("music")
-	book.pick_sound(loop)
-	_check(_game.music_track == StringName(list[loop]["id"]) and book.page_texts().has(str(list[loop]["id"]).replace("_", " ")), "grimoire: a music loop plays as the music", str(_game.music_track))
-	book.close()
-	await process_frame
-	_check(_game.music_track == GameState.track_for(GameState.Flow.TITLE, {}), "grimoire: closing gives the title its own music back", str(_game.music_track))
-
-
-## The Grimoire's controls on every page are 32x32 or more, in the thumb zone and the
-## safe area, named and focusable, and its panel stays clear of its title at 9:16,
-## 9:19.5 and 16:9.
-func _test_grimoire_layout() -> void:
-	for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
-		root.size = window
-		var title := TITLE_SCENE.instantiate() as Title
-		root.add_child(title)
-		await process_frame
-		title.open_grimoire()
-		# The book opens with a squash; it is measured at rest.
-		await _frames(20)
-		var book := title.grimoire
-		for page in Grimoire.PAGE_TITLES.size():
-			await _frames(2)
-			var label := "grimoire %s at %s" % [Grimoire.PAGE_TITLES[page], window]
-			var buttons: Array[Control] = []
-			buttons.assign(book.find_children("*", "BaseButton", true, false).filter(func(node: Node) -> bool: return (node as Control).is_visible_in_tree()))
-			_check_targets(buttons, null, label)
-			_check(buttons.all(func(button: Control) -> bool: return button.accessibility_name != "" and button.focus_mode == Control.FOCUS_ALL), label + ": every button named and focusable", str(buttons.map(func(button: Control) -> String: return button.name)))
-			var panel := (book.get_node("Column/Panel") as Control).get_global_rect()
-			var heading := (book.get_node("Column/Title") as Control).get_global_rect()
-			_check(panel.position.y >= heading.end.y and _game.safe_rect().encloses(panel), label + ": the page fits its panel, under the book's title", "%s, title %s" % [panel, heading])
-			book.turn(1)
-		book.close()
-		title.free()
-	root.size = BASE_WINDOW
-	await _frames(2)
-
-
-## Every atlas sidecar carries each sprite's .px source rows (tools/pixelart.py) and the
-## palette; the rows of every ui and title sprite redraw its atlas pixels exactly.
-func _test_atlas_sidecar_rows() -> void:
-	var problems := PackedStringArray()
-	for atlas in Art.atlases():
-		var palette := Art.palette(atlas)
-		if palette.size() != 32:
-			problems.append("%s: palette of %d" % [atlas, palette.size()])
-		for sprite in Art.sprite_names(atlas):
-			var rows := Art.rows(atlas, sprite)
-			var size := Art.texture(atlas, sprite).get_size()
-			if rows.size() != int(size.y) or Array(rows).any(func(row: String) -> bool: return row.length() != int(size.x)):
-				problems.append("%s/%s: rows do not match %s" % [atlas, sprite, size])
-			elif atlas == "ui" or atlas == "title":
-				var region := Art.texture(atlas, sprite)
-				var image := region.atlas.get_image().get_region(Rect2i(region.region))
-				for y in rows.size():
-					for x in rows[y].length():
-						var letter := rows[y][x]
-						var pixel := image.get_pixel(x, y)
-						var wanted := Color(0, 0, 0, 0) if letter == "." else Color(palette["0123456789abcdefghijklmnopqrstuv".find(letter)])
-						if not (pixel.is_equal_approx(wanted) or (letter == "." and is_zero_approx(pixel.a))):
-							problems.append("%s/%s (%d, %d): '%s' is %s" % [atlas, sprite, x, y, letter, pixel])
-	_check(problems.is_empty() and Art.atlases().size() >= 7, "every sprite's source rows ship in its sidecar and redraw its pixels", "\n".join(problems.slice(0, 8)))
 
 
 ## Pausing mid-pour (the pause panel or the Codex) holds the pour's fill sound and

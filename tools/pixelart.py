@@ -13,10 +13,8 @@ Sprite source (.px), one file = one atlas brewmagic/art/<file>.png + <file>.json
     <H rows of exactly W characters>
 Characters: '.' is transparent, 0-9 a-v are palette indices 0..31. Blank lines are allowed
 between sprites only. Sprites are shelf-packed in file order with a 1px transparent gap; the
-sidecar JSON maps each sprite name to its region {"x", "y", "w", "h"} in the atlas, the
-palette colours it uses ("colors": sorted '#rrggbb' list; the palette swap reads it, CLAUDE.md "Customers")
-and its source rows ("rows": the .px text grid, so the game's Grimoire of Making can show how each
-sprite was written); "palette" lists the 32 '#rrggbb' colours in index order (CHARS).
+sidecar JSON maps each sprite name to its region {"x", "y", "w", "h"} in the atlas and the
+palette colours it uses ("colors": sorted '#rrggbb' list; the palette swap reads it, CLAUDE.md "Customers").
 
 Usage (from repo root):
     python3 tools/pixelart.py           build every atlas into brewmagic/art/
@@ -199,8 +197,7 @@ def compile_atlas(path, palette):
         "source": f"art_src/{path.name}",
         "texture": f"{path.stem}.png",
         "size": [atlas_w, atlas_h],
-        "palette": ["#%02x%02x%02x" % colour for colour in palette],
-        "sprites": {name: dict(zip("xywh", regions[name]), colors=sprite_colors(rows, palette), rows=rows)
+        "sprites": {name: dict(zip("xywh", regions[name]), colors=sprite_colors(rows, palette))
                     for name, _, _, rows in sprites},
     }
     return write_png(atlas_w, atlas_h, bytes(rgba)), json.dumps(meta, indent=1) + "\n", len(sprites)

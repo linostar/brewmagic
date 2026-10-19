@@ -16,15 +16,14 @@ extends Control
 ## ui_cancel); closing it gives focus back to SettingsButton.
 ## The reading zone (above the buttons) is the hero: the BrewMagic logo (art_src/title.px)
 ## pops in on arrival and then bobs, over the big animated cauldron (CauldronHero:
-## bubbles and steam cycling through the essence colours). GrimoireButton (thumb zone,
-## under the cauldron) opens the Grimoire of Making; closing it gives focus back.
+## bubbles and steam cycling through the essence colours).
 
 const CONTENT_ERROR_MESSAGE := "Content error: %d problem(s) in data/*.json, see the log. The shop stays closed."
 const NEW_GAME_TEXT := "New game"
 const NEW_GAME_CONFIRM_TEXT := "Sure? Tap again"
 const NEW_GAME_CONFIRM_TIME := 3.0
 ## The logo's top and the cauldron's centre, as fractions of the column height (both
-## in the reading zone, above the tagline at 0.36 and the Grimoire button at 0.45).
+## in the reading zone, above the tagline at 0.36).
 const LOGO_TOP := 0.045
 const POT_CENTER := 0.24
 ## The logo's pop-in on arrival (from POP_SCALE), then a bob of BOB_HEIGHT base units
@@ -34,9 +33,6 @@ const POP_TIME := 0.45
 const BOB_HEIGHT := 2.0
 const BOB_TIME := 1.6
 
-## The Grimoire of Making while it is open.
-var grimoire: Grimoire
-
 var _game: GameState
 var _confirm_timer: SceneTreeTimer
 var _logo_rest := Vector2.ZERO
@@ -45,7 +41,6 @@ var _bob_time := 0.0
 @onready var _column: Control = $Column
 @onready var _hero: CauldronHero = $Column/Hero
 @onready var _logo: TextureRect = $Column/Logo
-@onready var _grimoire_button: Button = $Column/GrimoireButton
 @onready var _motes: CPUParticles2D = $Column/Motes
 @onready var _banner: Label = $Column/ContentErrorBanner
 @onready var _open_button: Button = $Column/OpenShopButton
@@ -65,7 +60,6 @@ func _ready() -> void:
 	_fit_column()
 	_logo.scale = Vector2(POP_SCALE, POP_SCALE)
 	_logo.create_tween().tween_property(_logo, "scale", Vector2.ONE, POP_TIME).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	_grimoire_button.pressed.connect(open_grimoire)
 	_open_button.pressed.connect(_on_open_pressed)
 	_new_game_button.pressed.connect(_on_new_game_pressed)
 	_rush_button.pressed.connect(_on_rush_pressed)
@@ -117,22 +111,6 @@ func close_settings() -> void:
 func show_content_error(message: String) -> void:
 	_banner.text = message
 	_banner.show()
-
-
-## Opens the Grimoire of Making over the title (the title's controls take no focus
-## until it closes; then GrimoireButton has it again).
-func open_grimoire() -> void:
-	if grimoire != null:
-		return
-	grimoire = Grimoire.open(self, _column)
-	grimoire.closed.connect(_on_grimoire_closed)
-	print("[Title] Grimoire opened")
-
-
-func _on_grimoire_closed() -> void:
-	grimoire = null
-	_grimoire_button.grab_focus(true)
-	print("[Title] Grimoire closed")
 
 
 ## The logo bobs gently once it has popped in.
