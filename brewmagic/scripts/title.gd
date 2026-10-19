@@ -21,6 +21,9 @@ extends Control
 const CONTENT_ERROR_MESSAGE := "Content error: %d problem(s) in data/*.json, see the log. The shop stays closed."
 const NEW_GAME_TEXT := "New game"
 const NEW_GAME_CONFIRM_TEXT := "Sure? Tap again"
+## The confirm text is drawn at Silkscreen 8 (its other crisp size) so the button keeps
+## its 180 width; Silkscreen 16 would widen it (playtest 2026-10-19).
+const NEW_GAME_CONFIRM_FONT_SIZE := 8
 const NEW_GAME_CONFIRM_TIME := 3.0
 ## The logo's top and the cauldron's centre, as fractions of the column height (both
 ## in the reading zone, above the tagline at 0.36).
@@ -149,6 +152,8 @@ func _on_rush_pressed() -> void:
 ## The first press asks for a second one (the saved story would be lost).
 func _on_new_game_pressed() -> void:
 	if _confirm_timer == null:
+		# The size first: a Control grows to a wider minimum at once but never shrinks back.
+		_new_game_button.add_theme_font_size_override(&"font_size", NEW_GAME_CONFIRM_FONT_SIZE)
 		_new_game_button.text = NEW_GAME_CONFIRM_TEXT
 		_new_game_button.accessibility_name = "Press again to erase the saved story and start a new game"
 		Juice.shake(_new_game_button, 2.0, 0.2)
@@ -161,6 +166,7 @@ func _on_new_game_pressed() -> void:
 func _cancel_new_game() -> void:
 	_confirm_timer = null
 	_new_game_button.text = NEW_GAME_TEXT
+	_new_game_button.remove_theme_font_size_override(&"font_size")
 	_new_game_button.accessibility_name = "Start a new game"
 
 

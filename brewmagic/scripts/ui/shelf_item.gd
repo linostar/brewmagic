@@ -24,6 +24,7 @@ var stock := 0
 
 var _press_point := Vector2.ZERO
 var _dragging := false
+var _finger := Finger.new()
 ## Set when a drag ends so the Button's own release does not also count as a tap.
 var _suppress_press := false
 
@@ -87,8 +88,10 @@ func _pressed() -> void:
 
 
 func _gui_input(event: InputEvent) -> void:
+	if not _finger.follows(event):
+		return
 	var touch := event as InputEventScreenTouch
-	if touch != null and touch.index == 0:
+	if touch != null:
 		if touch.pressed:
 			_press_point = touch.position
 			_dragging = false
@@ -100,8 +103,6 @@ func _gui_input(event: InputEvent) -> void:
 			dropped.emit(self, get_global_transform() * touch.position)
 		return
 	var drag := event as InputEventScreenDrag
-	if drag == null or drag.index != 0:
-		return
 	var moved := drag.position - _press_point
 	if not _dragging and moved.length() > DRAG_THRESHOLD:
 		if disabled:

@@ -106,11 +106,12 @@ async function pointerFor(page, context, run) {
     };
   }
   const cdp = await context.newCDPSession(page);
+  // id 7: iOS Safari gives touches large identifiers, never 0, and Godot web uses them as the index.
   const touch = (type, points) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: points });
   return {
     tap: (p) => page.touchscreen.tap(p.x, p.y),
-    down: (p) => touch('touchStart', [{ x: p.x, y: p.y }]),
-    move: (p) => touch('touchMove', [{ x: p.x, y: p.y }]),
+    down: (p) => touch('touchStart', [{ x: p.x, y: p.y, id: 7 }]),
+    move: (p) => touch('touchMove', [{ x: p.x, y: p.y, id: 7 }]),
     up: () => touch('touchEnd', []),
   };
 }

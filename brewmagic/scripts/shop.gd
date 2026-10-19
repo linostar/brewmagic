@@ -1496,7 +1496,7 @@ func _update_hud() -> void:
 		_reputation_label.text = str(reputation)
 		_reputation_label.accessibility_name = "Reputation %d; the run ends at 0" % reputation
 	else:
-		_served_label.text = "Served %d/%d" % [served, shift.customers.size()]
+		_served_label.text = "Day %d, served %d/%d" % [shift.day, served, shift.customers.size()]
 	_assist_tag.visible = _game.assist_mode
 
 
