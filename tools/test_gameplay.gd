@@ -119,6 +119,7 @@ func _tests() -> Array[Callable]:
 		_test_title_continue_and_new_game,
 		_test_morning_missing_day_returns_to_title,
 		_test_loop_screens_size_and_zone,
+		_test_morning_menu,
 		_test_shop_day1_assist,
 		_test_shop_last_day_storm_off,
 		_test_shop_wrong_recipe_misbrews,
@@ -2600,13 +2601,21 @@ func _test_loop_screens_size_and_zone() -> void:
 		if scene is Market:
 			for item in Content.ingredients_unlocked_by(2):
 				controls.append((scene as Market).stock_card(item.id))
+		# The morning's menu icon sits in the top-right corner like the shop's.
+		var top_right := scene.get_node_or_null("Column/PauseButton") as Control if scene is Morning else null
+		if top_right != null:
+			controls.append(top_right)
 		var name: String = GameState.Flow.keys()[screen[0]]
 		for control in controls:
 			_check(control.focus_mode == Control.FOCUS_ALL and control.accessibility_name != "", "%s %s focusable and named" % [name, control.name], control.accessibility_name)
 		for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
 			root.size = window
 			await _frames(10)
-			_check_targets(controls, null, "%s at %s" % [name, window])
+			_check_targets(controls, top_right, "%s at %s" % [name, window])
+			if top_right != null:
+				var rect := top_right.get_global_rect()
+				var column := _game.column_rect()
+				_check(rect.end.x <= column.end.x and rect.position.x >= column.end.x - 118.0 and rect.end.y <= column.position.y + 48.0, "%s menu icon in the column's top-right corner at %s" % [name, window], "%s in %s" % [rect, column])
 			if scene is Market:
 				await _tap(scene.get_node("Column/Shop/Tabs/UpgradesTab") as Button)
 				var upgrades: Array[Control] = []
@@ -2619,6 +2628,25 @@ func _test_loop_screens_size_and_zone() -> void:
 		await process_frame
 	_game.new_game()
 	await _goto_scene(GameState.Flow.TITLE)
+
+
+## The morning's menu icon (playtest 2026-10-19): a tap opens the settings panel titled
+## "Menu" with Close focused, Escape closes it and focus returns to the icon, and Quit
+## to title goes to the title.
+func _test_morning_menu() -> void:
+	_game.new_game()
+	var morning := await _goto_scene(GameState.Flow.MORNING) as Morning
+	var icon := morning.get_node("Column/PauseButton") as Button
+	var menu := morning.get_node("Menu") as SettingsPanel
+	_check(icon.accessibility_name == "Menu" and (icon.get_node("Icon") as TextureRect).texture != null, "morning menu icon drawn and named", icon.accessibility_name)
+	await _tap(icon)
+	_check(menu.is_open() and (morning.get_node("Menu/Panel/List/Title") as Label).text == "Menu", "a tap on the morning's menu icon opens the Menu panel", str(menu.is_open()))
+	_check(root.gui_get_focus_owner() == morning.get_node("Menu/Panel/List/CloseButton"), "the morning menu focuses Close", str(root.gui_get_focus_owner()))
+	await _key(KEY_ESCAPE)
+	_check(not menu.is_open() and root.gui_get_focus_owner() == icon, "Escape closes the morning menu and focus returns to the icon", "%s %s" % [menu.is_open(), root.gui_get_focus_owner()])
+	await _tap(icon)
+	await _tap(morning.get_node("Menu/Panel/List/QuitButton") as Button)
+	_check(await _until(func() -> bool: return current_scene is Title and not _game.is_transitioning(), FLOW_FRAMES), "Quit to title from the morning menu goes to the title", str(current_scene))
 
 
 ## Opens the market before day 2 with `coins` coins and no stock.
@@ -4303,6 +4331,11 @@ func _test_sound_toggles() -> void:
 			visited._update_hud()
 			var served_text := (visited.get_node("Column/Hud/Served") as Label).text
 			_check(served_text == "Served 99, wave %d" % Rush.WAVE_DAYS.size(), "sound toggles (Rush Hour): measured with the widest Served label", served_text)
+		else:
+			var served_label := visited.get_node("Column/Hud/Served") as Label
+			_check(served_label.text == "Day %d, served 0/%d" % [visited.shift.day, visited.shift.customers.size()], "sound toggles (story): the HUD shows the day", served_label.text)
+			# Measured at its widest: the last day number and day 5's ten customers.
+			served_label.text = "Day %d, served 10/10" % Content.days().size()
 		var row: Array[Control] = []
 		for node_name: String in ["MusicToggle", "SfxToggle", "PauseButton"]:
 			row.append(visited.get_node("Column/Hud/" + node_name) as Control)
@@ -4327,6 +4360,7 @@ func _test_sound_toggles() -> void:
 				var box := text.get_global_rect()
 				var width := text.get_minimum_size().x
 				var drawn := Rect2(box.end.x - width if text.horizontal_alignment == HORIZONTAL_ALIGNMENT_RIGHT else box.position.x, box.position.y, width, box.size.y)
+				_check(width <= box.size.x, "%s: %s fits its box" % [label, hud_label], "%.0f > %.0f" % [width, box.size.x])
 				_check(rects.all(func(rect: Rect2) -> bool: return not rect.intersects(drawn)), "%s: clear of %s" % [label, hud_label], "%s vs %s" % [rects, drawn])
 		root.size = BASE_WINDOW
 		_game.assist_mode = false
