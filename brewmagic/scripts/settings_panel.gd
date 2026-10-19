@@ -13,6 +13,9 @@ extends Control
 ## once (Game.set_music_volume, set_sfx_volume; a level above 0 also unmutes that bus,
 ## which the shop's HUD toggles mute); each change plays a sample tap at the
 ## new SFX volume. Each slider's accessibility name names the setting and its value.
+## A bus muted by the shop's HUD toggle keeps its slider at the remembered level, but
+## the slider is faded (MUTED_TINT) and its value reads MUTED_TEXT, so the state shows
+## in words, not by the fade alone; turning the slider up unmutes it.
 ##
 ## Mode help: the "?" next to each mode toggle opens ModeHelp, a flat button laid
 ## exactly over the panel with the mode's description in a callout above that row.
@@ -30,6 +33,9 @@ const ASSIST_INFO := "Auto stir, grind, pour & pump; scores Good, never Perfect"
 const GENTLE_INFO := "Stir, grind, pour & pump timing is %sx more forgiving" % GameState.GENTLE_TOLERANCE_SCALE
 ## Height of every row (buttons, toggles, their "?" and the sliders).
 const ROW_HEIGHT := 34.0
+## A muted bus's slider: faded, and its value label reads MUTED_TEXT instead of the level.
+const MUTED_TINT := Color(1, 1, 1, 0.45)
+const MUTED_TEXT := "off"
 
 var _game: GameState
 ## The host's controls, focus-disabled while the panel is open.
@@ -212,7 +218,9 @@ func _on_sfx_changed(value: float) -> void:
 
 
 func _show_volume(slider: VolumeSlider, label: Label, what: String, volume: int, silent: bool) -> void:
-	label.text = str(volume)
+	var muted := silent and volume > 0
+	label.text = MUTED_TEXT if muted else str(volume)
+	slider.modulate = MUTED_TINT if muted else Color.WHITE
 	slider.accessibility_name = "%s %d of %d%s" % [what, volume, GameState.VOLUME_MAX, " (muted)" if silent else ""]
 
 

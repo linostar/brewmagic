@@ -4238,6 +4238,12 @@ func _test_sound_toggles() -> void:
 		var kind := "Rush Hour" if args.has("rush") else "story"
 		_game.assist_mode = true
 		visited._sync_setting_buttons()
+		if args.has("rush"):
+			# The Served label at its widest: a long run, in the last wave.
+			visited.served = 99
+			visited._update_hud()
+			var served_text := (visited.get_node("Column/Hud/Served") as Label).text
+			_check(served_text == "Served 99, wave %d" % Rush.WAVE_DAYS.size(), "sound toggles (Rush Hour): measured with the widest Served label", served_text)
 		var row: Array[Control] = []
 		for node_name: String in ["MusicToggle", "SfxToggle", "PauseButton"]:
 			row.append(visited.get_node("Column/Hud/" + node_name) as Control)
@@ -4266,6 +4272,8 @@ func _test_sound_toggles() -> void:
 		root.size = BASE_WINDOW
 		_game.assist_mode = false
 		visited._sync_setting_buttons()
+		visited.served = 0
+		visited._update_hud()
 		await _frames(5)
 	var shop := current_scene as Shop
 	var music := shop.get_node("Column/Hud/MusicToggle") as Button
@@ -4326,12 +4334,16 @@ func _test_sound_toggles() -> void:
 	shop.open_pause()
 	await _frames(5)
 	var slider := shop.get_node("Modal/Panel/List/SfxRow/Slider") as VolumeSlider
-	_check(slider.value == GameState.DEFAULT_SFX_VOLUME and slider.accessibility_name.ends_with("(muted)"), "sound toggles: the muted slider keeps its level and says muted", slider.accessibility_name)
+	var value := shop.get_node("Modal/Panel/List/SfxRow/Value") as Label
+	_check(slider.value == GameState.DEFAULT_SFX_VOLUME and slider.accessibility_name.ends_with("(muted)") and value.text == SettingsPanel.MUTED_TEXT and slider.modulate == SettingsPanel.MUTED_TINT, "sound toggles: the muted slider keeps its level, reads off and fades", "%s %s %s" % [slider.accessibility_name, value.text, slider.modulate])
+	var music_value := shop.get_node("Modal/Panel/List/MusicRow/Value") as Label
+	_check(music_value.text == str(_game.music_volume) and (shop.get_node("Modal/Panel/List/MusicRow/Slider") as Control).modulate == Color.WHITE, "sound toggles: the unmuted music slider shows its level, not faded", music_value.text)
 	await _tap(sfx)
 	_check(_game.sfx_muted, "sound toggles: no tap reaches them under the pause panel", str(_game.sfx_muted))
 	slider.grab_focus()
 	await _action(&"ui_right")
 	_check(not _game.sfx_muted and _game.sfx_volume == GameState.DEFAULT_SFX_VOLUME + GameState.VOLUME_STEP and sfx.accessibility_name == "Sound effects on, tap to mute", "sound toggles: turning the slider up unmutes and the toggle follows", "%s %d %s" % [_game.sfx_muted, _game.sfx_volume, sfx.accessibility_name])
+	_check(value.text == str(_game.sfx_volume) and slider.modulate == Color.WHITE, "sound toggles: unmuted, the slider shows its level again, not faded", "%s %s" % [value.text, slider.modulate])
 	shop.close_pause()
 	await _frames(5)
 	shop.open_codex()
