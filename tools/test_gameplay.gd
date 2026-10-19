@@ -4443,7 +4443,7 @@ func _test_settings_panels_layout() -> void:
 
 
 ## The splash (flow SPLASH, the main scene): the cauldron bubbles the logo up out of
-## itself with "made with Claude" under the pot, then after Splash.SHOW_TIME goes to the
+## itself to full size above the pot, then after Splash.SHOW_TIME goes to the
 ## title by itself. With audio still locked it plays nothing (the title track only waits).
 func _test_splash_auto_advance() -> void:
 	var main_scene := str(ProjectSettings.get_setting("application/run/main_scene"))
@@ -4457,15 +4457,14 @@ func _test_splash_auto_advance() -> void:
 	_check(splash != null and _game.state == GameState.Flow.SPLASH, "splash: goto SPLASH shows the splash", str(current_scene))
 	if splash != null:
 		var logo := splash.get_node("Column/Logo") as TextureRect
-		var credit := splash.get_node("Column/Credit") as Label
 		var hero := splash.get_node("Column/Hero") as CauldronHero
 		var risen := false
 		while not _game.is_transitioning() and splash.elapsed < Splash.SHOW_TIME + 1.0:
 			await process_frame
-			if not risen and splash.elapsed >= Splash.CREDIT_DELAY + Splash.CREDIT_TIME:
+			if not risen and splash.elapsed >= Splash.RISE_DELAY + Splash.RISE_TIME + 0.1:
 				risen = true
 				_check(logo.scale.is_equal_approx(Vector2.ONE) and is_equal_approx(logo.modulate.a, 1.0) and logo.get_global_rect().end.y < hero.get_global_rect().position.y, "splash: the logo has risen out of the pot to full size above it", "%s scale %s" % [logo.get_global_rect(), logo.scale])
-				_check(credit.text == "made with Claude" and credit.modulate.a > 0.9 and credit.get_global_rect().position.y > hero.get_global_rect().end.y, "splash: \"made with Claude\" shows under the pot", "'%s' alpha %.2f" % [credit.text, credit.modulate.a])
+				_check(splash.find_children("*", "Label", true, false).is_empty(), "splash: no text besides the logo art", str(splash.find_children("*", "Label", true, false)))
 		_check(risen and splash.finished and absf(splash.elapsed - Splash.SHOW_TIME) <= 3.0 * FRAME and _game.transition_log.back().begins_with("SPLASH -> TITLE"), "splash: goes to the title by itself after %.1f s" % Splash.SHOW_TIME, "%.3f s, %s" % [splash.elapsed, _game.transition_log.back()])
 		await _game.transition_finished
 		_check(current_scene is Title and _game.state == GameState.Flow.TITLE, "splash: the title follows", str(current_scene))
@@ -4540,6 +4539,7 @@ func _test_title_hero_layout() -> void:
 				if buttons[i].get_global_rect().intersects(buttons[j].get_global_rect()):
 					overlaps.append("%s/%s" % [buttons[i].name, buttons[j].name])
 		_check(overlaps.is_empty(), label + ": no two buttons overlap", str(overlaps))
+		_check(buttons.all(func(button: Control) -> bool: return button.get_global_rect().size == Vector2(180, 44)), label + ": every menu button is 180x44", str(buttons.map(func(button: Control) -> Vector2: return button.get_global_rect().size)))
 		_check(root.gui_get_focus_owner() == title.get_node("Column/OpenShopButton"), label + ": Open the shop (Continue) has the focus first", str(root.gui_get_focus_owner()))
 		var particles := ["Steam", "Bubbles", "BigBubbles"].all(func(node: String) -> bool: return (hero.get_node(node) as CPUParticles2D).emitting)
 		_check(particles and (hero.get_node("Steam") as CPUParticles2D).color.is_equal_approx(hero.tint().lightened(0.6)) and (hero.get_node("Liquid") as TextureRect).modulate.is_equal_approx(hero.tint()), label + ": bubbles and steam rise in the cauldron's tint", str(hero.tint()))
