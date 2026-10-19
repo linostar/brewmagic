@@ -2552,6 +2552,7 @@ func _test_title_continue_and_new_game() -> void:
 	await _tap(new_game)
 	await _frames(5)
 	_check(_game.state == GameState.Flow.TITLE and _game.day == 2 and new_game.text == Title.NEW_GAME_CONFIRM_TEXT, "the first New game press only asks to confirm", "%s day %d '%s'" % [_game.state, _game.day, new_game.text])
+	_check(new_game.size.x == 180.0 and new_game.get_theme_font_size(&"font_size") == Title.NEW_GAME_CONFIRM_FONT_SIZE, "the confirm text keeps the button 180 wide in a smaller font", "%s at size %d" % [new_game.size, new_game.get_theme_font_size(&"font_size")])
 	await _tap(new_game)
 	_check(await _until(func() -> bool: return current_scene is Morning and not _game.is_transitioning(), FLOW_FRAMES) and _game.day == 1 and _game.coins == Content.day(1).starting_coins, "the second press starts a new game at the morning of day 1", "%s day %d" % [current_scene, _game.day])
 	_game.day = Content.days().size() + 1
