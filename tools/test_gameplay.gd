@@ -153,7 +153,7 @@ func _tests() -> Array[Callable]:
 		_test_shop_refuse,
 		_test_shop_refuse_ends_day,
 		_test_bubble_blips,
-		_test_audio_unlock_and_voices,
+		_test_audio_and_voices,
 		_test_sfx_catalog_and_throttle,
 		_test_music_tracks,
 		_test_shop_sounds,
@@ -196,7 +196,6 @@ func _run() -> void:
 	_check(_game.save_path == GameState.TOOL_SAVE_PATH, "tool runs use the tool save, never the player's", _game.save_path)
 	_delete_saves()
 	_game.load_game()
-	_game.unlock_audio()
 	await process_frame
 	for test in _tests():
 		await test.call()
@@ -2067,18 +2066,14 @@ func _test_bubble_blips() -> void:
 	bubble.free()
 
 
-## No sound before the first input; the first touch unlocks audio; a customer's
-## request then plays voice blips through Game.play_sfx, and every archetype has
-## its voice file.
-func _test_audio_unlock_and_voices() -> void:
-	var unlock := _game.get_node("AudioUnlock")
-	_game.audio_unlocked = false
-	unlock.set_process_input(true)
+## Sound needs no input first (a browser that blocks it resumes on the first touch);
+## a customer's request plays voice blips through Game.play_sfx, and every archetype
+## has its voice file.
+func _test_audio_and_voices() -> void:
+	_check(_game.get_node_or_null("AudioUnlock") == null, "no audio lock waits for the first input", "AudioUnlock node present")
 	var played := _game.sfx_played
 	_game.play_sfx(load(Shop.VOICE_PATH % Content.archetypes()[0].id) as AudioStream)
-	_check(_game.sfx_played == played, "no sound before the first input", str(_game.sfx_played - played))
-	await _tap_at(Vector2(4, 4))
-	_check(_game.audio_unlocked and not unlock.is_processing_input(), "the first touch unlocks audio", str(_game.audio_unlocked))
+	_check(_game.sfx_played == played + 1, "a sound plays without any input first", str(_game.sfx_played - played))
 	var missing := PackedStringArray()
 	for archetype in Content.archetypes():
 		if not ResourceLoader.exists(Shop.VOICE_PATH % archetype.id):
@@ -4146,18 +4141,13 @@ func _test_sfx_catalog_and_throttle() -> void:
 	_game.sfx(&"stir")
 	_game.sfx(&"coins")
 	_check(_game.sfx_log == ([&"stir", &"stir", &"coins"] as Array[StringName]), "after SFX_MIN_GAP it plays again; other sounds are not held back", str(_game.sfx_log))
-	_game.audio_unlocked = false
-	var played := _game.sfx_played
-	_game.sfx(&"door_bell")
-	_check(_game.sfx_played == played and not _heard(&"door_bell"), "no sound effect before the first input", str(_game.sfx_log))
-	_game.unlock_audio()
 	_check(GameState.SFX_VOICES >= 4 and GameState.SFX_MIN_GAP > 0.0 and GameState.SFX_JITTER.has(&"stir") and GameState.SFX_JITTER.has(&"coin_tick") and GameState.SFX_JITTER.has(&"bellows_pump"), "repeated sounds are throttled and pitch-jittered", str(GameState.SFX_JITTER))
 
 
 ## Each flow state asks for its track (TITLE title; MORNING, story SHOP, SUMMARY,
 ## MARKET shop; Rush Hour SHOP and RESULTS rush; ENDING ending); going between two
 ## screens of one track keeps it playing (no new start); a new track crossfades
-## (at most 1 s); before the first input a track only waits and starts on unlock.
+## (at most 1 s); a track starts as soon as it is asked for, with no input first.
 func _test_music_tracks() -> void:
 	var expected: Dictionary[GameState.Flow, StringName] = {
 		GameState.Flow.TITLE: &"title", GameState.Flow.MORNING: &"shop", GameState.Flow.SHOP: &"shop", GameState.Flow.SUMMARY: &"shop",
@@ -4182,11 +4172,8 @@ func _test_music_tracks() -> void:
 	await _goto_scene(GameState.Flow.SHOP, {"rush": 11})
 	_check(_game.music_track == &"rush" and _game.music_started == &"rush" and _game.music_changes == changes + 2, "music: a Rush Hour shop plays rush", "%s %d" % [_game.music_track, _game.music_changes - changes])
 	await _goto_scene(GameState.Flow.TITLE)
-	_game.audio_unlocked = false
 	_game.play_music(&"ending")
-	_check(_game.music_track == &"ending" and _game.music_started == &"title", "music: before the first input a track waits", "%s %s" % [_game.music_track, _game.music_started])
-	_game.unlock_audio()
-	_check(_game.music_started == &"ending", "music: the first input starts the waiting track", str(_game.music_started))
+	_check(_game.music_track == &"ending" and _game.music_started == &"ending", "music: a track starts at once, no input needed", "%s %s" % [_game.music_track, _game.music_started])
 	_game.play_music(&"title")
 
 
@@ -4524,13 +4511,13 @@ func _test_settings_panels_layout() -> void:
 
 ## The splash (flow SPLASH, the main scene): the cauldron bubbles the logo up out of
 ## itself to full size above the pot, then after Splash.SHOW_TIME goes to the
-## title by itself. With audio still locked it plays nothing (the title track only waits).
+## title by itself. It plays no sound effect of its own; the title track starts with it,
+## before any input (on the web, heard at once where the page may play audio).
 func _test_splash_auto_advance() -> void:
 	var main_scene := str(ProjectSettings.get_setting("application/run/main_scene"))
 	_check(main_scene == _game.scene_paths[GameState.Flow.SPLASH], "splash: the splash is the main scene", main_scene)
-	_game.audio_unlocked = false
+	_game.play_music(&"ending")
 	var played := _game.sfx_played
-	var started := _game.music_started
 	_game.goto(GameState.Flow.SPLASH)
 	await _game.transition_finished
 	var splash := current_scene as Splash
@@ -4548,8 +4535,7 @@ func _test_splash_auto_advance() -> void:
 		_check(risen and splash.finished and absf(splash.elapsed - Splash.SHOW_TIME) <= 3.0 * FRAME and _game.transition_log.back().begins_with("SPLASH -> TITLE"), "splash: goes to the title by itself after %.1f s" % Splash.SHOW_TIME, "%.3f s, %s" % [splash.elapsed, _game.transition_log.back()])
 		await _game.transition_finished
 		_check(current_scene is Title and _game.state == GameState.Flow.TITLE, "splash: the title follows", str(current_scene))
-	_check(_game.sfx_played == played and _game.music_started == started and _game.music_track == &"title", "splash: nothing plays before the first input; the title track waits", "%d sounds, started %s, track %s" % [_game.sfx_played - played, _game.music_started, _game.music_track])
-	_game.audio_unlocked = true
+	_check(_game.sfx_played == played and _game.music_started == &"title" and _game.music_track == &"title", "splash: no sound effect; the title track starts with it, before any input", "%d sounds, started %s, track %s" % [_game.sfx_played - played, _game.music_started, _game.music_track])
 
 
 ## A touch anywhere or any key skips the splash at once.
