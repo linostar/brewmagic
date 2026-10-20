@@ -102,7 +102,8 @@ const VOLUME_MAX := 100
 const VOLUME_STEP := 10
 const DEFAULT_MUSIC_VOLUME := 70
 const DEFAULT_SFX_VOLUME := 80
-## The audio driver of headless runs (no device, never mixes).
+## The audio driver of headless runs (no device, never mixes) and of Movie Maker runs
+## (--write-movie), where it does mix into the recording: see audio_silent().
 const SILENT_AUDIO_DRIVER := "Dummy"
 const SAVE_PATH := "user://save.json"
 ## The save of tool runs (see _ready); tests delete it when they finish.
@@ -498,7 +499,7 @@ func play_sfx(stream: AudioStream, pitch := 1.0) -> void:
 	if not audio_unlocked and _locked():
 		return
 	sfx_played += 1
-	if AudioServer.get_driver_name() == SILENT_AUDIO_DRIVER:
+	if audio_silent():
 		return
 	var pick := 0
 	for i in _sfx_players.size():
@@ -513,6 +514,13 @@ func play_sfx(stream: AudioStream, pitch := 1.0) -> void:
 	player.stream = stream
 	player.pitch_scale = pitch
 	player.play()
+
+
+## True without an audio device (the Dummy driver of headless runs), where sounds only
+## count and music is only recorded. A Movie Maker run (tools/demo.gd) also uses the
+## Dummy driver but mixes into the movie, so it plays.
+static func audio_silent() -> bool:
+	return AudioServer.get_driver_name() == SILENT_AUDIO_DRIVER and not OS.has_feature("movie")
 
 
 ## Before the first input: logs once that sounds wait for it, and says so (true).
@@ -547,7 +555,7 @@ func _start_track() -> void:
 	if music_track == &"":
 		return
 	music_started = music_track
-	if AudioServer.get_driver_name() == SILENT_AUDIO_DRIVER:
+	if audio_silent():
 		return
 	if not _tracks.has(music_track):
 		var path := MUSIC_PATH % music_track
