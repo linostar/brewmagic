@@ -2897,7 +2897,18 @@ func _test_shop_rush_run() -> void:
 		shop.served = Rush.WAVE_SIZE - 1
 		var recipe := _exact_recipe(shop.customer.potion, _rush_stock())
 		_game.sfx_log.clear()
+		# An empty Codex, so this serve teaches it something and "Codex +N" pops.
+		_game.codex = {}
 		await _serve(shop, recipe, "rush run")
+		var pops := shop.get_node("Fx").get_children().filter(func(node: Node) -> bool: return node is Label and (node as Label).text.begins_with("Codex +"))
+		var page_label := shop.get_node("Column/Stage/ShelfPage") as Control
+		_check(pops.size() == 1 and page_label.visible, "rush run: Codex +N pops with the shelf page label showing", "%d pops" % pops.size())
+		if pops.size() == 1:
+			var pop := pops[0] as Label
+			# The pop's whole path: its full-size rect and the 14 units it rises (Juice.pop_text).
+			var path := Rect2(pop.position, pop.size).grow_side(SIDE_TOP, 14.0)
+			var next_arrow := shop.get_node("Column/Stage/ShelfNext") as Control
+			_check(not path.intersects(page_label.get_global_rect()) and not path.intersects(next_arrow.get_global_rect()), "rush run: Codex +N clears the shelf page label and the Next arrow", "%s vs %s, %s" % [path, page_label.get_global_rect(), next_arrow.get_global_rect()])
 		_check(_heard(&"wave"), "rush run: a new wave plays its stinger", str(_game.sfx_log))
 		_check(shop.coins > 0 and "wave 2" in served_label.text, "rush run: a serve pays into the score and starts wave 2", "%d coins, %s" % [shop.coins, served_label.text])
 		_check(shop.reputation == Rush.START_REPUTATION and reputation_label.text == str(Rush.START_REPUTATION), "rush run: a good serve leaves the run's reputation where it was", "%d" % shop.reputation)

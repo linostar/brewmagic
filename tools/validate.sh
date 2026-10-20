@@ -97,6 +97,11 @@ for fixture in tools/check_fixtures/*/; do
 done
 run_script test_gameplay "$LOG_DIR/test.log" --fixed-fps 60
 run_script test_content "$LOG_DIR/content.log"
+# The itch capture script needs a window, so here it is only compiled (strict warnings as
+# errors). --check-only prints nothing on success and exits 0 even on a parse error.
+if ! godot "$LOG_DIR/capture_check.log" --headless --path brewmagic --check-only --script "$PWD/tools/capture.gd" || grep -qE "ERROR|WARNING" "$LOG_DIR/capture_check.log"; then
+  fail "capture.gd compile" "$LOG_DIR/capture_check.log"
+fi
 summary="$(grep "^check_project: OK" "$LOG_DIR/check.log"); check fixtures: $fixtures; $(grep "^test_gameplay: OK" "$LOG_DIR/test.log"); $(grep "^test_content: OK" "$LOG_DIR/content.log")"
 # At 60 fixed fps the default 300 frames (5 s) cover the splash and its wipe to the title.
 RUN_FRAMES="${RUN_FRAMES:-300}" run_script run_main "$LOG_DIR/run.log" --fixed-fps 60

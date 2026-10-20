@@ -152,6 +152,8 @@ const PAY_HOLD := 0.35
 ## A tip pops "tip +N" this far under "+pay" and flies this much later.
 const TIP_OFFSET := Vector2(0, 16)
 const TIP_DELAY := 0.25
+## Units between "Codex +N" and the shelf page label to its right.
+const CODEX_POP_GAP := 4.0
 ## The pot preview's mark after "in pot/needed" for each essence of the current order.
 ## Its shape carries the result as well as its colour: a check (MATCHED), a plus
 ## (MISSING: add more) or a minus (OVER: take some out). NONE: no order, no mark.
@@ -1180,14 +1182,17 @@ func _deliver(grade: Brew.Grade, quality: float) -> void:
 
 
 ## Notes what this delivery taught in the Codex: the request's hint words (any grade),
-## and the recipe when the brew was Good or better. "Codex +N" pops over the Codex button.
+## and the recipe when the brew was Good or better. "Codex +N" pops above the Codex button,
+## ending CODEX_POP_GAP left of the shelf page label (centred over the button it read
+## "Codex 1/43" on a paged shelf; screenshot capture 2026-10-20).
 func _note_in_codex(grade: Brew.Grade) -> void:
 	var learned := _game.learn_words(customer.request.hints)
 	if grade == Brew.Grade.PERFECT or grade == Brew.Grade.GOOD:
 		if _game.learn_recipe(customer.potion, _brew_ids):
 			learned += 1
 	if learned > 0:
-		Juice.pop_text(_fx, _codex_button.get_global_rect().get_center() - Vector2(0, 30), "Codex +%d" % learned, CREAM)
+		var pop := Juice.pop_text(_fx, _codex_button.get_global_rect().get_center() - Vector2(0, 30), "Codex +%d" % learned, CREAM)
+		pop.position.x = minf(pop.position.x, _shelf_page_label.get_global_rect().position.x - CODEX_POP_GAP - pop.size.x)
 		Juice.squash(_codex_button, 0.3)
 		_game.sfx(&"codex_new")
 
