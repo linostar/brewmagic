@@ -2,7 +2,7 @@ class_name AnyInput
 extends Node
 ## Emits `received` once, on the first touch (a click arrives as one) or key press after
 ## it enters the tree, then stops listening; the event is left for everyone else (the
-## splash skips on it, and AudioUnlock still sees it). Raw input belongs in scripts/ui/.
+## splash skips on it). Raw input belongs in scripts/ui/.
 
 signal received
 

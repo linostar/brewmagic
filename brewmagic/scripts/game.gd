@@ -25,9 +25,11 @@ extends Node
 ## Music bus, crossfading over CROSSFADE_TIME when the track changes and left alone
 ## when it stays. The Music and SFX bus volumes are settings (0..100, 0 mutes),
 ## and each bus can be muted without losing its volume (the shop's HUD toggles).
-## Browsers refuse audio before the player's first input, so nothing plays until the
-## AudioUnlock child (scripts/ui/audio_unlock.gd) reports that input (unlock_audio);
-## the requested track starts then.
+## Sound and music play from boot. A browser that refuses audio before the player's
+## first input keeps its AudioContext suspended, and Godot's web platform resumes it
+## on the first touch or key; where the page may play (a native window, an itch.io
+## embed that delegates autoplay after its "Run game" click) the title music starts
+## on the splash.
 
 signal transition_finished(state: Flow)
 ## Emitted when the visible rect or the safe area changes (resize, rotation).
@@ -188,8 +190,6 @@ var transition_log: Array[String] = []
 var state := Flow.TITLE
 ## The args of the latest goto(); the new scene reads them in its _ready().
 var flow_args: Dictionary = {}
-## True once the player has touched, clicked or pressed a key (sound may play).
-var audio_unlocked := false
 ## How many sounds played (sfx() and play_sfx(); tests count voice blips with it).
 var sfx_played := 0
 ## The ids of the latest sfx() sounds that played, oldest first (SFX_LOG_SIZE at most).
@@ -224,7 +224,6 @@ var _music_fade: Tween
 var _tracks: Dictionary[StringName, AudioStream] = {}
 ## Seconds since start, advanced in _process (also while paused): the SFX clock.
 var _clock := 0.0
-var _told_audio_locked := false
 var _wipe_rng := RandomNumberGenerator.new()
 
 @onready var _wipe: ColorRect = $Fade/Wipe
@@ -423,15 +422,6 @@ func _process(delta: float) -> void:
 	_clock += delta
 
 
-## Called on the player's first input; from then on sounds play and the music starts.
-func unlock_audio() -> void:
-	if audio_unlocked:
-		return
-	audio_unlocked = true
-	print("[Game] Audio unlocked by the first input")
-	_start_track()
-
-
 ## Plays sound effect `id` (one of SFX_IDS) on the SFX bus at `pitch`, varied by its
 ## SFX_JITTER. Dropped when the same sound started less than SFX_MIN_GAP ago.
 func sfx(id: StringName, pitch := 1.0) -> void:
@@ -441,7 +431,7 @@ func sfx(id: StringName, pitch := 1.0) -> void:
 		if stream == null:
 			push_error("[Game] No sound effect '%s' at %s (SFX_IDS, run python3 tools/sfx.py)" % [id, path])
 		_sounds[id] = stream
-	if _sounds[id] == null or (not audio_unlocked and _locked()):
+	if _sounds[id] == null:
 		return
 	if _clock - float(_sfx_last.get(id, -INF)) < SFX_MIN_GAP:
 		return
@@ -491,13 +481,9 @@ func _hold_sfx(id: StringName, held: bool) -> void:
 
 
 ## Plays `stream` on the SFX bus at `pitch` on a free pool player (else the one that
-## started first). Before the first input (audio_unlocked) it plays nothing (logged
-## once), so browsers never see an autoplay attempt. Without an audio device (the
-## Dummy driver of headless runs) it only counts: that driver never mixes, so its
-## playbacks would never finish and leak at exit.
+## started first). Without an audio device (the Dummy driver of headless runs) it only
+## counts: that driver never mixes, so its playbacks would never finish and leak at exit.
 func play_sfx(stream: AudioStream, pitch := 1.0) -> void:
-	if not audio_unlocked and _locked():
-		return
 	sfx_played += 1
 	if audio_silent():
 		return
@@ -523,14 +509,6 @@ static func audio_silent() -> bool:
 	return AudioServer.get_driver_name() == SILENT_AUDIO_DRIVER and not OS.has_feature("movie")
 
 
-## Before the first input: logs once that sounds wait for it, and says so (true).
-func _locked() -> bool:
-	if not _told_audio_locked:
-		print("[Game] Sound skipped until the first input unlocks audio")
-		_told_audio_locked = true
-	return true
-
-
 ## The music of flow state `to` entered with `args`: MUSIC_TRACKS, "rush" for a Rush Hour shop.
 static func track_for(to: Flow, args: Dictionary) -> StringName:
 	if to == Flow.SHOP and args.has("rush"):
@@ -546,8 +524,7 @@ func play_music(track: StringName) -> void:
 	music_track = track
 	music_changes += 1
 	print("[Game] Music: %s" % track)
-	if audio_unlocked:
-		_start_track()
+	_start_track()
 
 
 ## Crossfades from the playing track to music_track (nothing without an audio device).

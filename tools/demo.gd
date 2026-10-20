@@ -35,7 +35,6 @@ func _initialize() -> void:
 
 func _run() -> void:
 	_delete_saves()
-	_game.unlock_audio()
 	_game.new_game()
 	_game.day = 3
 	_game.coins = 64
