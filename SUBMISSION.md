@@ -80,9 +80,9 @@ No intense content: no horror, gore, flashing imagery or heavy themes. Misbrews 
 ## Before you press publish
 
 - Upload `build/brewmagic.zip` from a fresh `tools/build_web.sh` run on the final commit.
-- Play the uploaded page in a private window on desktop: the game is framed with no odd letterbox bars, fullscreen works, and the title music starts on the first click or tap.
+- Play the uploaded page in a private window on desktop: the game is framed with no odd letterbox bars, fullscreen works, and the title music plays: in Chrome it should start on the splash right after "Run game"; in Safari it starts on your first click in the game.
 - On a real **iPhone (Safari)** and a real **Android phone (Chrome)**, play the itch page through day 1:
-  - The first tap unlocks the sound.
+  - The sound is on by your first tap in the game at the latest (Android Chrome may start the music on the splash; iPhone Safari waits for the tap, and the phone's silent switch can mute it).
   - Stirring, pouring and dragging ingredients all follow your thumb.
   - Pull-to-refresh, double-tap zoom, text selection and long-press menus never trigger.
 - On the Android phone, play Rush Hour to wave four and watch the frames: with Chrome remote debugging (chrome://inspect, Rendering > Frame Rendering Stats) it should hold about 60 fps.
