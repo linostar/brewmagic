@@ -31,6 +31,11 @@ Node 22 and Google Chrome.
 - Validate everything (art, sound and music reproducibility, project rules, gameplay and content tests):
   `tools/validate.sh`
 - Release build for itch.io (validate, web export, browser smoke test): `tools/build_web.sh` -> `build/brewmagic.zip`
+- Android debug APK (validate, export, package check): `tools/build_android.sh` -> `build/android/brewmagic.apk`,
+  then `adb install build/android/brewmagic.apk`. Needs the Godot 4.7.1 Android export templates, JDK 17 and the
+  Android SDK set in Editor Settings > Export > Android.
+- Google Play App Bundle: `tools/build_android.sh --play` -> `build/android/brewmagic.aab` (Gradle build; needs a
+  release keystore in the "Android (Play Store)" preset). Store icon, feature graphic and listing notes: `store/play/`.
 - Re-render the itch cover and screenshots into `submission/` (needs a window):
   `"$GODOT" --path brewmagic --audio-driver Dummy --resolution 1080x1920 --fixed-fps 60 --script "$PWD/tools/capture.gd"`
 
