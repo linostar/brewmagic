@@ -1,8 +1,9 @@
 class_name Shop
 extends Control
 ## The shop shift (flow SHOP): runs the ShiftConfig of story day n on the story path
-## of Game.flags at Game.difficulty (Shift.story(n, flags, difficulty), n from
-## Game.flow_args["day"], default Game.day; the level sets its visitors, patience,
+## of Game.flags at Game.difficulty (Shift.story(n, flags, difficulty, yesterday), n from
+## Game.flow_args["day"], default Game.day; yesterday is Game.last_orders when n is
+## Game.day, the day after the last finished one, else empty; the level sets its visitors, patience,
 ## arrival gap and station tolerance): its customers in order, its shelf, starting
 ## from the saved coins and stock (Game). Layout per CLAUDE.md "Shop scene
 ## layout": the 270x480 Stage sits at the bottom of the ScreenFit column (extra
@@ -346,7 +347,7 @@ func _ready() -> void:
 			stock[item.id] = ShelfItem.UNLIMITED
 	else:
 		var number := int(_game.flow_args.get("day", _game.day))
-		shift = Shift.story(number, _game.flags, _game.difficulty)
+		shift = Shift.story(number, _game.flags, _game.difficulty, _game.last_orders if number == _game.day else PackedStringArray())
 		if shift == null:
 			# The title screen is the only safe place to go; the player sees why there.
 			_game.abort_to(GameState.Flow.TITLE, "Day %d is missing from data/days.json; the shop cannot open." % number)
@@ -1390,13 +1391,17 @@ func _check_day_done() -> void:
 ## The day's results as the summary scene reads them (Game.flow_args): day, title,
 ## customers, served, stormed_off, refused, grades (a count per Brew.Grade), earned (pay
 ## without tips), tips, reputation (today's change), coins (now) and the skill measures
-## patience_left and gestures (Game.finish_day scores them, Difficulty.day_score).
+## patience_left and gestures (Game.finish_day scores them, Difficulty.day_score) and orders
+## (the potion ids of the day's customers, in order: Game.last_orders).
 func day_result() -> Dictionary:
 	var counts: Array[int] = [0, 0, 0, 0]
 	for grade in grades:
 		counts[grade] += 1
+	var orders := PackedStringArray()
+	for visit in shift.customers:
+		orders.append(visit.potion)
 	return {
-		"day": shift.day, "title": shift.title, "customers": shift.customers.size(), "served": served,
+		"orders": orders, "day": shift.day, "title": shift.title, "customers": shift.customers.size(), "served": served,
 		"stormed_off": stormed_off, "refused": refused, "grades": counts, "earned": coins - _starting_coins - tips, "tips": tips,
 		"reputation": reputation, "coins": coins, "patience_left": patience_left.duplicate(), "gestures": gestures.duplicate(),
 	}

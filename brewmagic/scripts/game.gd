@@ -112,7 +112,7 @@ const SAVE_PATH := "user://save.json"
 const TOOL_SAVE_PATH := "user://tool_save.json"
 ## The save format's version. Every change to the format bumps it and appends one
 ## step to save_migrations(), so saves of older versions are upgraded, not discarded.
-const SAVE_VERSION := 6
+const SAVE_VERSION := 7
 ## Upper bounds a save's numbers must respect (anything else marks it corrupt);
 ## SAVE_SCORE_MAX bounds reputation (either sign) and rush_best.
 const SAVE_COINS_MAX := 999999
@@ -125,7 +125,7 @@ const SAVE_KEYS: Dictionary[String, Variant.Type] = {
 	"version": TYPE_INT, "day": TYPE_INT, "at_market": TYPE_BOOL, "coins": TYPE_INT, "reputation": TYPE_INT,
 	"stock": TYPE_DICTIONARY, "upgrades": TYPE_DICTIONARY, "codex": TYPE_DICTIONARY, "flags": TYPE_DICTIONARY,
 	"endings": TYPE_ARRAY, "rush_hour_unlocked": TYPE_BOOL, "rush_best": TYPE_INT, "rush_best_assisted": TYPE_BOOL,
-	"skill": TYPE_INT, "difficulty": TYPE_INT, "settings": TYPE_DICTIONARY,
+	"skill": TYPE_INT, "difficulty": TYPE_INT, "last_orders": TYPE_ARRAY, "settings": TYPE_DICTIONARY,
 }
 ## The skill rating and the difficulty level are saved in hundredths (whole numbers):
 ## skill 0..100, difficulty Difficulty.LEVEL_MIN..LEVEL_MAX x 100.
@@ -187,6 +187,10 @@ var rush_best_assisted := false
 ## hundredths (SAVE_HUNDREDTHS) so a save round trip is exact. Rush Hour never moves them.
 var skill_rating := Difficulty.START_RATING
 var difficulty := Difficulty.START_LEVEL
+## The potion ids ordered on the last finished story day, in order (finish_day records
+## them from the shop's day result): the shop's next story day passes them to Shift.story
+## so its visitors avoid yesterday's potions. Empty until day 1 is finished.
+var last_orders := PackedStringArray()
 ## Where the save lives: SAVE_PATH, or TOOL_SAVE_PATH in tool runs.
 var save_path := SAVE_PATH
 
@@ -700,10 +704,10 @@ func continue_game() -> void:
 	goto(Flow.MARKET if at_market else Flow.MORNING)
 
 
-## The shop's end of day: commits the day's coins, stock, reputation change and story
-## beat outcomes (flag -> Story outcome, into flags), moves on to the next day (its
-## market opens when that day exists), saves, and shows the summary with `result`
-## (Shop.day_result()).
+## The shop's end of day: commits the day's coins, stock, reputation change, story
+## beat outcomes (flag -> Story outcome, into flags) and orders (result "orders", into
+## last_orders), moves on to the next day (its market opens when that day exists), saves,
+## and shows the summary with `result` (Shop.day_result()).
 func finish_day(result: Dictionary, coins_now: int, stock_now: Dictionary[String, int], reputation_change: int, story_outcomes: Dictionary[String, String] = {}) -> void:
 	coins = coins_now
 	for id in stock_now:
@@ -711,6 +715,7 @@ func finish_day(result: Dictionary, coins_now: int, stock_now: Dictionary[String
 	reputation += reputation_change
 	for flag in story_outcomes:
 		flags[flag] = story_outcomes[flag]
+	last_orders = PackedStringArray(result.get("orders", []))
 	var grades: Array[int] = []
 	grades.assign(result.get("grades", [0, 0, 0, 0]))
 	var patience_left: Array[float] = []
@@ -906,7 +911,7 @@ func save_game() -> void:
 		"stock": stock, "upgrades": upgrades, "codex": codex, "flags": flags, "endings": endings,
 		"rush_hour_unlocked": rush_hour_unlocked, "rush_best": rush_best, "rush_best_assisted": rush_best_assisted,
 		"skill": roundi(skill_rating * SAVE_HUNDREDTHS), "difficulty": roundi(difficulty * SAVE_HUNDREDTHS),
-		"settings": {"assist": assist_mode, "gentle": gentle_mode, "music": music_volume, "sfx": sfx_volume, "music_muted": music_muted, "sfx_muted": sfx_muted},
+		"last_orders": Array(last_orders), "settings": {"assist": assist_mode, "gentle": gentle_mode, "music": music_volume, "sfx": sfx_volume, "music_muted": music_muted, "sfx_muted": sfx_muted},
 	}
 	var temp := save_path + ".tmp"
 	var file := FileAccess.open(temp, FileAccess.WRITE)
@@ -1041,6 +1046,7 @@ func _reset_progress() -> void:
 	rush_best_assisted = false
 	skill_rating = Difficulty.START_RATING
 	difficulty = Difficulty.START_LEVEL
+	last_orders = PackedStringArray()
 
 
 ## Applies a parsed save; returns "" or what is wrong with it (the caller then
@@ -1117,6 +1123,10 @@ func _apply_save(data: Variant) -> String:
 	if saved_level < roundi(Difficulty.LEVEL_MIN * SAVE_HUNDREDTHS) or saved_level > roundi(Difficulty.LEVEL_MAX * SAVE_HUNDREDTHS):
 		return "difficulty %d is outside %d..%d" % [saved_level, roundi(Difficulty.LEVEL_MIN * SAVE_HUNDREDTHS), roundi(Difficulty.LEVEL_MAX * SAVE_HUNDREDTHS)]
 	difficulty = saved_level / SAVE_HUNDREDTHS
+	for id: Variant in saved["last_orders"]:
+		if typeof(id) != TYPE_STRING or Content.potions().all(func(item: PotionType) -> bool: return item.id != id):
+			return "last_orders has an unknown potion %s" % [id]
+		last_orders.append(str(id))
 	var settings: Dictionary = saved["settings"]
 	if settings.size() != SETTINGS_KEYS.size() or not SETTINGS_KEYS.all(func(key: String) -> bool: return settings.has(key)):
 		return "settings must be exactly %s" % [SETTINGS_KEYS]
@@ -1160,7 +1170,7 @@ static func migrate_save(saved: Dictionary, migrations: Array[Callable], target:
 ## version i + 2. Steps run before the save is validated, so they must read keys
 ## with get() and leave anything malformed for the validation to report.
 static func save_migrations() -> Array[Callable]:
-	return [_save_v1_to_v2, _save_v2_to_v3, _save_v3_to_v4, _save_v4_to_v5, _save_v5_to_v6]
+	return [_save_v1_to_v2, _save_v2_to_v3, _save_v3_to_v4, _save_v4_to_v5, _save_v5_to_v6, _save_v6_to_v7]
 
 
 ## Version 1 -> 2: the ending reached and the Rush Hour unlock move out of the story's
@@ -1237,6 +1247,12 @@ static func _save_v5_to_v6(saved: Dictionary) -> void:
 		if beat_days.has(flag) and beat_days[flag] >= saved_day:
 			(old_flags as Dictionary).erase(flag)
 			print("[Game] Save upgrade: flag '%s' dropped (its beat now comes on or after day %d)" % [flag, saved_day])
+
+
+## Version 6 -> 7: the save gains the potions ordered on the last finished story day,
+## empty (the next day's visitors then only avoid repeats within that day).
+static func _save_v6_to_v7(saved: Dictionary) -> void:
+	saved["last_orders"] = []
 
 
 ## Reports `problem`, moves the bad save to backup_path() and writes defaults in

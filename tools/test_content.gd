@@ -862,7 +862,11 @@ func _plans_uncached(spec: DaySpec, flags: Dictionary, level: float) -> Array[Di
 ## The customers of `spec` on the story path `flags` at difficulty `level`, as the shop
 ## runs them (Shift.story: the ordinary visitor slots filled).
 ## Memoized per DaySpec instance (a reload of the content makes new ones), path and level:
-## the story checks ask for the same lists thousands of times.
+## the story checks ask for the same lists thousands of times. Built with no orders from
+## the day before (Shift.story's `yesterday` empty), so the memo needs no path history:
+## the day-before rule draws the same random numbers and keeps every slot's station count
+## (patience and timing checks see the same day), but it can swap which potion of that
+## count a slot gets, so the market checks (I8) cover these picks, not every yesterday.
 func _customers(spec: DaySpec, flags: Dictionary, level: float) -> Array[DayCustomer]:
 	var key := "%d|%s|%.2f" % [spec.get_instance_id(), flags, level]
 	if not _shifts.has(key):
