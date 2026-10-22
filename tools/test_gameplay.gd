@@ -3981,11 +3981,12 @@ func _buy_for_day(number: int) -> bool:
 			for b in pool:
 				if recipe.is_empty() and a.essence + b.essence == target:
 					recipe = [a.id, b.id]
-		for a in pool:
-			for b in pool:
-				for c in pool:
-					if recipe.is_empty() and a.essence + b.essence + c.essence == target:
-						recipe = [a.id, b.id, c.id]
+		if recipe.is_empty():
+			for a in pool:
+				for b in pool:
+					for c in pool:
+						if recipe.is_empty() and a.essence + b.essence + c.essence == target:
+							recipe = [a.id, b.id, c.id]
 		for id in recipe:
 			needed[id] = needed.get(id, 0) + 1
 	for id in needed:
