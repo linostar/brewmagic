@@ -48,9 +48,9 @@
     "id": "day_4",
     "day": 4,
     "title": "Garden Party",
-    "morning_note": "Garden party! Green thumbs and night owls drop by all day.",
+    "morning_note": "Garden party! New recipes need 3 ingredients: fill all three pot slots!",
     "morning_notes": [
-      {"when": {"stranger.first_sneeze": ["great"]}, "text": "A hooded stranger has been praising you. Garden party today!"}
+      {"when": {"stranger.first_sneeze": ["great"]}, "text": "A stranger praised you! Garden party: new recipes need 3 ingredients!"}
     ],
     "patience_scale": 1.0,
     "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4 },
