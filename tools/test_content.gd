@@ -42,6 +42,10 @@ const RATINGS: Array[float] = [0.2, 0.5, 1.0]
 
 ## _customers' memo: "<DaySpec instance id>|<flags>|<level>" -> the shift's customers.
 var _shifts: Dictionary[String, Array] = {}
+## _plans' memo, keyed like _shifts: I8 asks for each day's plans on every path and trajectory.
+var _day_plans: Dictionary[String, Array] = {}
+## _exact_recipes' memo: "<target>|<pool ingredient instance ids>" -> the recipes.
+var _recipes: Dictionary[String, Array] = {}
 var _failures: Array[String] = []
 var _passed := 0
 var _deadline_msec := 0
@@ -743,8 +747,13 @@ func _all_brews(pool: Array[Ingredient]) -> Array[PackedStringArray]:
 	return brews
 
 
+## Memoized per target and pool (by ingredient instance, so a reload of the content
+## computes them afresh): the story checks ask for the same recipes thousands of times.
 func _exact_recipes(target: Vector4i, pool: Array[Ingredient]) -> Array[PackedStringArray]:
-	return _all_brews(pool).filter(func(brew: PackedStringArray) -> bool: return _essence_sum(brew) == target)
+	var key := "%s|%s" % [target, pool.map(func(item: Ingredient) -> int: return item.get_instance_id())]
+	if not _recipes.has(key):
+		_recipes[key] = _all_brews(pool).filter(func(brew: PackedStringArray) -> bool: return _essence_sum(brew) == target)
+	return _recipes[key]
 
 
 func _essence_sum(brew: PackedStringArray) -> Vector4i:
@@ -779,7 +788,7 @@ func _market_shortfalls(flags: Dictionary = {}, levels: Array = []) -> Array[Str
 	var problems: Array[String] = []
 	var days := Content.days()
 	var level := func(n: int) -> float: return levels[n] if n < levels.size() else Difficulty.START_LEVEL
-	var carried: Array[Dictionary] = []
+	var carried: Dictionary[String, Dictionary] = {}
 	for plan in _plans(days[0], flags, level.call(0)):
 		if plan.keys().all(func(id: String) -> bool: return plan[id] <= days[0].starting_stock.get(id, 0)):
 			_add_unique(carried, _leftover(days[0].starting_stock, plan))
@@ -792,12 +801,12 @@ func _market_shortfalls(flags: Dictionary = {}, levels: Array = []) -> Array[Str
 		var plans := _plans(spec, flags, level.call(n))
 		if plans.is_empty() or carried.is_empty():
 			problems.append("%s: %s" % [spec.id, "a customer has no exact recipe" if plans.is_empty() else "no Perfect day %d to carry stock over from" % days[n - 1].day])
-			carried = []
+			carried = {}
 			continue
-		var next: Array[Dictionary] = []
+		var next: Dictionary[String, Dictionary] = {}
 		var worst := 0
 		var worst_stock: Dictionary = {}
-		for stock: Dictionary in carried:
+		for stock: Dictionary in carried.values():
 			var cheapest := -1
 			for plan in plans:
 				var cost := 0
@@ -828,17 +837,25 @@ func _level_trajectory(step: Callable) -> Array[float]:
 ## Every distinct Perfect plan of `spec` on the story path `flags`: one exact recipe
 ## (ingredients unlocked by its day) per customer, as ingredient id -> count used.
 func _plans(spec: DaySpec, flags: Dictionary = {}, level := Difficulty.START_LEVEL) -> Array[Dictionary]:
+	var key := "%d|%s|%.2f" % [spec.get_instance_id(), flags, level]
+	if not _day_plans.has(key):
+		_day_plans[key] = _plans_uncached(spec, flags, level)
+	return _day_plans[key]
+
+
+func _plans_uncached(spec: DaySpec, flags: Dictionary, level: float) -> Array[Dictionary]:
 	var plans: Array[Dictionary] = [{}]
 	var pool := Content.ingredients_unlocked_by(spec.day)
 	for customer in _customers(spec, flags, level):
-		var grown: Array[Dictionary] = []
+		var grown: Dictionary[String, Dictionary] = {}
+		var recipes := _exact_recipes(Content.potion(customer.potion).target, pool)
 		for plan in plans:
-			for recipe in _exact_recipes(Content.potion(customer.potion).target, pool):
+			for recipe in recipes:
 				var used := plan.duplicate()
 				for id in recipe:
 					used[id] = int(used.get(id, 0)) + 1
 				_add_unique(grown, used)
-		plans = grown
+		plans.assign(grown.values())
 	return plans
 
 
@@ -861,11 +878,17 @@ func _leftover(stock: Dictionary, used: Dictionary) -> Dictionary:
 	return left
 
 
-func _add_unique(list: Array[Dictionary], item: Dictionary) -> void:
-	for existing in list:
-		if existing.recursive_equal(item, 1):
-			return
-	list.append(item)
+## Adds `item` (ingredient id -> count) to `seen` unless an equal one is there: the key
+## is its counts in sorted id order, so the lookup stays constant-time as `seen` grows.
+func _add_unique(seen: Dictionary[String, Dictionary], item: Dictionary) -> void:
+	var ids := item.keys()
+	ids.sort()
+	var key := PackedStringArray()
+	for id: String in ids:
+		if item[id] != 0:
+			key.append("%s:%d" % [id, item[id]])
+	if not seen.has(",".join(key)):
+		seen[",".join(key)] = item
 
 
 ## Backtracking: can customers `index..` each get one of their recipes from `stock`?
