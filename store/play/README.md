@@ -26,5 +26,8 @@ Regenerate:
 
 - Release keystore: create it, set it in the "Android (Play Store)" preset, then
   `tools/build_android.sh --play` -> `build/android/brewmagic.aab`. Enrol in Play App Signing.
-- Privacy policy URL, Data safety form (the game collects no data; it saves only on the
-  device and asks for no permissions), content rating questionnaire, target audience.
+- Privacy policy URL: https://github.com/linostar/brewmagic/blob/main/PRIVACY.md (live once
+  this branch is merged to main).
+- Data safety form: "No data collected" and "No data shared" (the game saves only on the
+  device, has no network access and asks for no permissions; see `PRIVACY.md`).
+- Content rating questionnaire, target audience.
