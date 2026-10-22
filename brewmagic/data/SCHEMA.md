@@ -138,7 +138,7 @@ a story beat always pins its request (I13), so a story character's requests need
 | `starting_coins` | int | 0..9999 | **Day 1 only (required there, an error on other days).** |
 | `starting_stock` | object `{ingredient id: int 0..99}` | keys ⊆ ingredients unlocked on day 1 | **Day 1 only (required there, an error on other days).** Missing keys mean 0. |
 | `market` | object `{ingredient id: int 1..999}` | keys == exactly the ingredients with `unlock_day <= day` | **Days >= 2 only (required there, an error on day 1).** Prices in the market screen held the evening *before* this day, so the player shops for this day. The market sells any quantity. |
-| `customers` | array of object | non-empty | In arrival order. An entry with none of `archetype`, `potion`, `request`, `beat`, `lines` (only an optional `when`, e.g. `{}`) is an **ordinary visitor slot**: `Shift.story` fills it at the player's difficulty level with a potion of the day (the day's new potions first, in file order, then picks weighted by `Difficulty.potion_weight`), an ordinary archetype with a request for it and one of those requests (pinned, `Rush.visit`), from a generator seeded by the day and the level. |
+| `customers` | array of object | non-empty | In arrival order. An entry with none of `archetype`, `potion`, `request`, `beat`, `lines` (only an optional `when`, e.g. `{}`) is an **ordinary visitor slot**: `Shift.story` fills it at the player's difficulty level with a potion of the day (first the day's new potions no authored customer of the day asks for, in file order, then picks by `Difficulty.pick_for` that bring the day's mean stations per customer, authored customers included, to `Difficulty.target_stations(level, day)`: 2.4 on day 1, +1 by day 20, +0.5 per level), an ordinary archetype with a request for it and one of those requests (pinned, `Rush.visit`), from a generator seeded by the day and the level. |
 | `customers[].archetype` | string | archetype id | Required on every entry that is not a visitor slot. |
 | `customers[].potion` | string | potion id with `unlock_day <= day` | Required on every entry that is not a visitor slot. |
 | `customers[].request` | string | *optional*, request id | Pins the line. Its `potion` and `archetype` must equal the customer's. Absent: random, as above. Required on a story beat. |
@@ -210,7 +210,7 @@ One upgrade per station: exactly one entry for each of `"stir"`, `"pour"`, `"mor
   >= 3 requests. Every essence has >= 5 misbrews, each with its fixed effect.
   Every archetype has >= 3 lines for every grade. Visitor slots are exempt from the pair rule (their request is pinned). Potions with `unlock_day == 1` have `steps == ["stir", "pour"]`
   and day-1 ingredients have `grind == false` (day 1 teaches only Stir and Pour). At least one potion with
-  `unlock_day == 2` lists `"mortar"` (the Mortar is introduced on day 2). The Bellows first appears on day 6: at least
+  `unlock_day == 3` lists `"mortar"` (the Mortar is introduced on day 3, after a day 2 of five two-station potions). The Bellows first appears on day 6: at least
   one potion with `unlock_day == 6` lists `"bellows"`, none unlocked earlier does, and no ingredient unlocked before
   day 6 has `heat == true`.
 - **I11** Mortar consistency. A potion lists `"mortar"` in `steps` exactly when every exact recipe of it (2-3
@@ -241,8 +241,8 @@ One upgrade per station: exactly one entry for each of `"stir"`, `"pour"`, `"mor
 | frost_mint | 0,2,0,0 | 1 |  | 2 |
 | sunpetal | 0,0,2,0 | 1 |  | 2 |
 | nightshade_cap | 0,0,0,2 | 1 |  | 3 |
-| honeycomb | 1,0,2,0 | 2 |  | 4 |
-| moonmoss | 0,1,0,2 | 2 | grind | 4 |
+| honeycomb | 1,0,2,0 | 3 |  | 4 |
+| moonmoss | 0,1,0,2 | 3 | grind | 4 |
 | cinderroot | 3,0,0,0 | 6 | heat | 5 |
 | snowfire_pearl | 1,1,0,0 | 11 |  | 5 |
 | twilight_bloom | 0,0,1,1 | 12 |  | 5 |
@@ -252,13 +252,13 @@ One upgrade per station: exactly one entry for each of `"stir"`, `"pour"`, `"mor
 |---|---|---|---|---|
 | hearthglow_tonic | 2,0,2,0 | 1 | stir, pour | ember_pepper + sunpetal |
 | slumber_syrup | 0,2,0,2 | 1 | stir, pour | frost_mint + nightshade_cap |
-| valour_cordial | 2,1,0,2 | 2 | mortar, stir, pour | ember_pepper + moonmoss |
-| moonbloom_draught | 0,1,2,2 | 2 | mortar, stir, pour | sunpetal + moonmoss |
-| stillwater_draught | 0,4,0,0 | 3 | stir, pour | frost_mint + frost_mint |
-| dewdrop_balm | 0,2,2,0 | 3 | stir, pour | frost_mint + sunpetal |
-| nightfire_punch | 2,0,0,2 | 4 | stir, pour | ember_pepper + nightshade_cap |
-| greenthumb_syrup | 0,0,4,0 | 4 | stir, pour | sunpetal + sunpetal |
-| nocturne_syrup | 0,0,0,4 | 4 | stir, pour | nightshade_cap + nightshade_cap |
+| valour_cordial | 2,1,0,2 | 3 | mortar, stir, pour | ember_pepper + moonmoss |
+| moonbloom_draught | 0,1,2,2 | 3 | mortar, stir, pour | sunpetal + moonmoss |
+| stillwater_draught | 0,4,0,0 | 2 | stir, pour | frost_mint + frost_mint |
+| dewdrop_balm | 0,2,2,0 | 2 | stir, pour | frost_mint + sunpetal |
+| nightfire_punch | 2,0,0,2 | 2 | stir, pour | ember_pepper + nightshade_cap |
+| greenthumb_syrup | 0,0,4,0 | 2 | stir, pour | sunpetal + sunpetal |
+| nocturne_syrup | 0,0,0,4 | 2 | stir, pour | nightshade_cap + nightshade_cap |
 | steamwhistle_tonic | 3,2,0,0 | 6 | bellows, stir, pour | frost_mint + cinderroot |
 | bonfire_tonic | 5,0,0,0 | 6 | bellows, stir, pour | ember_pepper + cinderroot |
 | smoulder_syrup | 3,0,0,2 | 7 | bellows, stir, pour | nightshade_cap + cinderroot |
@@ -275,7 +275,7 @@ the steps stay those of the potion. The day-1 ingredients each sum to 2, so on d
 pick gives Meh or Misbrew, never Good. Later ingredients sum to 2 or 3, so near misses become possible (for Valour
 Cordial, ember_pepper + nightshade_cap is Good).
 
-The unlocks are paced over the 20 days: day 2 the Mortar (honeycomb, moonmoss), days 3-4 the simple potions, day 6 the
+The unlocks are paced over the 20 days: day 2 the five two-station potions, day 3 the Mortar (honeycomb, moonmoss, its upgrade), day 6 the simple potions, day 6 the
 Bellows (cinderroot, its upgrade on sale from then), day 7 the hardest fire potions, days 11-13 one rare ingredient each
 (snowfire pearl, twilight bloom, starlight dew) with their potions. Rush Hour's waves follow (`Rush.WAVE_DAYS`
 1, 4, 7, 13).

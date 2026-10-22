@@ -69,14 +69,6 @@ text = "Fonts: Silkscreen (c) 2001 The Silkscreen Project Authors and VT323 (c) 
 horizontal_alignment = 1
 autowrap_mode = 3
 
-[node name="Code" type="Label" parent="Panel/List"]
-custom_minimum_size = Vector2(232, 0)
-layout_mode = 2
-theme_type_variation = &"DarkLabel"
-text = "Pixel art, sounds and music written as code."
-horizontal_alignment = 1
-autowrap_mode = 3
-
 [node name="Engine" type="Label" parent="Panel/List"]
 layout_mode = 2
 theme_type_variation = &"DarkLabel"

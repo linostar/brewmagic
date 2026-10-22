@@ -46,14 +46,14 @@ const GAP_CEILING := 8.6
 const TOLERANCE_PER_LEVEL := -0.2
 const TOLERANCE_FLOOR := 0.8
 const TOLERANCE_CEILING := 1.06
-## an ordinary visitor's potion weight exp(HARDNESS_BIAS x level x hardness), hardness 0..1
-## (hardness()), so level 0 picks evenly, higher levels lean to hard recipes and negative
-## levels to easy ones; a potion new that day weighs NEW_POTION_WEIGHT times more.
-const HARDNESS_BIAS := 2.0
-const NEW_POTION_WEIGHT := 3.0
-
-## hardness()'s cache: potion instance id -> hardness.
-static var _hardness: Dictionary[int, float] = {}
+## and the stations a story day's customers need on average (target_stations): STATIONS_START
+## on day 1, STATIONS_RAMP more by the last day, STATIONS_PER_LEVEL more per level, so the
+## days grow harder over the story (a day of new two-station potions is not easier than the
+## day before it), faster for a strong player. The ordinary visitors are picked to bring
+## the whole day to it (pick_for), within the stations the day's potions offer.
+const STATIONS_START := 2.4
+const STATIONS_RAMP := 1.0
+const STATIONS_PER_LEVEL := 0.5
 
 
 ## The day's score in 0..1. `grades`: a count per Brew.Grade of the customers served;
@@ -96,39 +96,33 @@ static func tolerance_scale(level: float) -> float:
 	return clampf(1.0 + TOLERANCE_PER_LEVEL * level, TOLERANCE_FLOOR, TOLERANCE_CEILING)
 
 
-## How hard `potion` is to brew, 0..1: its stations beyond Stir and Pour (0..2) plus its
-## smallest exact recipe's ingredients beyond 2 (0..1), over 3.
-## Cached per potion instance, like Rush.voices_for.
-static func hardness(potion: PotionType) -> float:
-	var key := potion.get_instance_id()
-	if not _hardness.has(key):
-		_hardness[key] = clampf((potion.steps.size() - 2 + recipe_size(potion) - Brew.MIN_INGREDIENTS) / 3.0, 0.0, 1.0)
-	return _hardness[key]
+## The stations per customer story day `day` aims at, at `level`.
+static func target_stations(level: float, day: int) -> float:
+	var progress := inverse_lerp(Content.FIRST_DAY, maxf(Content.days().size(), Content.FIRST_DAY + 1), day)
+	return STATIONS_START + STATIONS_RAMP * progress + STATIONS_PER_LEVEL * level
 
 
-## The fewest ingredients (2 or 3, those unlocked by the potion's day) that brew `potion`
-## exactly (data/SCHEMA.md I7 guarantees one); MAX_INGREDIENTS + 1 when none does.
-static func recipe_size(potion: PotionType) -> int:
-	var shelf := Content.ingredients_unlocked_by(potion.unlock_day)
-	for a in shelf.size():
-		for b in range(a, shelf.size()):
-			var pair := shelf[a].essence + shelf[b].essence
-			if pair == potion.target:
-				return 2
-			for c in range(b, shelf.size()):
-				if pair + shelf[c].essence == potion.target:
-					return 3
-	return Brew.MAX_INGREDIENTS + 1
-
-
-## The pick weight of `potion` for an ordinary visitor of story day `day` at `level`.
-static func potion_weight(potion: PotionType, level: float, day: int) -> float:
-	return exp(HARDNESS_BIAS * level * hardness(potion)) * (NEW_POTION_WEIGHT if potion.unlock_day == day else 1.0)
-
-
-## One of `potions` drawn from `rng` by `weights` (same order, all > 0).
-static func pick(rng: RandomNumberGenerator, potions: Array[PotionType], weights: PackedFloat32Array) -> PotionType:
-	return potions[rng.rand_weighted(weights)]
+## One of `pool` (non-empty) for a visitor who should need `wanted` stations: the station
+## counts the pool offers either side of it, the higher one with the chance of how far
+## `wanted` is past the lower (so the picks average `wanted`), then one of the potions with
+## that count, all from `rng`. Clamped to the counts the pool has.
+static func pick_for(rng: RandomNumberGenerator, pool: Array[PotionType], wanted: float) -> PotionType:
+	var counts: Array[int] = []
+	for potion in pool:
+		if not potion.steps.size() in counts:
+			counts.append(potion.steps.size())
+	counts.sort()
+	var lower := counts[0]
+	var upper := counts[-1]
+	for count in counts:
+		if count <= wanted:
+			lower = count
+		if count >= wanted and count < upper:
+			upper = count
+	upper = maxi(upper, lower)
+	var steps := upper if upper > lower and rng.randf() < (wanted - lower) / float(upper - lower) else lower
+	var matching := pool.filter(func(potion: PotionType) -> bool: return potion.steps.size() == steps)
+	return matching[rng.randi_range(0, matching.size() - 1)]
 
 
 static func _mean(values: Array[float]) -> float:

@@ -22,6 +22,8 @@ const MIN_MISBREWS_PER_ESSENCE := 5
 const MISBREW_DISTANCE := 3
 ## The day the Bellows first appears (SCHEMA.md I10).
 const BELLOWS_DAY := 6
+## The day the Mortar first appears (SCHEMA.md I10).
+const MORTAR_DAY := 3
 ## Beats each story character has at least (SCHEMA.md I13).
 const MIN_BEATS := 3
 ## Seconds of patience every customer has left at the counter at least (SCHEMA.md I15).
@@ -319,7 +321,7 @@ func _test_i8_market_serves_later_days() -> void:
 	_check(problems.is_empty(), "I8 on all %d flag paths at a constant level (%s) and along the level the next_level steps reach at a constant rating (%s), day N-1 Perfect pay (beats unpaid) plus the carried-over stock buys every day-N customer at day N's market" % [paths.size(), LEVELS, RATINGS], "\n".join(problems))
 	var texts := _real_texts()
 	var data: Array = JSON.parse_string(texts["days.json"])
-	data[1]["market"]["moonmoss"] = 30
+	data[1]["market"]["sunpetal"] = 60
 	texts["days.json"] = JSON.stringify(data)
 	var errors := _load_quietly(texts)
 	var expensive := _market_shortfalls()
@@ -362,8 +364,8 @@ func _test_i10_coverage() -> void:
 			problems.append("%s steps %s (day 1 uses stir, pour)" % [item.id, item.steps])
 		if item.unlock_day < BELLOWS_DAY and "bellows" in item.steps:
 			problems.append("%s (day %d) uses the bellows before day %d" % [item.id, item.unlock_day, BELLOWS_DAY])
-	if not Content.potions().any(func(item: PotionType) -> bool: return item.unlock_day == 2 and "mortar" in item.steps):
-		problems.append("no day-2 potion uses the mortar")
+	if not Content.potions().any(func(item: PotionType) -> bool: return item.unlock_day == MORTAR_DAY and "mortar" in item.steps):
+		problems.append("no day-%d potion uses the mortar" % MORTAR_DAY)
 	if not Content.potions().any(func(item: PotionType) -> bool: return item.unlock_day == BELLOWS_DAY and "bellows" in item.steps):
 		problems.append("no day-%d potion uses the bellows" % BELLOWS_DAY)
 	for item in Content.ingredients():

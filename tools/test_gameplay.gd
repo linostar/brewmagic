@@ -867,10 +867,10 @@ func _test_shop_day1_assist() -> void:
 	if market == null:
 		_check(false, "loop: the summary opens the market", str(current_scene))
 		return
-	var moonmoss := Content.ingredient("moonmoss")
-	var price := Economy.market_price(Content.day(2), moonmoss)
-	await _tap(market.stock_card("moonmoss"))
-	_check(_game.stock["moonmoss"] == 1 and _game.coins == expected_coins - price, "loop: a market tap buys one moonmoss", "%s %d" % [_game.stock, _game.coins])
+	var mint := Content.ingredient("frost_mint")
+	var price := Economy.market_price(Content.day(2), mint)
+	await _tap(market.stock_card("frost_mint"))
+	_check(_game.stock["frost_mint"] == left.get("frost_mint", 0) + 1 and _game.coins == expected_coins - price, "loop: a market tap buys one frost mint", "%s %d" % [_game.stock, _game.coins])
 	await _tap(market.get_node("Column/Shop/NextDayButton") as Button)
 	await _until(func() -> bool: return _game.state == GameState.Flow.MORNING and not _game.is_transitioning(), FLOW_FRAMES)
 	_check(current_scene is Morning and (current_scene.get_node("Column/DayLabel") as Label).text == "Day 2 of %d" % Content.days().size() and not _game.at_market, "loop: next day opens the morning of day 2", str(current_scene))
@@ -878,8 +878,7 @@ func _test_shop_day1_assist() -> void:
 	await _until(func() -> bool: return _game.state == GameState.Flow.SHOP and not _game.is_transitioning(), FLOW_FRAMES)
 	shop = current_scene as Shop
 	var expected_stock := left.duplicate()
-	expected_stock["honeycomb"] = 0
-	expected_stock["moonmoss"] = 1
+	expected_stock["frost_mint"] = left.get("frost_mint", 0) + 1
 	_check(shop != null and shop.shift.day == 2 and shop.coins == expected_coins - price and shop.stock == expected_stock, "day 2 starts with the carried-over stock and the purchase", "%s %s" % [shop.stock if shop != null else {}, expected_stock])
 	await _close_shop()
 
@@ -2143,21 +2142,21 @@ func _test_audio_and_voices() -> void:
 	await _close_shop()
 
 
-## Day 2's first customer wants a Mortar potion (shipped content); the test adds a
+## Day 3's first customer wants a Mortar potion (the Mortar arrives on day 3) (shipped content); the test adds a
 ## Bellows step to it (Bellows ships in step 7). The shop runs Mortar (with the
 ## brew's grind ingredient in the bowl), Bellows, Stir and Pour in order, each
 ## driven by touches at the right speed, and the customer gets a Perfect potion.
 func _test_shop_mortar_and_bellows() -> void:
-	_game.goto(GameState.Flow.SHOP, {"day": 2})
+	_game.goto(GameState.Flow.SHOP, {"day": 3})
 	await _game.transition_finished
 	var shop := current_scene as Shop
-	if await _wait_for_order(shop, "day 2 mortar"):
+	if await _wait_for_order(shop, "day 3 mortar"):
 		var wants := shop.customer.potion
-		_check("mortar" in wants.steps, "day 2 customer 1 needs the mortar", str(wants.steps))
+		_check("mortar" in wants.steps, "day 3 customer 1 needs the mortar", str(wants.steps))
 		var shipped := wants.steps
 		wants.steps = PackedStringArray(["mortar", "bellows", "stir", "pour"])
 		shop.customer.patience_left = 999.0
-		for item in Content.ingredients_unlocked_by(2):
+		for item in Content.ingredients_unlocked_by(3):
 			shop.stock[item.id] = 2
 			shop.shelf_item(item.id).set_stock(2)
 		var recipe := _exact_recipe(wants, shop.stock)
@@ -2230,7 +2229,7 @@ func _test_economy_day_loop_rules() -> void:
 	_check(Economy.tip(12, Brew.Grade.MEH, 1.0) == 0 and Economy.tip(12, Brew.Grade.MISBREW, 1.0) == 0, "no tip for Meh or Misbrew", "%d %d" % [Economy.tip(12, Brew.Grade.MEH, 1.0), Economy.tip(12, Brew.Grade.MISBREW, 1.0)])
 	var moonmoss := Content.ingredient("moonmoss")
 	var pepper := Content.ingredient("ember_pepper")
-	_check(Economy.market_price(Content.day(2), moonmoss) == Content.day(2).market["moonmoss"], "market price is the day's market price", str(Economy.market_price(Content.day(2), moonmoss)))
+	_check(Economy.market_price(Content.day(3), moonmoss) == Content.day(3).market["moonmoss"], "market price is the day's market price", str(Economy.market_price(Content.day(3), moonmoss)))
 	_check(Economy.market_price(Content.day(1), pepper) == pepper.base_price, "a day without a market price uses the base price", str(Economy.market_price(Content.day(1), pepper)))
 	var upgrade := Upgrade.new()
 	upgrade.tolerances = [1.2, 1.4]
@@ -2620,17 +2619,28 @@ func _test_difficulty_rules() -> void:
 	_check(Difficulty.patience_scale(easy) > Difficulty.patience_scale(0.0) and Difficulty.patience_scale(0.0) > Difficulty.patience_scale(hard) and is_equal_approx(Difficulty.patience_scale(hard), Difficulty.PATIENCE_FLOOR) and Difficulty.patience_scale(easy) <= Difficulty.PATIENCE_CEILING and is_equal_approx(Difficulty.patience_scale(5.0), Difficulty.PATIENCE_FLOOR), "difficulty: patience shrinks with the level down to its floor", "%f %f" % [Difficulty.patience_scale(easy), Difficulty.patience_scale(hard)])
 	_check(Difficulty.arrival_gap(easy) > Difficulty.arrival_gap(hard) and is_equal_approx(Difficulty.arrival_gap(hard), Difficulty.GAP_FLOOR) and is_equal_approx(Difficulty.arrival_gap(-5.0), Difficulty.GAP_CEILING), "difficulty: arrivals come closer with the level, clamped", "%f %f" % [Difficulty.arrival_gap(easy), Difficulty.arrival_gap(hard)])
 	_check(Difficulty.tolerance_scale(easy) > 1.0 and is_equal_approx(Difficulty.tolerance_scale(0.0), 1.0) and is_equal_approx(Difficulty.tolerance_scale(hard), Difficulty.TOLERANCE_FLOOR) and is_equal_approx(Difficulty.tolerance_scale(5.0), Difficulty.TOLERANCE_FLOOR), "difficulty: tolerance tightens with the level, never under its floor", "%f %f" % [Difficulty.tolerance_scale(easy), Difficulty.tolerance_scale(hard)])
-	var simple := Content.potion("stillwater_draught")
-	var tough := Content.potion("embermoss_elixir")
-	_check(is_equal_approx(Difficulty.hardness(simple), 0.0) and Difficulty.hardness(tough) > 0.5, "difficulty: hardness counts extra stations and ingredients", "%f %f" % [Difficulty.hardness(simple), Difficulty.hardness(tough)])
-	var day := maxi(simple.unlock_day, tough.unlock_day) + 1
-	_check(is_equal_approx(Difficulty.potion_weight(simple, 0.0, day), Difficulty.potion_weight(tough, 0.0, day)) and Difficulty.potion_weight(tough, hard, day) > Difficulty.potion_weight(simple, hard, day) and Difficulty.potion_weight(tough, easy, day) < Difficulty.potion_weight(simple, easy, day), "difficulty: level 0 picks evenly, harder levels lean to hard recipes, easier to easy ones", "")
-	_check(is_equal_approx(Difficulty.potion_weight(tough, 0.0, tough.unlock_day), Difficulty.NEW_POTION_WEIGHT), "difficulty: a potion new that day weighs more", str(Difficulty.potion_weight(tough, 0.0, tough.unlock_day)))
+	var last := Content.days().size()
+	_check(Difficulty.target_stations(0.0, 1) < Difficulty.target_stations(0.0, last) and Difficulty.target_stations(easy, 5) < Difficulty.target_stations(hard, 5), "difficulty: the day's target stations grow over the story and with the level", "%f %f %f %f" % [Difficulty.target_stations(0.0, 1), Difficulty.target_stations(0.0, last), Difficulty.target_stations(easy, 5), Difficulty.target_stations(hard, 5)])
+	var pool: Array[PotionType] = []
+	pool.assign([Content.potion("stillwater_draught"), Content.potion("valour_cordial"), Content.potion("embermoss_elixir")])
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var stations := func(wanted: float, draws: int) -> float:
+		var total := 0
+		for n in draws:
+			total += Difficulty.pick_for(rng, pool, wanted).steps.size()
+		return total / float(draws)
+	var low := stations.call(1.0, 20) as float
+	var high := stations.call(9.0, 20) as float
+	var exact := stations.call(3.0, 20) as float
+	var between := stations.call(2.5, 400) as float
+	_check(is_equal_approx(low, 2.0) and is_equal_approx(high, 4.0) and is_equal_approx(exact, 3.0) and absf(between - 2.5) < 0.1, "difficulty: picks average the stations wanted, clamped to what the pool offers", "%f %f %f %f" % [low, high, exact, between])
 
 
 ## Shift.story at the kindest and the hardest level: patience, arrival gap and tolerance
 ## follow the level; every ordinary visitor slot is filled with a pinned request of an
-## ordinary voice for a potion of the day (the day's new potions first); beats and
+## ordinary voice for a potion of the day (first the day's new potions no authored
+## customer asks for, then picks for the day's target stations); beats and
 ## authored customers are kept; the same day and level give the same customers.
 func _test_difficulty_shift() -> void:
 	var problems: Array[String] = []
@@ -2641,7 +2651,8 @@ func _test_difficulty_shift() -> void:
 			problems.append("day %d: knobs %s/%s %s/%s %s/%s" % [spec.day, easy.patience_scale, hard.patience_scale, easy.arrival_gap(0), hard.arrival_gap(0), easy.tolerance_scale, hard.tolerance_scale])
 		var authored := Story.customers_of(spec, {})
 		var again := Shift.story(spec.day, {}, Difficulty.LEVEL_MAX)
-		var fresh := hard.allowed_potions.filter(func(potion: PotionType) -> bool: return potion.unlock_day == spec.day and not Rush.voices_for(potion).is_empty())
+		var asked := authored.map(func(customer: DayCustomer) -> String: return customer.potion)
+		var fresh := hard.allowed_potions.filter(func(potion: PotionType) -> bool: return potion.unlock_day == spec.day and not potion.id in asked and not Rush.voices_for(potion).is_empty())
 		var generated := 0
 		for i in hard.customers.size():
 			var visit := hard.customers[i]
@@ -2659,6 +2670,24 @@ func _test_difficulty_shift() -> void:
 			if again.customers[i].request != visit.request:
 				problems.append("day %d visitor %d: not the same on a second build" % [spec.day, i])
 	_check(problems.is_empty(), "difficulty: every story day's shift follows its level, fills its visitor slots and replays alike", "\n".join(problems))
+	# At a level rising 0.05 a day, no day's customers need fewer stations on average than the
+	# day before's, beyond what one two-station story beat among them moves it (playtest
+	# 2026-10-22: days 3 and 4 felt easier than day 2).
+	var flags := {}
+	for flag in Story.beat_flags():
+		flags[flag] = Story.GREAT
+	var means: Array[float] = []
+	for day in range(Content.FIRST_DAY, Content.days().size()):
+		var shift := Shift.story(day, flags, minf(0.05 * (day - 1), Difficulty.LEVEL_MAX))
+		var total := 0
+		for customer in shift.customers:
+			total += Content.potion(customer.potion).steps.size()
+		means.append(total / float(shift.customers.size()))
+	var dips := PackedStringArray()
+	for n in range(1, means.size()):
+		if means[n] < means[n - 1] - 0.1:
+			dips.append("day %d %.2f after %.2f" % [n + 1, means[n], means[n - 1]])
+	_check(dips.is_empty(), "difficulty: days 1 to %d grow harder in stations per customer, never easier than the day before" % means.size(), ", ".join(dips))
 
 
 ## Game.finish_day scores the day and moves the skill rating and the level (saved in
@@ -2694,14 +2723,14 @@ func _test_market_purchases() -> void:
 	if market == null:
 		return
 	var spec := Content.day(2)
-	var moonmoss := Content.ingredient("moonmoss")
-	var price := Economy.market_price(spec, moonmoss)
+	var mint := Content.ingredient("frost_mint")
+	var price := Economy.market_price(spec, mint)
 	var on_sale := Content.ingredients_unlocked_by(2).all(func(item: Ingredient) -> bool: return market.stock_card(item.id) != null)
 	var upgrades_match := Content.upgrades().all(func(u: Upgrade) -> bool: return (market.upgrade_card(u.id) != null) == (u.unlock_day <= 2))
 	_check(on_sale and upgrades_match, "market sells day-2 ingredients and the upgrades unlocked by day 2", "upgrades %s" % str(Content.upgrades().map(func(u: Upgrade) -> bool: return market.upgrade_card(u.id) != null)))
 	var ladle := Content.upgrade_for("stir")
 	var ladle_card := market.upgrade_card(ladle.id)
-	_check(ladle_card.modulate == Market.UNAFFORDABLE_TINT and not ladle_card.disabled and market.stock_card("moonmoss").modulate == Color.WHITE, "10 coins: the ladle (%d) is faded but tappable, moonmoss (%d) is not faded" % [ladle.costs[0], price], "%s %s %s" % [ladle_card.modulate, ladle_card.disabled, market.stock_card("moonmoss").modulate])
+	_check(ladle_card.modulate == Market.UNAFFORDABLE_TINT and not ladle_card.disabled and market.stock_card("frost_mint").modulate == Color.WHITE, "10 coins: the ladle (%d) is faded but tappable, frost mint (%d) is not faded" % [ladle.costs[0], price], "%s %s %s" % [ladle_card.modulate, ladle_card.disabled, market.stock_card("frost_mint").modulate])
 	await _tap(market.get_node("Column/Shop/Tabs/UpgradesTab") as Button)
 	_game.sfx_log.clear()
 	await _tap(ladle_card)
@@ -2710,13 +2739,13 @@ func _test_market_purchases() -> void:
 	_check(_game.coins == 10 and _game.upgrades.is_empty() and "Not enough coins" in refusal and ladle.name in refusal, "a tap on a faded card buys nothing and says why", "%d %s '%s'" % [_game.coins, _game.upgrades, refusal])
 	await _tap(market.get_node("Column/Shop/Tabs/StockTab") as Button)
 	_game.sfx_log.clear()
-	await _tap(market.stock_card("moonmoss"))
+	await _tap(market.stock_card("frost_mint"))
 	_check(_game.sfx_log == ([&"buy"] as Array[StringName]), "a buy plays only its own sound", str(_game.sfx_log))
-	_check(_game.coins == 10 - price and _game.stock.get("moonmoss") == 1 and _read_save().get("coins") == float(10 - price), "a tap buys one moonmoss and saves", "%d %s" % [_game.coins, _game.stock])
-	_check((market.get_node("Column/Coins/Amount") as Label).text == str(10 - price) and "Moonmoss" in (market.get_node("Column/Info/Text") as Label).text, "the coins and the info card update", (market.get_node("Column/Info/Text") as Label).text)
-	await _tap(market.stock_card("moonmoss"))
+	_check(_game.coins == 10 - price and _game.stock.get("frost_mint") == 1 and _read_save().get("coins") == float(10 - price), "a tap buys one frost mint and saves", "%d %s" % [_game.coins, _game.stock])
+	_check((market.get_node("Column/Coins/Amount") as Label).text == str(10 - price) and "Frost Mint" in (market.get_node("Column/Info/Text") as Label).text, "the coins and the info card update", (market.get_node("Column/Info/Text") as Label).text)
+	await _tap(market.stock_card("frost_mint"))
 	var left := 10 - 2 * price
-	_check(_game.coins == left and (market.stock_card("moonmoss").modulate == Market.UNAFFORDABLE_TINT) == (left < price), "stock the coins no longer cover is faded", "%d %s" % [_game.coins, market.stock_card("moonmoss").modulate])
+	_check(_game.coins == left and (market.stock_card("frost_mint").modulate == Market.UNAFFORDABLE_TINT) == (left < price), "stock the coins no longer cover is faded", "%d %s" % [_game.coins, market.stock_card("frost_mint").modulate])
 	market = await _open_market(ladle.costs[0] + ladle.costs[1])
 	await _tap(market.get_node("Column/Shop/Tabs/UpgradesTab") as Button)
 	_check((market.get_node("Column/Shop/UpgradeList") as Control).visible and not (market.get_node("Column/Shop/StockGrid") as Control).visible, "the Upgrades tab shows the upgrades", "hidden")
@@ -2742,7 +2771,7 @@ func _test_title_continue_and_new_game() -> void:
 	var title: Title = await _goto_scene(GameState.Flow.TITLE)
 	var open := title.get_node("Column/OpenShopButton") as Button
 	var new_game := title.get_node("Column/NewGameButton") as Button
-	_check(open.text == "Continue story" and new_game.visible and "day 2" in open.accessibility_name, "a saved day-2 story offers Continue and New game", "%s %s" % [open.text, new_game.visible])
+	_check(open.text == "Continue story" and new_game.visible and new_game.text == "New story" and "day 2" in open.accessibility_name, "a saved day-2 story offers Continue story and New story", "%s %s '%s'" % [open.text, new_game.visible, new_game.text])
 	await _tap(open)
 	_check(await _until(func() -> bool: return current_scene is Market and not _game.is_transitioning(), FLOW_FRAMES), "Continue resumes at the open market", str(current_scene))
 	title = await _goto_scene(GameState.Flow.TITLE)
@@ -3155,7 +3184,9 @@ func _test_rush_screens() -> void:
 	var new_title := await _goto_scene(GameState.Flow.TITLE)
 	_check((new_title.get_node("Column/RushButton") as Button).visible and not (new_title.get_node("Column/RushButton") as Button).disabled and not (new_title.get_node("Column/RushBest") as Label).visible, "rush screens: Rush Hour on the title from the first launch, no best line before a run", "")
 	var story := new_title.get_node("Column/OpenShopButton") as Control
-	_check(story.get_global_rect().end.y <= (new_title.get_node("Column/RushButton") as Control).get_global_rect().position.y, "rush screens: the story button sits above Rush Hour", "%s / %s" % [story.get_global_rect(), (new_title.get_node("Column/RushButton") as Control).get_global_rect()])
+	var fresh_rush := new_title.get_node("Column/RushButton") as Control
+	_check(story.get_global_rect().end.y <= fresh_rush.get_global_rect().position.y, "rush screens: the story button sits above Rush Hour", "%s / %s" % [story.get_global_rect(), fresh_rush.get_global_rect()])
+	_check(is_equal_approx(fresh_rush.anchor_top, (new_title.get_node("Column/NewGameButton") as Control).anchor_top), "rush screens: with no saved story Rush Hour takes New story's place", str(fresh_rush.anchor_top))
 	_game.rush_best = 40
 	_game.rush_best_assisted = true
 	title = await _goto_scene(GameState.Flow.TITLE)
@@ -4835,7 +4866,9 @@ func _test_title_hero_layout() -> void:
 		_check(overlaps.is_empty(), label + ": no two buttons overlap", str(overlaps))
 		_check(buttons.slice(0, 3).all(func(button: Control) -> bool: return button.get_global_rect().size == Vector2(190, 44)) and buttons.slice(3).all(func(button: Control) -> bool: return button.get_global_rect().size == Vector2(112, 44)), label + ": every menu button is 190x44, Settings and Credits 112x44", str(buttons.map(func(button: Control) -> Vector2: return button.get_global_rect().size)))
 		var story_rect := (title.get_node("Column/OpenShopButton") as Control).get_global_rect()
-		_check(story_rect.end.y <= (title.get_node("Column/RushButton") as Control).get_global_rect().position.y, label + ": the story button sits above Rush Hour", str(story_rect))
+		var new_rect := (title.get_node("Column/NewGameButton") as Control).get_global_rect()
+		var rush_rect := (title.get_node("Column/RushButton") as Control).get_global_rect()
+		_check(story_rect.end.y <= new_rect.position.y and new_rect.end.y <= rush_rect.position.y, label + ": Continue story, then New story right under it, then Rush Hour", "%s %s %s" % [story_rect, new_rect, rush_rect])
 		_check(root.gui_get_focus_owner() == title.get_node("Column/OpenShopButton"), label + ": the story button (Continue story) has the focus first", str(root.gui_get_focus_owner()))
 		var particles := ["Steam", "Bubbles", "BigBubbles"].all(func(node: String) -> bool: return (hero.get_node(node) as CPUParticles2D).emitting)
 		_check(particles and (hero.get_node("Steam") as CPUParticles2D).color.is_equal_approx(hero.tint().lightened(0.6)) and (hero.get_node("Liquid") as TextureRect).modulate.is_equal_approx(hero.tint()), label + ": bubbles and steam rise in the cauldron's tint", str(hero.tint()))

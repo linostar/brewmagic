@@ -27,7 +27,7 @@
     "target": [2, 1, 0, 2],
     "color": "#c43c2c",
     "bottle": "flask",
-    "unlock_day": 2,
+    "unlock_day": 3,
     "steps": ["mortar", "stir", "pour"],
     "price": 18,
     "description": "Courage with a cool head, for anything spooky. Side effect: heroic posing."
@@ -38,7 +38,7 @@
     "target": [0, 1, 2, 2],
     "color": "#7cc44c",
     "bottle": "teardrop",
-    "unlock_day": 2,
+    "unlock_day": 3,
     "steps": ["mortar", "stir", "pour"],
     "price": 18,
     "description": "Makes things grow in cold, cursed or night-time places. Turnips may get chatty."
@@ -49,7 +49,7 @@
     "target": [0, 4, 0, 0],
     "color": "#68bede",
     "bottle": "tall",
-    "unlock_day": 3,
+    "unlock_day": 2,
     "steps": ["stir", "pour"],
     "price": 14,
     "description": "Calm in a bottle. One sip and even a thunderstorm says sorry."
@@ -60,7 +60,7 @@
     "target": [0, 2, 2, 0],
     "color": "#c8f0f0",
     "bottle": "round",
-    "unlock_day": 3,
+    "unlock_day": 2,
     "steps": ["stir", "pour"],
     "price": 14,
     "description": "Cools, soothes, mends. Gargle twice, then compose a short poem about mornings."
@@ -71,7 +71,7 @@
     "target": [2, 0, 0, 2],
     "color": "#c43c2c",
     "bottle": "flask",
-    "unlock_day": 4,
+    "unlock_day": 2,
     "steps": ["stir", "pour"],
     "price": 14,
     "description": "Courage for things that go bump. Bump back, politely."
@@ -82,7 +82,7 @@
     "target": [0, 0, 4, 0],
     "color": "#7cc44c",
     "bottle": "teardrop",
-    "unlock_day": 4,
+    "unlock_day": 2,
     "steps": ["stir", "pour"],
     "price": 14,
     "description": "Pure growth. Keep away from moustaches unless a hedge is the goal."
@@ -93,7 +93,7 @@
     "target": [0, 0, 0, 4],
     "color": "#2a1a48",
     "bottle": "tall",
-    "unlock_day": 4,
+    "unlock_day": 2,
     "steps": ["stir", "pour"],
     "price": 15,
     "description": "Sleep so deep that dreams send a postcard instead of visiting."

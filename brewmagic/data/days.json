@@ -17,10 +17,11 @@
     "id": "day_2",
     "day": 2,
     "title": "Word Gets Around",
-    "morning_note": "Honeycomb and moonmoss in stock. Moonmoss must be ground in the mortar.",
+    "morning_note": "Five new potions today! Listen for the hint words: they point the way.",
     "patience_scale": 1.0,
-    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4 },
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3 },
     "customers": [
+      {},
       {},
       {},
       {},
@@ -31,7 +32,7 @@
     "id": "day_3",
     "day": 3,
     "title": "The Guild Comes Calling",
-    "morning_note": "A Guild inspector is in town. Two new potions on the menu. Brew neatly!",
+    "morning_note": "Moonmoss is in: grind it in the mortar! And a Guild inspector is in town.",
     "patience_scale": 1.0,
     "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4 },
     "customers": [
@@ -47,9 +48,9 @@
     "id": "day_4",
     "day": 4,
     "title": "Garden Party",
-    "morning_note": "Three new potions! Green thumbs and night owls welcome.",
+    "morning_note": "Garden party! Green thumbs and night owls drop by all day.",
     "morning_notes": [
-      {"when": {"stranger.first_sneeze": ["great"]}, "text": "A hooded stranger has been praising you. Three new potions today!"}
+      {"when": {"stranger.first_sneeze": ["great"]}, "text": "A hooded stranger has been praising you. Garden party today!"}
     ],
     "patience_scale": 1.0,
     "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4 },

@@ -7,11 +7,11 @@ extends Control
 ## count and the shop stays closed (the buttons are disabled).
 ## The story button (OpenShopButton, top of the menu) reads "Story mode" and starts a
 ## new story; with a saved story to resume (Game.can_continue()) it reads "Continue
-## story" and NewGameButton appears under Rush Hour; a new game over a saved one
-## needs a second press within NEW_GAME_CONFIRM_TIME.
-## RushButton (under the story button) starts a Rush Hour run from the first launch,
-## with the best score under it once a run has set one (RushBest, "assisted" when set
-## with Assist).
+## story" and NewGameButton ("New story") appears right under it; a new story over a
+## saved one needs a second press within NEW_GAME_CONFIRM_TIME.
+## RushButton (under them) starts a Rush Hour run from the first launch, with the best
+## score under it once a run has set one (RushBest, "assisted" when set with Assist);
+## without a saved story both move up into New story's place.
 ## The bottom row: SettingsButton opens the shared settings panel (Settings: the mode
 ## toggles with their "?" help and the Music and SFX volumes) with a Close button
 ## (also ui_cancel); CreditsButton opens the credits (Credits). Closing either gives
@@ -21,7 +21,7 @@ extends Control
 ## bubbles and steam cycling through the essence colours).
 
 const CONTENT_ERROR_MESSAGE := "Content error: %d problem(s) in data/*.json, see the log. The shop stays closed."
-const NEW_GAME_TEXT := "New game"
+const NEW_GAME_TEXT := "New story"
 const NEW_GAME_CONFIRM_TEXT := "Sure? Tap again"
 ## The confirm text is drawn at Silkscreen 8 (its other crisp size) so the button keeps
 ## its 190 width; Silkscreen 16 would widen it (playtest 2026-10-19).
@@ -94,7 +94,13 @@ func _ready() -> void:
 	_open_button.accessibility_name = ("Continue the story on day %d" % _game.day) if resumable else "Start story mode"
 	_new_game_button.visible = resumable
 	_new_game_button.text = NEW_GAME_TEXT
-	_new_game_button.accessibility_name = "Start a new game"
+	_new_game_button.accessibility_name = "Start a new story"
+	if not resumable:
+		# No New story: Rush Hour and its best line move up into its place.
+		var lift := _rush_button.anchor_top - _new_game_button.anchor_top
+		for control: Control in [_rush_button, _rush_best]:
+			control.anchor_top -= lift
+			control.anchor_bottom -= lift
 	_rush_best.visible = _game.rush_best > 0
 	_rush_best.text = "Best: %d coins%s" % [_game.rush_best, " (assisted)" if _game.rush_best_assisted else ""]
 	_rush_best.accessibility_name = "Rush Hour best: %s" % _rush_best.text.trim_prefix("Best: ")
@@ -169,7 +175,7 @@ func _on_new_game_pressed() -> void:
 		# The size first: a Control grows to a wider minimum at once but never shrinks back.
 		_new_game_button.add_theme_font_size_override(&"font_size", NEW_GAME_CONFIRM_FONT_SIZE)
 		_new_game_button.text = NEW_GAME_CONFIRM_TEXT
-		_new_game_button.accessibility_name = "Press again to erase the saved story and start a new game"
+		_new_game_button.accessibility_name = "Press again to erase the saved story and start a new story"
 		Juice.shake(_new_game_button, 2.0, 0.2)
 		_confirm_timer = get_tree().create_timer(NEW_GAME_CONFIRM_TIME)
 		_confirm_timer.timeout.connect(_cancel_new_game)
@@ -181,7 +187,7 @@ func _cancel_new_game() -> void:
 	_confirm_timer = null
 	_new_game_button.text = NEW_GAME_TEXT
 	_new_game_button.remove_theme_font_size_override(&"font_size")
-	_new_game_button.accessibility_name = "Start a new game"
+	_new_game_button.accessibility_name = "Start a new story"
 
 
 func _start_new_game() -> void:
