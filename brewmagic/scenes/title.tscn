@@ -1,8 +1,9 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scripts/title.gd" id="1_title"]
 [ext_resource type="PackedScene" path="res://scenes/settings_panel.tscn" id="2_settings"]
 [ext_resource type="PackedScene" path="res://scenes/cauldron_hero.tscn" id="3_hero"]
+[ext_resource type="PackedScene" path="res://scenes/credits_panel.tscn" id="4_credits"]
 
 [sub_resource type="Gradient" id="Gradient_mote_fade"]
 offsets = PackedFloat32Array(0, 0.3, 0.7, 1)
@@ -116,18 +117,34 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_banner")
 text = "Content error"
 autowrap_mode = 3
 
-[node name="RushButton" type="Button" parent="Column" groups=["own_squash"]]
-visible = false
-custom_minimum_size = Vector2(180, 44)
+[node name="OpenShopButton" type="Button" parent="Column"]
+custom_minimum_size = Vector2(190, 44)
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.5
 anchor_top = 0.54
 anchor_right = 0.5
 anchor_bottom = 0.54
-offset_left = -90.0
+offset_left = -95.0
 offset_top = -22.0
-offset_right = 90.0
+offset_right = 95.0
+offset_bottom = 22.0
+grow_horizontal = 2
+grow_vertical = 2
+accessibility_name = "Start story mode"
+text = "Story mode"
+
+[node name="RushButton" type="Button" parent="Column" groups=["own_squash"]]
+custom_minimum_size = Vector2(190, 44)
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 0.66
+anchor_right = 0.5
+anchor_bottom = 0.66
+offset_left = -95.0
+offset_top = -22.0
+offset_right = 95.0
 offset_bottom = 22.0
 grow_horizontal = 2
 grow_vertical = 2
@@ -138,9 +155,9 @@ text = "Rush Hour"
 visible = false
 layout_mode = 1
 anchors_preset = -1
-anchor_top = 0.61
+anchor_top = 0.725
 anchor_right = 1.0
-anchor_bottom = 0.61
+anchor_bottom = 0.725
 offset_top = -8.0
 offset_bottom = 8.0
 grow_horizontal = 2
@@ -151,35 +168,18 @@ text = "Best: 0 coins"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="OpenShopButton" type="Button" parent="Column"]
-custom_minimum_size = Vector2(180, 44)
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.5
-anchor_top = 0.705
-anchor_right = 0.5
-anchor_bottom = 0.705
-offset_left = -90.0
-offset_top = -22.0
-offset_right = 90.0
-offset_bottom = 22.0
-grow_horizontal = 2
-grow_vertical = 2
-accessibility_name = "Open the shop"
-text = "Open the shop"
-
 [node name="NewGameButton" type="Button" parent="Column"]
 visible = false
-custom_minimum_size = Vector2(180, 44)
+custom_minimum_size = Vector2(190, 44)
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.5
 anchor_top = 0.82
 anchor_right = 0.5
 anchor_bottom = 0.82
-offset_left = -90.0
+offset_left = -95.0
 offset_top = -22.0
-offset_right = 90.0
+offset_right = 95.0
 offset_bottom = 22.0
 grow_horizontal = 2
 grow_vertical = 2
@@ -187,20 +187,39 @@ accessibility_name = "Start a new game"
 text = "New game"
 
 [node name="SettingsButton" type="Button" parent="Column"]
-custom_minimum_size = Vector2(180, 44)
+custom_minimum_size = Vector2(112, 44)
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.5
 anchor_top = 0.935
 anchor_right = 0.5
 anchor_bottom = 0.935
-offset_left = -90.0
+offset_left = -115.0
 offset_top = -22.0
-offset_right = 90.0
+offset_right = -3.0
 offset_bottom = 22.0
 grow_horizontal = 2
 grow_vertical = 2
 accessibility_name = "Settings: modes and volumes"
 text = "Settings"
 
+[node name="CreditsButton" type="Button" parent="Column"]
+custom_minimum_size = Vector2(112, 44)
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 0.935
+anchor_right = 0.5
+anchor_bottom = 0.935
+offset_left = 3.0
+offset_top = -22.0
+offset_right = 115.0
+offset_bottom = 22.0
+grow_horizontal = 2
+grow_vertical = 2
+accessibility_name = "Credits"
+text = "Credits"
+
 [node name="Settings" parent="." instance=ExtResource("2_settings")]
+
+[node name="Credits" parent="." instance=ExtResource("4_credits")]

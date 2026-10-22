@@ -184,6 +184,7 @@ func _tests() -> Array[Callable]:
 		_test_splash_auto_advance,
 		_test_splash_skips,
 		_test_title_hero_layout,
+		_test_title_credits,
 		_test_transition_wipe,
 		_test_hit_stop,
 		_test_button_press_squash,
@@ -805,7 +806,7 @@ func _test_economy_rules() -> void:
 	_check(Economy.STORMED_OFF_REPUTATION < Economy.reputation_delta(Brew.Grade.MISBREW), "storming off costs more than a misbrew", str(Economy.STORMED_OFF_REPUTATION))
 
 
-## The whole day loop by real taps, Assist on: the title's "Open the shop" (new
+## The whole day loop by real taps, Assist on: the title's "Story mode" (new
 ## game) -> the morning of day 1 -> its "Open the shop" -> every day-1 customer gets
 ## the exact recipe (all Good, the Assist cap, paying Economy.pay plus Economy.tip)
 ## -> the summary scene with the day's numbers -> "To the market" -> a purchase
@@ -2528,7 +2529,7 @@ func _test_market_purchases() -> void:
 
 
 ## A saved story past day 1: the title offers Continue (to the saved screen) and
-## New game, which needs a second press; with the story over only "Open the shop".
+## New game, which needs a second press; with the story over only "Story mode".
 func _test_title_continue_and_new_game() -> void:
 	_game.new_game()
 	_game.day = 2
@@ -2538,7 +2539,7 @@ func _test_title_continue_and_new_game() -> void:
 	var title: Title = await _goto_scene(GameState.Flow.TITLE)
 	var open := title.get_node("Column/OpenShopButton") as Button
 	var new_game := title.get_node("Column/NewGameButton") as Button
-	_check(open.text == "Continue" and new_game.visible and "day 2" in open.accessibility_name, "a saved day-2 story offers Continue and New game", "%s %s" % [open.text, new_game.visible])
+	_check(open.text == "Continue story" and new_game.visible and "day 2" in open.accessibility_name, "a saved day-2 story offers Continue and New game", "%s %s" % [open.text, new_game.visible])
 	await _tap(open)
 	_check(await _until(func() -> bool: return current_scene is Market and not _game.is_transitioning(), FLOW_FRAMES), "Continue resumes at the open market", str(current_scene))
 	title = await _goto_scene(GameState.Flow.TITLE)
@@ -2546,13 +2547,13 @@ func _test_title_continue_and_new_game() -> void:
 	await _tap(new_game)
 	await _frames(5)
 	_check(_game.state == GameState.Flow.TITLE and _game.day == 2 and new_game.text == Title.NEW_GAME_CONFIRM_TEXT, "the first New game press only asks to confirm", "%s day %d '%s'" % [_game.state, _game.day, new_game.text])
-	_check(new_game.size.x == 180.0 and new_game.get_theme_font_size(&"font_size") == Title.NEW_GAME_CONFIRM_FONT_SIZE, "the confirm text keeps the button 180 wide in a smaller font", "%s at size %d" % [new_game.size, new_game.get_theme_font_size(&"font_size")])
+	_check(new_game.size.x == 190.0 and new_game.get_theme_font_size(&"font_size") == Title.NEW_GAME_CONFIRM_FONT_SIZE, "the confirm text keeps the button 190 wide in a smaller font", "%s at size %d" % [new_game.size, new_game.get_theme_font_size(&"font_size")])
 	await _tap(new_game)
 	_check(await _until(func() -> bool: return current_scene is Morning and not _game.is_transitioning(), FLOW_FRAMES) and _game.day == 1 and _game.coins == Content.day(1).starting_coins, "the second press starts a new game at the morning of day 1", "%s day %d" % [current_scene, _game.day])
 	_game.day = Content.days().size() + 1
 	_game.at_market = false
 	title = await _goto_scene(GameState.Flow.TITLE)
-	_check((title.get_node("Column/OpenShopButton") as Button).text == "Open the shop" and not (title.get_node("Column/NewGameButton") as Button).visible, "after the last story day the title starts a new game", (title.get_node("Column/OpenShopButton") as Button).text)
+	_check((title.get_node("Column/OpenShopButton") as Button).text == "Story mode" and not (title.get_node("Column/NewGameButton") as Button).visible, "after the last story day the title starts a new game", (title.get_node("Column/OpenShopButton") as Button).text)
 	_game.new_game()
 	await _goto_scene(GameState.Flow.TITLE)
 
@@ -2937,8 +2938,9 @@ func _test_shop_rush_run() -> void:
 	await _goto_scene(GameState.Flow.TITLE)
 
 
-## The Rush Hour entry and results screens: no Rush Hour button before the story is
-## finished; after it the button and the best line (assisted marked) show, 32x32+ in
+## The Rush Hour entry and results screens: the Rush Hour button shows from the first
+## launch (no story needed) with no best line until a run has set one; then the best
+## line (assisted marked) shows too, 32x32+ in
 ## the thumb zone at 9:16, 9:19.5 and 16:9, and start a run; quitting a run records
 ## nothing; the results' Again and Title buttons fit the same rules and work; a lower
 ## score keeps the best.
@@ -2946,8 +2948,11 @@ func _test_rush_screens() -> void:
 	_game.new_game()
 	_game.rush_hour_unlocked = false
 	var title := await _goto_scene(GameState.Flow.TITLE)
-	_check(not (title.get_node("Column/RushButton") as Button).visible and not (title.get_node("Column/RushBest") as Label).visible, "rush screens: no Rush Hour on the title before the story is finished", "")
-	_game.rush_hour_unlocked = true
+	_game.rush_best = 0
+	var new_title := await _goto_scene(GameState.Flow.TITLE)
+	_check((new_title.get_node("Column/RushButton") as Button).visible and not (new_title.get_node("Column/RushButton") as Button).disabled and not (new_title.get_node("Column/RushBest") as Label).visible, "rush screens: Rush Hour on the title from the first launch, no best line before a run", "")
+	var story := new_title.get_node("Column/OpenShopButton") as Control
+	_check(story.get_global_rect().end.y <= (new_title.get_node("Column/RushButton") as Control).get_global_rect().position.y, "rush screens: the story button sits above Rush Hour", "%s / %s" % [story.get_global_rect(), (new_title.get_node("Column/RushButton") as Control).get_global_rect()])
 	_game.rush_best = 40
 	_game.rush_best_assisted = true
 	title = await _goto_scene(GameState.Flow.TITLE)
@@ -4558,7 +4563,7 @@ func _test_splash_skips() -> void:
 ## The title's reading zone: the logo pops in and the big cauldron bubbles and steams in
 ## the four essence colours, all above the thumb zone and clear of every button, the
 ## Rush Hour best line and the content-error banner; the buttons keep their sizes,
-## thumb zone and focus (Open the shop first) at 9:16, 9:19.5 and 16:9.
+## thumb zone and focus (the story button first) at 9:16, 9:19.5 and 16:9.
 func _test_title_hero_layout() -> void:
 	var day := _game.day
 	var unlocked := _game.rush_hour_unlocked
@@ -4584,7 +4589,7 @@ func _test_title_hero_layout() -> void:
 			var rect := piece.get_global_rect().grow_individual(0, Title.BOB_HEIGHT, 0, Title.BOB_HEIGHT)
 			_check(rect.end.y <= reading_end and column.grow(1.0).encloses(rect), "%s: %s in the reading zone, inside the column" % [label, piece.name], "%s, reading zone ends at %.0f" % [rect, reading_end])
 		var buttons: Array[Control] = []
-		for node: String in ["RushButton", "OpenShopButton", "NewGameButton", "SettingsButton"]:
+		for node: String in ["RushButton", "OpenShopButton", "NewGameButton", "SettingsButton", "CreditsButton"]:
 			buttons.append(title.get_node("Column/" + node) as Control)
 		_check_targets(buttons, null, label)
 		var banner := title.get_node("Column/ContentErrorBanner") as Control
@@ -4603,8 +4608,10 @@ func _test_title_hero_layout() -> void:
 				if buttons[i].get_global_rect().intersects(buttons[j].get_global_rect()):
 					overlaps.append("%s/%s" % [buttons[i].name, buttons[j].name])
 		_check(overlaps.is_empty(), label + ": no two buttons overlap", str(overlaps))
-		_check(buttons.all(func(button: Control) -> bool: return button.get_global_rect().size == Vector2(180, 44)), label + ": every menu button is 180x44", str(buttons.map(func(button: Control) -> Vector2: return button.get_global_rect().size)))
-		_check(root.gui_get_focus_owner() == title.get_node("Column/OpenShopButton"), label + ": Open the shop (Continue) has the focus first", str(root.gui_get_focus_owner()))
+		_check(buttons.slice(0, 3).all(func(button: Control) -> bool: return button.get_global_rect().size == Vector2(190, 44)) and buttons.slice(3).all(func(button: Control) -> bool: return button.get_global_rect().size == Vector2(112, 44)), label + ": every menu button is 190x44, Settings and Credits 112x44", str(buttons.map(func(button: Control) -> Vector2: return button.get_global_rect().size)))
+		var story_rect := (title.get_node("Column/OpenShopButton") as Control).get_global_rect()
+		_check(story_rect.end.y <= (title.get_node("Column/RushButton") as Control).get_global_rect().position.y, label + ": the story button sits above Rush Hour", str(story_rect))
+		_check(root.gui_get_focus_owner() == title.get_node("Column/OpenShopButton"), label + ": the story button (Continue story) has the focus first", str(root.gui_get_focus_owner()))
 		var particles := ["Steam", "Bubbles", "BigBubbles"].all(func(node: String) -> bool: return (hero.get_node(node) as CPUParticles2D).emitting)
 		_check(particles and (hero.get_node("Steam") as CPUParticles2D).color.is_equal_approx(hero.tint().lightened(0.6)) and (hero.get_node("Liquid") as TextureRect).modulate.is_equal_approx(hero.tint()), label + ": bubbles and steam rise in the cauldron's tint", str(hero.tint()))
 		title.free()
@@ -4614,6 +4621,50 @@ func _test_title_hero_layout() -> void:
 	_game.rush_hour_unlocked = unlocked
 	root.size = BASE_WINDOW
 	await _frames(2)
+
+
+## The title's Credits: a tap opens the popup over a dim, listing linostar, the fonts
+## and their licence and the engine (no text names Claude or AI); Close takes the
+## focus, is 32x32+ in the thumb zone and safe area at 9:16, 9:19.5 and 16:9, and a
+## tap on it, Enter on it, Escape (ui_cancel) and a tap on the dim each close it with the
+## focus back on Credits.
+func _test_title_credits() -> void:
+	var title: Title = await _goto_scene(GameState.Flow.TITLE)
+	var opener := title.get_node("Column/CreditsButton") as Button
+	var credits := title.get_node("Credits") as CreditsPanel
+	var close := credits.close_button()
+	await _tap(opener)
+	await _frames(2)
+	_check(credits.is_open() and root.gui_get_focus_owner() == close, "credits: a tap on Credits opens the popup with Close focused", str(root.gui_get_focus_owner()))
+	var texts := PackedStringArray()
+	for label: Node in credits.find_children("*", "Label"):
+		texts.append((label as Label).text)
+	var all := " ".join(texts)
+	var no_ai := RegEx.create_from_string("(?i)\\b(claude|ai)\\b").search(all) == null
+	_check("linostar" in all and "Silkscreen" in all and "VT323" in all and "SIL Open Font License" in all and "Godot 4.7" in all and no_ai, "credits: linostar, the fonts and their licence and the engine, nothing names Claude or AI", all)
+	for window: Vector2i in [PHONE_9_16, PHONE_9_19_5, DESKTOP_16_9]:
+		root.size = window
+		await _frames(5)
+		_check_targets([close as Control], null, "credits at %s" % window)
+		_check(_game.visible_rect().grow(0.5).encloses((credits.get_node("Panel") as Control).get_global_rect()), "credits at %s: the panel fits the screen" % window, str((credits.get_node("Panel") as Control).get_global_rect()))
+	root.size = BASE_WINDOW
+	await _frames(5)
+	await _tap(close)
+	await _frames(2)
+	_check(not credits.is_open() and root.gui_get_focus_owner() == opener, "credits: a tap on Close closes it, focus back on Credits", str(root.gui_get_focus_owner()))
+	for how: String in ["enter", "cancel", "dim"]:
+		credits.open(title.get_node("Column") as Control)
+		await _frames(2)
+		_check(opener.get_focus_mode_with_override() == Control.FOCUS_NONE, "credits (%s): the title's buttons take no focus while open" % how, "")
+		match how:
+			"enter":
+				await _key(KEY_ENTER)
+			"cancel":
+				await _key(KEY_ESCAPE)
+			"dim":
+				await _tap_at(_game.visible_rect().position + Vector2(4, 4))
+		await _frames(2)
+		_check(not credits.is_open() and root.gui_get_focus_owner() == opener, "credits: %s closes it, focus back on Credits" % how, str(root.gui_get_focus_owner()))
 
 
 ## A transition is a potion swirl wipe: it closes in a potion colour (touches under it go
