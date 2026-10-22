@@ -115,6 +115,9 @@ func _tests() -> Array[Callable]:
 		_test_save_failed_write_keeps_save,
 		_test_upgrade_tolerance,
 		_test_shop_passes_station_tolerance,
+		_test_difficulty_rules,
+		_test_difficulty_shift,
+		_test_finish_day_moves_difficulty,
 		_test_market_purchases,
 		_test_title_continue_and_new_game,
 		_test_morning_missing_day_returns_to_title,
@@ -2189,12 +2192,12 @@ func _test_shift_configs() -> void:
 		var spec := Content.day(number)
 		var config := Shift.story(number)
 		var label := "Shift.story(%d)" % number
-		_check(config != null and config.mode == ShiftConfig.Mode.STORY and config.day == number and config.title == spec.title and is_equal_approx(config.patience_scale, spec.patience_scale), label + " day, title, patience", str(config))
+		_check(config != null and config.mode == ShiftConfig.Mode.STORY and config.day == number and config.title == spec.title and is_equal_approx(config.patience_scale, spec.patience_scale * Difficulty.patience_scale(Difficulty.START_LEVEL)), label + " day, title, patience (times the level's)", str(config))
 		var expected := Story.customers_of(spec, {})
-		var same_customers := config.customers == expected
-		for customer in config.customers:
-			same_customers = same_customers and Story.matches(customer.when, {})
-		_check(same_customers, label + " customers in order", str(config.customers.size()))
+		var same_customers := config.customers.size() == expected.size()
+		for i in mini(config.customers.size(), expected.size()):
+			same_customers = same_customers and Story.matches(config.customers[i].when, {}) and (expected[i].is_generated() or config.customers[i] == expected[i])
+		_check(same_customers, label + " customers in order (visitor slots filled)", str(config.customers.size()))
 		_check(config.allowed_potions == Content.potions_unlocked_by(number) and config.ingredients == Content.ingredients_unlocked_by(number), label + " allowed potions and ingredients", "%d %d" % [config.allowed_potions.size(), config.ingredients.size()])
 	Content.quiet_errors = true
 	_check(Shift.story(99) == null, "Shift.story of a missing day is null", "a config")
@@ -2346,17 +2349,36 @@ func _test_save_migrations() -> void:
 	var newer := {"version": 4}
 	_check("newer" in GameState.migrate_save(newer, steps, 3) and newer == {"version": 4}, "a save from a newer game is refused unchanged", str(newer))
 	var v1 := {"version": 1, "day": 8, "at_market": false, "flags": {"quill.fair": "great", "ending": "cosy_corner", "rush_hour_unlocked": true}}
-	var upgraded := GameState.migrate_save(v1, GameState.save_migrations(), GameState.SAVE_VERSION)
-	_check(upgraded == "" and v1 == {"version": GameState.SAVE_VERSION, "day": 8, "at_market": false, "flags": {"quill.fair": "great"}, "endings": ["cosy_corner"], "rush_hour_unlocked": true, "rush_best_assisted": false}, "version 1 -> 2: the ending and the Rush Hour unlock move out of the flags", "%s %s" % [upgraded, v1])
+	var upgraded := GameState.migrate_save(v1, GameState.save_migrations().slice(0, 1), 2)
+	_check(upgraded == "" and v1 == {"version": 2, "day": 8, "at_market": false, "flags": {"quill.fair": "great"}, "endings": ["cosy_corner"], "rush_hour_unlocked": true}, "version 1 -> 2: the ending and the Rush Hour unlock move out of the flags", "%s %s" % [upgraded, v1])
 	var v1_plain := {"version": 1, "day": 2, "at_market": false, "flags": {}}
-	GameState.migrate_save(v1_plain, GameState.save_migrations(), GameState.SAVE_VERSION)
-	_check(v1_plain == {"version": GameState.SAVE_VERSION, "day": 2, "at_market": false, "flags": {}, "endings": [], "rush_hour_unlocked": false, "rush_best_assisted": false}, "version 1 -> 2: a save without an ending gets none and no unlock", str(v1_plain))
+	GameState.migrate_save(v1_plain, GameState.save_migrations().slice(0, 1), 2)
+	_check(v1_plain == {"version": 2, "day": 2, "at_market": false, "flags": {}, "endings": [], "rush_hour_unlocked": false}, "version 1 -> 2: a save without an ending gets none and no unlock", str(v1_plain))
 	var v2 := {"version": 2, "rush_best": 40}
-	_check(GameState.migrate_save(v2, GameState.save_migrations(), GameState.SAVE_VERSION) == "" and v2 == {"version": GameState.SAVE_VERSION, "rush_best": 40, "rush_best_assisted": false}, "version 2 -> 3: the Rush Hour best gains an assisted marker, false", str(v2))
+	_check(GameState.migrate_save(v2, GameState.save_migrations().slice(0, 2), 3) == "" and v2 == {"version": 3, "rush_best": 40, "rush_best_assisted": false}, "version 2 -> 3: the Rush Hour best gains an assisted marker, false", str(v2))
 	var v3 := {"version": 3, "settings": {"assist": true, "gentle": false}}
-	_check(GameState.migrate_save(v3, GameState.save_migrations(), GameState.SAVE_VERSION) == "" and v3 == {"version": GameState.SAVE_VERSION, "settings": {"assist": true, "gentle": false, "music": GameState.DEFAULT_MUSIC_VOLUME, "sfx": GameState.DEFAULT_SFX_VOLUME, "music_muted": false, "sfx_muted": false}}, "version 3 -> 4: the settings gain the default music and SFX volumes", str(v3))
+	_check(GameState.migrate_save(v3, GameState.save_migrations().slice(0, 3), 4) == "" and v3 == {"version": 4, "settings": {"assist": true, "gentle": false, "music": GameState.DEFAULT_MUSIC_VOLUME, "sfx": GameState.DEFAULT_SFX_VOLUME}}, "version 3 -> 4: the settings gain the default music and SFX volumes", str(v3))
 	var v4 := {"version": 4, "settings": {"assist": false, "gentle": true, "music": 30, "sfx": 0}}
-	_check(GameState.migrate_save(v4, GameState.save_migrations(), GameState.SAVE_VERSION) == "" and v4 == {"version": 5, "settings": {"assist": false, "gentle": true, "music": 30, "sfx": 0, "music_muted": false, "sfx_muted": false}}, "version 4 -> 5: the settings gain the music and sound mutes, off, volumes kept", str(v4))
+	_check(GameState.migrate_save(v4, GameState.save_migrations().slice(0, 4), 5) == "" and v4 == {"version": 5, "settings": {"assist": false, "gentle": true, "music": 30, "sfx": 0, "music_muted": false, "sfx_muted": false}}, "version 4 -> 5: the settings gain the music and sound mutes, off, volumes kept", str(v4))
+	# Version 5 -> 6: the skill rating and level start at their defaults; a finished 7-day
+	# story starts the 20-day story afresh, keeping what outlives a story; a story in
+	# progress keeps only the flags of beats that still come before its day.
+	var finished := {"version": 5, "day": GameState.V5_LAST_DAY + 1, "at_market": false, "coins": 300, "reputation": 25, "stock": {"cinderroot": 4}, "upgrades": {"stir": 2}, "flags": {"quill.fair": "great"}, "codex": {"words": ["hint_warmth"]}, "endings": ["cosy_corner"], "rush_hour_unlocked": true}
+	var first := Content.day(Content.FIRST_DAY)
+	_check(GameState.migrate_save(finished, GameState.save_migrations(), GameState.SAVE_VERSION) == "" and finished == {"version": 6, "day": Content.FIRST_DAY, "at_market": false, "coins": first.starting_coins, "reputation": 0, "stock": first.starting_stock, "upgrades": {}, "flags": {}, "codex": {"words": ["hint_warmth"]}, "endings": ["cosy_corner"], "rush_hour_unlocked": true, "skill": 50, "difficulty": 0}, "version 5 -> 6: a finished 7-day story starts the 20-day story afresh, keeping the Codex and the endings", str(finished))
+	var beat_days := {}
+	for spec in Content.days():
+		for customer in spec.customers:
+			if customer.beat != "":
+				beat_days[customer.flag()] = spec.day
+	var all_flags := {}
+	var before := {}
+	for flag: String in beat_days:
+		all_flags[flag] = "great"
+		if beat_days[flag] < 5:
+			before[flag] = "great"
+	var in_progress := {"version": 5, "day": 5, "at_market": true, "flags": all_flags.duplicate()}
+	_check(GameState.migrate_save(in_progress, GameState.save_migrations(), GameState.SAVE_VERSION) == "" and in_progress == {"version": 6, "day": 5, "at_market": true, "flags": before, "skill": 50, "difficulty": 0} and not before.is_empty() and before.size() < all_flags.size(), "version 5 -> 6: a story in progress keeps the flags of beats before its day", str(in_progress))
 	# A whole version 2 save file (the format before Rush Hour) loads, best kept and not assisted.
 	_game.new_game()
 	_game.rush_hour_unlocked = true
@@ -2387,10 +2409,10 @@ func _test_save_migrations() -> void:
 	_delete_saves()
 	_game.load_game()
 	var v1_two_day_end := {"version": 1, "day": 3.0, "at_market": false, "flags": {}}
-	GameState.migrate_save(v1_two_day_end, GameState.save_migrations(), GameState.SAVE_VERSION)
+	GameState.migrate_save(v1_two_day_end, GameState.save_migrations().slice(0, 1), 2)
 	_check(v1_two_day_end.get("at_market") == true, "version 1 -> 2: the two-day build's finished save reopens the market before day 3", str(v1_two_day_end))
 	var v1_story_day_3 := {"version": 1, "day": 3, "at_market": false, "flags": {"quill.inspection": "great"}}
-	GameState.migrate_save(v1_story_day_3, GameState.save_migrations(), GameState.SAVE_VERSION)
+	GameState.migrate_save(v1_story_day_3, GameState.save_migrations().slice(0, 1), 2)
 	_check(v1_story_day_3.get("at_market") == false, "version 1 -> 2: a day-3 save with story flags keeps its morning", str(v1_story_day_3))
 
 
@@ -2459,11 +2481,13 @@ func _test_upgrade_tolerance() -> void:
 
 
 ## The shop hands each station its own tolerance: a stir level-1 upgrade and a pour
-## level-2 upgrade reach the Stir and Pour stations (Assist on to finish them).
+## level-2 upgrade reach the Stir and Pour stations, times the difficulty's multiplier
+## (level 0.5 here; Assist on to finish them).
 func _test_shop_passes_station_tolerance() -> void:
 	_game.assist_mode = true
 	_game.new_game()
 	_game.upgrades = {"stir": 1, "pour": 2}
+	_game.difficulty = 0.5
 	_game.goto(GameState.Flow.SHOP)
 	await _game.transition_finished
 	var shop := current_scene as Shop
@@ -2476,11 +2500,105 @@ func _test_shop_passes_station_tolerance() -> void:
 			if not ready:
 				_check(false, "station tolerance: %s runs" % step, "no station")
 				break
-			var expected := Economy.upgrade_tolerance(Content.upgrade_for(step), _game.upgrades[step])
-			_check(is_equal_approx(shop.station.tolerance_scale, expected) and expected > 1.0, "station tolerance: %s gets x%.2f" % [step, expected], str(shop.station.tolerance_scale))
+			var upgrade := Economy.upgrade_tolerance(Content.upgrade_for(step), _game.upgrades[step])
+			var expected := upgrade * Difficulty.tolerance_scale(0.5)
+			_check(is_equal_approx(shop.station.tolerance_scale, expected) and upgrade > 1.0 and expected < upgrade, "station tolerance: %s gets the upgrade's x%.2f times the difficulty's, x%.2f" % [step, upgrade, expected], str(shop.station.tolerance_scale))
 			await _tap(shop.station.assist_button())
 	await _close_shop()
 	_game.new_game()
+
+
+## Difficulty's rules: the day score's parts and weights (Assist presses left out,
+## their weight shared out), the rating's moving average, the level's slopes (a
+## struggling player still rises, more slowly than a strong one; a very low rating
+## falls), its clamps, and each knob at the level's ends, clamped and monotonic.
+func _test_difficulty_rules() -> void:
+	var perfect := Difficulty.day_score([3, 0, 0, 0] as Array[int], 0, 0, [1.0, 1.0, 1.0] as Array[float], [1.0, 1.0] as Array[float])
+	var nothing := Difficulty.day_score([0, 0, 0, 0] as Array[int], 2, 1, [0.0, 0.0] as Array[float], [] as Array[float])
+	_check(is_equal_approx(perfect, 1.0) and is_equal_approx(nothing, 0.0), "difficulty: a flawless day scores 1, a day of storm-offs and refusals 0", "%f %f" % [perfect, nothing])
+	var mixed := Difficulty.day_score([1, 1, 0, 0] as Array[int], 1, 1, [0.8, 0.4, 0.0] as Array[float], [0.9, 0.5] as Array[float])
+	var grade := (1.0 + 0.67) / 4.0
+	var expected := grade * Difficulty.WEIGHT_GRADE + 0.4 * Difficulty.WEIGHT_SPEED + 0.7 * Difficulty.WEIGHT_GESTURE
+	_check(is_equal_approx(mixed, expected), "difficulty: the score blends mean grade, speed and gesture by their weights", "%f vs %f" % [mixed, expected])
+	var assisted := Difficulty.day_score([2, 0, 0, 0] as Array[int], 0, 0, [0.5, 0.5] as Array[float], [] as Array[float])
+	var renormalised := (1.0 * Difficulty.WEIGHT_GRADE + 0.5 * Difficulty.WEIGHT_SPEED) / (Difficulty.WEIGHT_GRADE + Difficulty.WEIGHT_SPEED)
+	_check(is_equal_approx(assisted, renormalised), "difficulty: with no gesture played (all Assist) the gesture weight is shared out", "%f vs %f" % [assisted, renormalised])
+	_check(is_equal_approx(Difficulty.next_rating(0.5, 1.0), 0.5 + 0.5 * Difficulty.RATING_SMOOTHING) and is_equal_approx(Difficulty.next_rating(0.5, 0.5), 0.5), "difficulty: the rating moves part of the way to the day's score", str(Difficulty.next_rating(0.5, 1.0)))
+	var strong := Difficulty.next_level(0.0, 0.9)
+	var struggling := Difficulty.next_level(0.0, 0.4)
+	_check(struggling > 0.0 and strong > struggling, "difficulty: a struggling player's level still rises, slower than a strong player's", "%f vs %f" % [struggling, strong])
+	_check(is_equal_approx(Difficulty.next_level(0.0, Difficulty.LOW_RATING), Difficulty.SLOPE_MIN) and is_equal_approx(Difficulty.next_level(0.0, 1.0), Difficulty.SLOPE_MAX), "difficulty: the slope runs from SLOPE_MIN at LOW_RATING to SLOPE_MAX at 1", "")
+	_check(is_equal_approx(Difficulty.next_level(0.2, 0.1), 0.2 - Difficulty.FALL_STEP), "difficulty: under LOW_RATING the level falls", str(Difficulty.next_level(0.2, 0.1)))
+	_check(is_equal_approx(Difficulty.next_level(Difficulty.LEVEL_MAX, 1.0), Difficulty.LEVEL_MAX) and is_equal_approx(Difficulty.next_level(Difficulty.LEVEL_MIN, 0.0), Difficulty.LEVEL_MIN), "difficulty: the level stays in LEVEL_MIN..LEVEL_MAX", "")
+	var easy := Difficulty.LEVEL_MIN
+	var hard := Difficulty.LEVEL_MAX
+	_check(Difficulty.patience_scale(easy) > Difficulty.patience_scale(0.0) and Difficulty.patience_scale(0.0) > Difficulty.patience_scale(hard) and is_equal_approx(Difficulty.patience_scale(hard), Difficulty.PATIENCE_FLOOR) and Difficulty.patience_scale(easy) <= Difficulty.PATIENCE_CEILING and is_equal_approx(Difficulty.patience_scale(5.0), Difficulty.PATIENCE_FLOOR), "difficulty: patience shrinks with the level down to its floor", "%f %f" % [Difficulty.patience_scale(easy), Difficulty.patience_scale(hard)])
+	_check(Difficulty.arrival_gap(easy) > Difficulty.arrival_gap(hard) and is_equal_approx(Difficulty.arrival_gap(hard), Difficulty.GAP_FLOOR) and is_equal_approx(Difficulty.arrival_gap(-5.0), Difficulty.GAP_CEILING), "difficulty: arrivals come closer with the level, clamped", "%f %f" % [Difficulty.arrival_gap(easy), Difficulty.arrival_gap(hard)])
+	_check(Difficulty.tolerance_scale(easy) > 1.0 and is_equal_approx(Difficulty.tolerance_scale(0.0), 1.0) and is_equal_approx(Difficulty.tolerance_scale(hard), Difficulty.TOLERANCE_FLOOR) and is_equal_approx(Difficulty.tolerance_scale(5.0), Difficulty.TOLERANCE_FLOOR), "difficulty: tolerance tightens with the level, never under its floor", "%f %f" % [Difficulty.tolerance_scale(easy), Difficulty.tolerance_scale(hard)])
+	var simple := Content.potion("stillwater_draught")
+	var tough := Content.potion("embermoss_elixir")
+	_check(is_equal_approx(Difficulty.hardness(simple), 0.0) and Difficulty.hardness(tough) > 0.5, "difficulty: hardness counts extra stations and ingredients", "%f %f" % [Difficulty.hardness(simple), Difficulty.hardness(tough)])
+	var day := maxi(simple.unlock_day, tough.unlock_day) + 1
+	_check(is_equal_approx(Difficulty.potion_weight(simple, 0.0, day), Difficulty.potion_weight(tough, 0.0, day)) and Difficulty.potion_weight(tough, hard, day) > Difficulty.potion_weight(simple, hard, day) and Difficulty.potion_weight(tough, easy, day) < Difficulty.potion_weight(simple, easy, day), "difficulty: level 0 picks evenly, harder levels lean to hard recipes, easier to easy ones", "")
+	_check(is_equal_approx(Difficulty.potion_weight(tough, 0.0, tough.unlock_day), Difficulty.NEW_POTION_WEIGHT), "difficulty: a potion new that day weighs more", str(Difficulty.potion_weight(tough, 0.0, tough.unlock_day)))
+
+
+## Shift.story at the kindest and the hardest level: patience, arrival gap and tolerance
+## follow the level; every ordinary visitor slot is filled with a pinned request of an
+## ordinary voice for a potion of the day (the day's new potions first); beats and
+## authored customers are kept; the same day and level give the same customers.
+func _test_difficulty_shift() -> void:
+	var problems: Array[String] = []
+	for spec in Content.days():
+		var easy := Shift.story(spec.day, {}, Difficulty.LEVEL_MIN)
+		var hard := Shift.story(spec.day, {}, Difficulty.LEVEL_MAX)
+		if not (easy.patience_scale > hard.patience_scale and easy.arrival_gap(0) > hard.arrival_gap(0) and easy.tolerance_scale > hard.tolerance_scale):
+			problems.append("day %d: knobs %s/%s %s/%s %s/%s" % [spec.day, easy.patience_scale, hard.patience_scale, easy.arrival_gap(0), hard.arrival_gap(0), easy.tolerance_scale, hard.tolerance_scale])
+		var authored := Story.customers_of(spec, {})
+		var again := Shift.story(spec.day, {}, Difficulty.LEVEL_MAX)
+		var fresh := hard.allowed_potions.filter(func(potion: PotionType) -> bool: return potion.unlock_day == spec.day and not Rush.voices_for(potion).is_empty())
+		var generated := 0
+		for i in hard.customers.size():
+			var visit := hard.customers[i]
+			var slot := authored[i]
+			if not slot.is_generated():
+				if visit != slot:
+					problems.append("day %d customer %d: the authored customer was replaced" % [spec.day, i])
+				continue
+			var line := Content.request(visit.request)
+			if line == null or line.potion != visit.potion or line.archetype != visit.archetype or Content.archetype(visit.archetype).is_story() or not hard.allowed_potions.has(Content.potion(visit.potion)):
+				problems.append("day %d visitor %d: %s/%s/%s" % [spec.day, i, visit.archetype, visit.potion, visit.request])
+			if generated < fresh.size() and visit.potion != (fresh[generated] as PotionType).id:
+				problems.append("day %d visitor %d: asks for %s before the new %s" % [spec.day, i, visit.potion, (fresh[generated] as PotionType).id])
+			generated += 1
+			if again.customers[i].request != visit.request:
+				problems.append("day %d visitor %d: not the same on a second build" % [spec.day, i])
+	_check(problems.is_empty(), "difficulty: every story day's shift follows its level, fills its visitor slots and replays alike", "\n".join(problems))
+
+
+## Game.finish_day scores the day and moves the skill rating and the level (saved in
+## hundredths, reloaded exactly); a new game starts them over; a Rush Hour run leaves them.
+func _test_finish_day_moves_difficulty() -> void:
+	_game.new_game()
+	_check(is_equal_approx(_game.skill_rating, Difficulty.START_RATING) and is_equal_approx(_game.difficulty, Difficulty.START_LEVEL), "difficulty: a new game starts at the default rating and level", "%f %f" % [_game.skill_rating, _game.difficulty])
+	var result := {"day": 1, "title": "t", "customers": 3, "served": 3, "stormed_off": 0, "refused": 0, "grades": [3, 0, 0, 0], "earned": 0, "tips": 0, "reputation": 0, "coins": _game.coins, "patience_left": [0.9, 0.9, 0.9], "gestures": [1.0, 1.0]}
+	_game.finish_day(result, _game.coins, _game.stock, 0)
+	await _game.transition_finished
+	var rating := Difficulty.next_rating(Difficulty.START_RATING, Difficulty.day_score([3, 0, 0, 0] as Array[int], 0, 0, [0.9, 0.9, 0.9] as Array[float], [1.0, 1.0] as Array[float]))
+	_check(is_equal_approx(_game.skill_rating, snappedf(rating, 0.01)) and _game.difficulty > Difficulty.START_LEVEL, "difficulty: a strong day raises the rating and the level", "%f %f" % [_game.skill_rating, _game.difficulty])
+	var saved := _read_save()
+	_check(saved.get("skill") == roundi(_game.skill_rating * 100) and saved.get("difficulty") == roundi(_game.difficulty * 100), "difficulty: rating and level are saved in hundredths", str(saved))
+	var kept := [_game.skill_rating, _game.difficulty]
+	_game.load_game()
+	_check(is_equal_approx(_game.skill_rating, kept[0]) and is_equal_approx(_game.difficulty, kept[1]), "difficulty: a reload gives the same rating and level", "%f %f" % [_game.skill_rating, _game.difficulty])
+	_game.finish_rush({"score": 5, "served": 1, "stormed_off": 4, "refused": 0, "grades": [0, 0, 0, 1], "tips": 0, "wave": 1, "assisted": false})
+	await _game.transition_finished
+	_check(is_equal_approx(_game.skill_rating, kept[0]) and is_equal_approx(_game.difficulty, kept[1]), "difficulty: a Rush Hour run leaves the rating and the level", "%f %f" % [_game.skill_rating, _game.difficulty])
+	_game.new_game()
+	_check(is_equal_approx(_game.skill_rating, Difficulty.START_RATING) and is_equal_approx(_game.difficulty, Difficulty.START_LEVEL), "difficulty: a new game starts them over", "%f %f" % [_game.skill_rating, _game.difficulty])
+	_game.rush_best = 0
+	_game.rush_best_assisted = false
+	await _goto_scene(GameState.Flow.TITLE)
 
 
 ## The market before day 2: day-2 prices, unaffordable cards faded but tappable (a

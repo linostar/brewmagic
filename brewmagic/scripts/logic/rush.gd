@@ -67,11 +67,17 @@ static func voices_for(potion: PotionType) -> Array[Archetype]:
 ## requests (pinned). Deterministic for a given rng state.
 static func customer(rng: RandomNumberGenerator, served: int) -> DayCustomer:
 	var potions := potions_of_wave(wave(served))
-	var potion: PotionType = potions[rng.randi_range(0, potions.size() - 1)]
+	return visit(potions[rng.randi_range(0, potions.size() - 1)], rng)
+
+
+## An ordinary visitor who wants `potion`: an ordinary archetype with a request for it
+## and one of those requests (pinned), drawn from `rng`. Also the story's ordinary
+## visitors (Shift.story).
+static func visit(potion: PotionType, rng: RandomNumberGenerator) -> DayCustomer:
 	var voices := voices_for(potion)
-	var visit := DayCustomer.new()
-	visit.potion = potion.id
-	visit.archetype = voices[rng.randi_range(0, voices.size() - 1)].id
-	var lines := Content.requests_for(potion.id, visit.archetype)
-	visit.request = lines[rng.randi_range(0, lines.size() - 1)].id
-	return visit
+	var visitor := DayCustomer.new()
+	visitor.potion = potion.id
+	visitor.archetype = voices[rng.randi_range(0, voices.size() - 1)].id
+	var lines := Content.requests_for(potion.id, visitor.archetype)
+	visitor.request = lines[rng.randi_range(0, lines.size() - 1)].id
+	return visitor

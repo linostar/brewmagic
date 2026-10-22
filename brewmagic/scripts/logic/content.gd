@@ -31,7 +31,7 @@ const HEADS: Array[String] = ["round", "long", "square", "snout"]
 const HAIRS: Array[String] = ["witch_hat", "straw_hat", "curly", "bald_beard", "beehive", "top_hat", "hood"]
 const ACCESSORIES: Array[String] = ["none", "goat", "lantern", "flask", "scroll", "smoke"]
 const FIRST_DAY := 1
-const LAST_DAY := 7
+const LAST_DAY := 20
 const NAME_MAX := 26
 const DESCRIPTION_MAX := 120
 const SPEECH_STYLE_MAX := 200
@@ -630,8 +630,14 @@ static func _load_customers(entry: Dictionary, item: DaySpec) -> void:
 			_error(path.trim_suffix("."), "expected Dictionary, got %s" % type_string(typeof(list[i])))
 			continue
 		var spec: Dictionary = list[i]
-		_check_keys(spec, ["archetype", "potion"], ["request", "beat", "lines", "when"], path)
 		var customer := DayCustomer.new()
+		# No archetype, potion, request or beat: an ordinary visitor slot (Shift.story fills it).
+		if not ["archetype", "potion", "request", "beat", "lines"].any(func(key: String) -> bool: return spec.has(key)):
+			_check_keys(spec, [], ["when"], path)
+			customer.when = _when(spec, path)
+			item.customers.append(customer)
+			continue
+		_check_keys(spec, ["archetype", "potion"], ["request", "beat", "lines", "when"], path)
 		customer.archetype = _reference(spec, "archetype", _archetypes, "archetype", path)
 		customer.potion = _reference(spec, "potion", _potions, "potion", path)
 		if customer.potion != "" and _potions[customer.potion].unlock_day > item.day:

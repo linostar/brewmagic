@@ -31,6 +31,10 @@ const MIN_PATIENCE := 33.0
 # ponytail: one brew is the typical wait; the third in line waits two and can still storm off from the line.
 const QUEUE_WAIT := 25.0
 
+## The difficulty levels every story check runs at: the kindest, the authored and the
+## hardest (Difficulty; the level picks the ordinary visitors and scales patience).
+const LEVELS: Array[float] = [Difficulty.LEVEL_MIN, Difficulty.START_LEVEL, Difficulty.LEVEL_MAX]
+
 var _failures: Array[String] = []
 var _passed := 0
 var _deadline_msec := 0
@@ -264,12 +268,14 @@ func _test_i7_potions_and_days_solvable() -> void:
 	for item in Content.potions():
 		if _exact_recipes(item.target, Content.ingredients_unlocked_by(item.unlock_day)).is_empty():
 			problems.append("%s has no exact recipe by day %d" % [item.id, item.unlock_day])
-	# Every day customer on any path (a superset of each path's list).
-	for spec in Content.days():
-		var pool := Content.ingredients_unlocked_by(spec.day)
-		for i in spec.customers.size():
-			if _exact_recipes(Content.potion(spec.customers[i].potion).target, pool).is_empty():
-				problems.append("%s customer %d (%s) is not solvable" % [spec.id, i, spec.customers[i].potion])
+	# Every day customer on any path, at every level (the ordinary visitors depend on it).
+	for path in _flag_paths():
+		for level in LEVELS:
+			for spec in Content.days():
+				var pool := Content.ingredients_unlocked_by(spec.day)
+				for customer in _customers(spec, path, level):
+					if _exact_recipes(Content.potion(customer.potion).target, pool).is_empty():
+						problems.append("%s at level %.2f: %s is not solvable" % [spec.id, level, customer.potion])
 	var targets: Dictionary[Vector4i, String] = {}
 	for item in Content.potions():
 		if targets.has(item.target):
@@ -281,7 +287,7 @@ func _test_i7_potions_and_days_solvable() -> void:
 func _test_i8_day1_stock_serves_day1() -> void:
 	var day1 := Content.day(1)
 	var options: Array = []
-	for customer in day1.customers:
+	for customer in Shift.story(1).customers:
 		options.append(_exact_recipes(Content.potion(customer.potion).target, Content.ingredients_unlocked_by(1)))
 	var stock: Dictionary[String, int] = day1.starting_stock.duplicate()
 	_check(_can_serve_all(options, 0, stock), "I8 day-1 starting stock brews every day-1 customer Perfect", str(day1.starting_stock))
@@ -294,9 +300,10 @@ func _test_i8_market_serves_later_days() -> void:
 	var problems: Array[String] = []
 	var paths := _flag_paths()
 	for path in paths:
-		for problem in _market_shortfalls(path):
-			problems.append("path %s: %s" % [path, problem])
-	_check(problems.is_empty(), "I8 on all %d flag paths, day N-1 Perfect pay (beats unpaid) plus the carried-over stock buys every day-N customer at day N's market" % paths.size(), "\n".join(problems))
+		for level in LEVELS:
+			for problem in _market_shortfalls(path, level):
+				problems.append("path %s, level %.2f: %s" % [path, level, problem])
+	_check(problems.is_empty(), "I8 on all %d flag paths at every level, day N-1 Perfect pay (beats unpaid) plus the carried-over stock buys every day-N customer at day N's market" % paths.size(), "\n".join(problems))
 	var texts := _real_texts()
 	var data: Array = JSON.parse_string(texts["days.json"])
 	data[1]["market"]["moonmoss"] = 30
@@ -331,7 +338,8 @@ func _test_i10_coverage() -> void:
 	var problems: Array[String] = []
 	for spec in Content.days():
 		for customer in spec.customers:
-			if customer.request != "":
+			# Pinned and generated visitors (Shift.story pins their request) need no three lines.
+			if customer.request != "" or customer.is_generated():
 				continue
 			var count := Content.requests_for(customer.potion, customer.archetype).size()
 			if count < MIN_REQUESTS_PER_PAIR:
@@ -413,7 +421,7 @@ func _test_i13_story_paths() -> void:
 	var paths := _flag_paths()
 	for path in paths:
 		for spec in days:
-			var customers := Story.customers_of(spec, path)
+			var customers := _customers(spec, path, Difficulty.START_LEVEL)
 			if customers.is_empty():
 				problems.append("path %s: %s has no customers" % [path, spec.id])
 			var pool := Content.ingredients_unlocked_by(spec.day)
@@ -459,13 +467,15 @@ func _test_i14_endings() -> void:
 func _test_i15_patience() -> void:
 	var problems: Array[String] = []
 	for path in _flag_paths():
-		for spec in Content.days():
-			for customer in Story.customers_of(spec, path):
-				var patience := Content.archetype(customer.archetype).patience_seconds * spec.patience_scale - QUEUE_WAIT * Customer.QUEUE_PATIENCE_RATE
-				var problem := "%s %s: %.2f s at the counter" % [spec.id, customer.archetype, patience]
-				if patience < MIN_PATIENCE and not problem in problems:
-					problems.append(problem)
-	_check(problems.is_empty(), "I15 every customer has at least %.0f s of patience at the counter after %.0f s in line" % [MIN_PATIENCE, QUEUE_WAIT], "\n".join(problems))
+		for level in LEVELS:
+			for spec in Content.days():
+				var shift := Shift.story(spec.day, path, level)
+				for customer in shift.customers:
+					var patience := Content.archetype(customer.archetype).patience_seconds * shift.patience_scale - QUEUE_WAIT * Customer.QUEUE_PATIENCE_RATE
+					var problem := "%s at level %.2f, %s: %.2f s at the counter" % [spec.id, level, customer.archetype, patience]
+					if patience < MIN_PATIENCE and not problem in problems:
+						problems.append(problem)
+	_check(problems.is_empty(), "I15 at every level every customer has at least %.0f s of patience at the counter after %.0f s in line" % [MIN_PATIENCE, QUEUE_WAIT], "\n".join(problems))
 
 
 ## I16: Rush Hour can ask for every potion: each has a request in the voice of at least
@@ -744,20 +754,20 @@ func _overshoots(brew: Vector4i, target: Vector4i) -> bool:
 ## buys more at day N's market (Economy.market_price) than day N-1's Perfect pay
 ## (Economy.pay, no tips, no other coins; story beats pay nothing, since they may be
 ## refused, but their ingredients count as used) covers.
-func _market_shortfalls(flags: Dictionary = {}) -> Array[String]:
+func _market_shortfalls(flags: Dictionary = {}, level := Difficulty.START_LEVEL) -> Array[String]:
 	var problems: Array[String] = []
 	var days := Content.days()
 	var carried: Array[Dictionary] = []
-	for plan in _plans(days[0], flags):
+	for plan in _plans(days[0], flags, level):
 		if plan.keys().all(func(id: String) -> bool: return plan[id] <= days[0].starting_stock.get(id, 0)):
 			_add_unique(carried, _leftover(days[0].starting_stock, plan))
 	for n in range(1, days.size()):
 		var spec := days[n]
 		var budget := 0
-		for customer in Story.customers_of(days[n - 1], flags):
+		for customer in _customers(days[n - 1], flags, level):
 			if customer.beat == "":
 				budget += Economy.pay(Content.potion(customer.potion).price, Brew.Grade.PERFECT)
-		var plans := _plans(spec, flags)
+		var plans := _plans(spec, flags, level)
 		if plans.is_empty() or carried.is_empty():
 			problems.append("%s: %s" % [spec.id, "a customer has no exact recipe" if plans.is_empty() else "no Perfect day %d to carry stock over from" % days[n - 1].day])
 			carried = []
@@ -786,10 +796,10 @@ func _market_shortfalls(flags: Dictionary = {}) -> Array[String]:
 
 ## Every distinct Perfect plan of `spec` on the story path `flags`: one exact recipe
 ## (ingredients unlocked by its day) per customer, as ingredient id -> count used.
-func _plans(spec: DaySpec, flags: Dictionary = {}) -> Array[Dictionary]:
+func _plans(spec: DaySpec, flags: Dictionary = {}, level := Difficulty.START_LEVEL) -> Array[Dictionary]:
 	var plans: Array[Dictionary] = [{}]
 	var pool := Content.ingredients_unlocked_by(spec.day)
-	for customer in Story.customers_of(spec, flags):
+	for customer in _customers(spec, flags, level):
 		var grown: Array[Dictionary] = []
 		for plan in plans:
 			for recipe in _exact_recipes(Content.potion(customer.potion).target, pool):
@@ -799,6 +809,12 @@ func _plans(spec: DaySpec, flags: Dictionary = {}) -> Array[Dictionary]:
 				_add_unique(grown, used)
 		plans = grown
 	return plans
+
+
+## The customers of `spec` on the story path `flags` at difficulty `level`, as the shop
+## runs them (Shift.story: the ordinary visitor slots filled).
+func _customers(spec: DaySpec, flags: Dictionary, level: float) -> Array[DayCustomer]:
+	return Shift.story(spec.day, flags, level).customers
 
 
 ## What is left of `stock` after a plan using `used`, buying exactly what is missing.

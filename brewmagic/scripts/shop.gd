@@ -224,6 +224,11 @@ var _brew := Vector4i.ZERO
 var _tier := Brew.Grade.MISBREW
 var _step := 0
 var _qualities: Array[float] = []
+## Per delivery, the fraction of the customer's patience left (0 per storm-off), and the
+## quality of every station finished by gesture (not by an Assist press): the day's
+## measure of skill (Difficulty.day_score, day_result).
+var patience_left: Array[float] = []
+var gestures: Array[float] = []
 ## Ids of the brew's ingredients, in pot order (the Codex notes a good brew's recipe).
 var _brew_ids := PackedStringArray()
 ## The open Codex overlay, or null.
@@ -340,7 +345,7 @@ func _ready() -> void:
 			stock[item.id] = ShelfItem.UNLIMITED
 	else:
 		var number := int(_game.flow_args.get("day", _game.day))
-		shift = Shift.story(number, _game.flags)
+		shift = Shift.story(number, _game.flags, _game.difficulty)
 		if shift == null:
 			# The title screen is the only safe place to go; the player sees why there.
 			_game.abort_to(GameState.Flow.TITLE, "Day %d is missing from data/days.json; the shop cannot open." % number)
@@ -688,7 +693,7 @@ func show_shelf_item(item: ShelfItem) -> void:
 
 ## Lets the next customer in when the line has room: right away (after
 ## NEXT_CUSTOMER_DELAY) when it is empty, else ShiftConfig.arrival_gap after the last
-## arrival (STORY_ARRIVAL_GAP on a story day; shrinking in Rush Hour, which is endless).
+## arrival (ShiftConfig.arrival_gap: the difficulty's gap on a story day; shrinking in Rush Hour, which is endless).
 func _tick_arrivals(delta: float) -> void:
 	if shift == null or _day_over or _line_size() >= Customer.SLOT_X.size() or not shift.has_customer(_next_customer):
 		return
@@ -1003,7 +1008,7 @@ func _start_step() -> void:
 		return
 	station = STATION_SCENES[step].instantiate() as Station
 	station.assist = _game.assist_mode
-	station.tolerance_scale = _game.tolerance_scale(step)
+	station.tolerance_scale = _game.tolerance_scale(step) * shift.tolerance_scale
 	station.finished.connect(_on_station_finished)
 	station.feedback.connect(_on_station_feedback)
 	_show_station_layer(true)
@@ -1057,6 +1062,8 @@ func _potion_color() -> Color:
 
 func _on_station_finished(quality: float) -> void:
 	_qualities.append(quality)
+	if not station.assist:
+		gestures.append(quality)
 	get_tree().create_timer(STEP_GAP, false).timeout.connect(_end_step.bind(station))
 
 
@@ -1146,6 +1153,7 @@ func _deliver(grade: Brew.Grade, quality: float) -> void:
 	reputation += reputation_change
 	served += 1
 	grades.append(grade)
+	patience_left.append(customer.patience_left / customer.patience_total)
 	if grade == Brew.Grade.PERFECT:
 		perfect += 1
 	print("[Shop] Served customer %s (%s): %s, quality %.2f, paid %d, tip %d, reputation %+d, coins %d" % [_of_total(customer.number), customer.archetype.id, Brew.Grade.keys()[grade], quality, pay, tip, reputation_change, coins])
@@ -1265,6 +1273,7 @@ func _on_patience_ran_out(who: Customer) -> void:
 		_storm_off_queue(who)
 		return
 	stormed_off += 1
+	patience_left.append(0.0)
 	reputation += Economy.STORMED_OFF_REPUTATION
 	var dropped_station := _drop_station()
 	_show_station_layer(false)
@@ -1323,6 +1332,7 @@ func refuse_customer() -> void:
 ## same reputation cost, its line said aside, no stamp) and the ones behind step up.
 func _storm_off_queue(who: Customer) -> void:
 	stormed_off += 1
+	patience_left.append(0.0)
 	reputation += Economy.STORMED_OFF_REPUTATION
 	queue.erase(who)
 	print("[Shop] Customer %s (%s) stormed off from the queue: reputation %+d" % [_of_total(who.number), who.archetype.id, Economy.STORMED_OFF_REPUTATION])
@@ -1375,7 +1385,8 @@ func _check_day_done() -> void:
 
 ## The day's results as the summary scene reads them (Game.flow_args): day, title,
 ## customers, served, stormed_off, refused, grades (a count per Brew.Grade), earned (pay
-## without tips), tips, reputation (today's change) and coins (now).
+## without tips), tips, reputation (today's change), coins (now) and the skill measures
+## patience_left and gestures (Game.finish_day scores them, Difficulty.day_score).
 func day_result() -> Dictionary:
 	var counts: Array[int] = [0, 0, 0, 0]
 	for grade in grades:
@@ -1383,7 +1394,7 @@ func day_result() -> Dictionary:
 	return {
 		"day": shift.day, "title": shift.title, "customers": shift.customers.size(), "served": served,
 		"stormed_off": stormed_off, "refused": refused, "grades": counts, "earned": coins - _starting_coins - tips, "tips": tips,
-		"reputation": reputation, "coins": coins,
+		"reputation": reputation, "coins": coins, "patience_left": patience_left.duplicate(), "gestures": gestures.duplicate(),
 	}
 
 
@@ -1561,7 +1572,7 @@ func _on_gentle_toggled(on: bool) -> void:
 	print("[Shop] Gentle mode %s" % ("on" if on else "off"))
 	_sync_setting_buttons()
 	if station != null:
-		station.tolerance_scale = _game.tolerance_scale(customer.potion.steps[_step])
+		station.tolerance_scale = _game.tolerance_scale(customer.potion.steps[_step]) * shift.tolerance_scale
 
 
 func _on_quit_pressed() -> void:

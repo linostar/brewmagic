@@ -1,6 +1,8 @@
 class_name DayCustomer
 extends Resource
-## One scheduled customer of a DaySpec (days.json customers[]). Built by Content.
+## One scheduled customer of a DaySpec (days.json customers[]). Built by Content; an entry
+## with no archetype and no potion is an ordinary visitor slot (is_generated) that
+## Shift.story fills at the player's difficulty.
 
 var archetype := ""
 var potion := ""
@@ -17,3 +19,8 @@ var when: Dictionary[String, PackedStringArray] = {}
 ## The flag this visit's outcome is stored under ("<archetype>.<beat>"), or "" when it is no beat.
 func flag() -> String:
 	return "" if beat == "" else "%s.%s" % [archetype, beat]
+
+
+## True for an ordinary visitor slot: Shift.story picks its potion, voice and request.
+func is_generated() -> bool:
+	return potion == ""
