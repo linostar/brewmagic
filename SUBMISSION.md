@@ -34,10 +34,11 @@ How you play, all with one thumb:
 
 A good match and a steady hand earn a **Perfect**: full pay, a tip and reputation. Get it wrong and it's a **Misbrew**: hiccups that come out as tiny, polite fireballs, a small personal blizzard, a daisy sprouting on top (it looks very smug) or a personal rain cloud that's moody. Customers queue up and run out of patience, so keep the line moving, or refuse the impossible ones.
 
-- **A 7-day story:** each day adds something new (an ingredient, a station, a rival, a rush). Inspector Quill audits your licence, Madame Vexley opens a rival shop across the street, and a shy Hooded Stranger keeps sneezing. How you treat them changes later days and decides which of three endings you reach at the Guild Fair.
+- **Story mode, 20 days:** the days bring new ingredients, stations, a rival and two rushes. Inspector Quill audits your licence, Madame Vexley opens a rival shop across the street, and a shy Hooded Stranger keeps sneezing (and hiccuping, and learning to fly). Each of them visits six times. How you treat them changes later days and decides which of three endings you reach at the Guild Fair.
+- **The shop learns how you play:** after each day it weighs your grades, your speed and your steady hand. Brew well and the next day gets busier, less patient and pickier; struggle and it still grows, just more gently.
 - **Evening market:** buy stock and upgrades (a steadier ladle, a wider funnel) with what you earned.
 - **The Codex** records every hint word and recipe you work out.
-- **Rush Hour** unlocks after the story: an endless shift that speeds up wave by wave until your reputation runs out. Beat your best score.
+- **Rush Hour**, open from the start: an endless shift that speeds up wave by wave until your reputation runs out. Beat your best score.
 - **Accessibility:** Gentle mode makes every brewing gesture 1.5x more forgiving; Assist mode turns each one into a single tap (scoring Good, never Perfect). With Assist on, the whole game also works with a keyboard.
 
 Your progress is saved in your browser.
@@ -61,7 +62,7 @@ BrewMagic was made with one AI tool: Claude (Anthropic), used through Claude Cod
 - **Pixel art written as text:** all 127 sprites are typed as character grids (about 6,000 lines, one character per palette colour) and compiled into sprite sheets by a small compiler Claude wrote. One locked 32-colour palette is enforced on every pixel. The customers are assembled at runtime from part sheets plus colour swaps, giving over 13,000 distinct visitors.
 - **Sound:** all 31 sound effects and a voice for each of the 11 characters (the little blips they "talk" in) are synthesised by a Python synthesiser Claude wrote. Nothing is sampled.
 - **Music:** four loops (title, shop waltz, Rush Hour jig, ending) composed as notes around one shared motif and rendered by a Python music-box synthesiser Claude wrote, with plucked lute, bass and frame drum.
-- **Writing:** every word in the game, about 5,000 words in total: 150 customer requests written in each character's voice, their reactions, 24 absurd misbrew outcomes, the 7-day story, morning notes and three endings. A content checker proves every request has a fair solution on its day and every line fits its speech bubble.
+- **Writing:** every word in the game, about 5,000 words in total: 150 customer requests written in each character's voice, their reactions, 24 absurd misbrew outcomes, the 20-day story, morning notes and three endings. A content checker proves every request has a fair solution on its day and every line fits its speech bubble.
 - **Customer AI (no language model):** each customer is a small state machine (enter, order, wait, react, storm off) with patience, mood, tip habits and a voice. It's classic game AI and runs offline; no language model runs inside the game.
 - **Quality:** about 2,700 automated gameplay checks, about 100 content checks, a checker that enforces the one-thumb rules on every script and scene, and browser tests of the web build on desktop, an emulated phone and keyboard only. The cover and screenshots on this page were rendered by a script that stages each moment in the real game.
 

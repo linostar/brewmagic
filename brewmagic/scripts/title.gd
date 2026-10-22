@@ -1,28 +1,30 @@
 class_name Title
 extends Control
-## Title screen: the game's name, its tagline and the button that opens the
-## shop. Everything sits in the gameplay column (Game ScreenFit), the buttons in
+## Title screen: the game's name, its tagline and the buttons that start story mode
+## or Rush Hour. Everything sits in the gameplay column (Game ScreenFit), the buttons in
 ## the thumb zone. ContentErrorBanner stays hidden unless show_content_error()
 ## is called: when Content reports errors in data/*.json, the banner shows their
 ## count and the shop stays closed (the buttons are disabled).
-## With a saved story to resume (Game.can_continue()) the main button reads
-## "Continue" and NewGameButton appears under it; a new game over a saved one
-## needs a second press within NEW_GAME_CONFIRM_TIME. Without one the main button
-## starts a new game.
-## Once the story has been finished (Game.rush_hour_unlocked) RushButton starts a
-## Rush Hour run, with the best score under it (RushBest, "assisted" when set with Assist).
-## SettingsButton (bottom) opens the shared settings panel (Settings: the mode toggles
-## with their "?" help and the Music and SFX volumes) with a Close button (also
-## ui_cancel); closing it gives focus back to SettingsButton.
+## The story button (OpenShopButton, top of the menu) reads "Story mode" and starts a
+## new story; with a saved story to resume (Game.can_continue()) it reads "Continue
+## story" and NewGameButton ("New story") appears right under it; a new story over a
+## saved one needs a second press within NEW_GAME_CONFIRM_TIME.
+## RushButton (under them) starts a Rush Hour run from the first launch, with the best
+## score under it once a run has set one (RushBest, "assisted" when set with Assist);
+## without a saved story both move up into New story's place.
+## The bottom row: SettingsButton opens the shared settings panel (Settings: the mode
+## toggles with their "?" help and the Music and SFX volumes) with a Close button
+## (also ui_cancel); CreditsButton opens the credits (Credits). Closing either gives
+## focus back to the button that opened it.
 ## The reading zone (above the buttons) is the hero: the BrewMagic logo (art_src/title.px)
 ## pops in on arrival and then bobs, over the big animated cauldron (CauldronHero:
 ## bubbles and steam cycling through the essence colours).
 
 const CONTENT_ERROR_MESSAGE := "Content error: %d problem(s) in data/*.json, see the log. The shop stays closed."
-const NEW_GAME_TEXT := "New game"
+const NEW_GAME_TEXT := "New story"
 const NEW_GAME_CONFIRM_TEXT := "Sure? Tap again"
 ## The confirm text is drawn at Silkscreen 8 (its other crisp size) so the button keeps
-## its 180 width; Silkscreen 16 would widen it (playtest 2026-10-19).
+## its 190 width; Silkscreen 16 would widen it (playtest 2026-10-19).
 const NEW_GAME_CONFIRM_FONT_SIZE := 8
 const NEW_GAME_CONFIRM_TIME := 3.0
 ## The logo's top and the cauldron's centre, as fractions of the column height (both
@@ -52,6 +54,8 @@ var _bob_time := 0.0
 @onready var _rush_best: Label = $Column/RushBest
 @onready var _settings_button: Button = $Column/SettingsButton
 @onready var _settings: SettingsPanel = $Settings
+@onready var _credits_button: Button = $Column/CreditsButton
+@onready var _credits: CreditsPanel = $Credits
 
 
 func _ready() -> void:
@@ -67,6 +71,8 @@ func _ready() -> void:
 	_new_game_button.pressed.connect(_on_new_game_pressed)
 	_rush_button.pressed.connect(_on_rush_pressed)
 	_settings_button.pressed.connect(open_settings)
+	_credits_button.pressed.connect(open_credits)
+	_credits.closed.connect(_on_credits_closed)
 	_settings.set_title("Settings")
 	var close := _settings.add_button("CloseButton", "Close", false)
 	close.shortcut = Shortcut.new()
@@ -80,16 +86,22 @@ func _ready() -> void:
 		print("[Title] Content has %d problem(s); the shop stays closed" % content_errors.size())
 		show_content_error(CONTENT_ERROR_MESSAGE % content_errors.size())
 		_open_button.disabled = true
+		_rush_button.disabled = true
 		_new_game_button.hide()
 		return
 	var resumable := _game.can_continue()
-	_open_button.text = "Continue" if resumable else "Open the shop"
-	_open_button.accessibility_name = ("Continue the story on day %d" % _game.day) if resumable else "Open the shop"
+	_open_button.text = "Continue story" if resumable else "Story mode"
+	_open_button.accessibility_name = ("Continue the story on day %d" % _game.day) if resumable else "Start story mode"
 	_new_game_button.visible = resumable
 	_new_game_button.text = NEW_GAME_TEXT
-	_new_game_button.accessibility_name = "Start a new game"
-	_rush_button.visible = _game.rush_hour_unlocked
-	_rush_best.visible = _game.rush_hour_unlocked
+	_new_game_button.accessibility_name = "Start a new story"
+	if not resumable:
+		# No New story: Rush Hour and its best line move up into its place.
+		var lift := _rush_button.anchor_top - _new_game_button.anchor_top
+		for control: Control in [_rush_button, _rush_best]:
+			control.anchor_top -= lift
+			control.anchor_bottom -= lift
+	_rush_best.visible = _game.rush_best > 0
 	_rush_best.text = "Best: %d coins%s" % [_game.rush_best, " (assisted)" if _game.rush_best_assisted else ""]
 	_rush_best.accessibility_name = "Rush Hour best: %s" % _rush_best.text.trim_prefix("Best: ")
 	# Keyboard users can press Enter straight away; the focus ring shows once they navigate.
@@ -108,6 +120,14 @@ func close_settings() -> void:
 	_settings.close()
 	_settings_button.grab_focus(true)
 	print("[Title] Settings closed")
+
+
+func open_credits() -> void:
+	_credits.open(_column)
+
+
+func _on_credits_closed() -> void:
+	_credits_button.grab_focus(true)
 
 
 ## Shows `message` in the banner at the top of the screen.
@@ -155,7 +175,7 @@ func _on_new_game_pressed() -> void:
 		# The size first: a Control grows to a wider minimum at once but never shrinks back.
 		_new_game_button.add_theme_font_size_override(&"font_size", NEW_GAME_CONFIRM_FONT_SIZE)
 		_new_game_button.text = NEW_GAME_CONFIRM_TEXT
-		_new_game_button.accessibility_name = "Press again to erase the saved story and start a new game"
+		_new_game_button.accessibility_name = "Press again to erase the saved story and start a new story"
 		Juice.shake(_new_game_button, 2.0, 0.2)
 		_confirm_timer = get_tree().create_timer(NEW_GAME_CONFIRM_TIME)
 		_confirm_timer.timeout.connect(_cancel_new_game)
@@ -167,7 +187,7 @@ func _cancel_new_game() -> void:
 	_confirm_timer = null
 	_new_game_button.text = NEW_GAME_TEXT
 	_new_game_button.remove_theme_font_size_override(&"font_size")
-	_new_game_button.accessibility_name = "Start a new game"
+	_new_game_button.accessibility_name = "Start a new story"
 
 
 func _start_new_game() -> void:

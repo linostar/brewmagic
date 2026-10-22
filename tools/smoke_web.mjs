@@ -7,7 +7,7 @@
 // gone to the title by itself: "[Game] Arrived at TITLE"). Then each run plays and
 // serves the first day-1 customer, requiring the game's "[Shop] Served customer 1/N"
 // log line. Pointer runs (CDP touch events on the phone, the mouse on desktop) tap
-// "Open the shop" on the title and on the morning screen, the recipe's ingredients and Brew, stir real circles at the target
+// "Story mode" on the title, "Open the shop" on the morning screen, the recipe's ingredients and Brew, stir real circles at the target
 // tempo and hold the pour to the line; the game's logs must show that each gesture reached
 // the game and was recognised (see checkStir/checkPour), so a broken input path fails
 // however slow the renderer is. The keyboard run uses only
@@ -42,8 +42,8 @@ const TOUCH_CSS = { touchAction: 'none', overscrollBehavior: 'none', userSelect:
 
 // Game layout the shop run needs (base units, 270x480 base viewport, aspect expand).
 const BASE = { width: 270, height: 480 };
-// scenes/title.tscn OpenShopButton: centred, anchor_top 0.72 of the column.
-const TITLE_BUTTON_ANCHOR_Y = 0.72;
+// scenes/title.tscn OpenShopButton ("Story mode"): centred, anchor_top 0.54 of the column.
+const TITLE_BUTTON_ANCHOR_Y = 0.54;
 // scenes/morning.tscn OpenShopButton: centred, anchor_top 0.72 of the column.
 const MORNING_BUTTON_ANCHOR_Y = 0.72;
 // Stations are 270x288 at stage y 192 (scenes/stations/*.tscn); the stir centre and
@@ -143,7 +143,7 @@ function checkQualities(run, logs, qualities, served, accept, expected) {
     .map(([station, quality]) => `${station} quality ${quality.toFixed(3)}, expected ${expected}`);
 }
 
-// Keyboard only, as a player without a pointer: Enter on the focused "Open the shop" of the
+// Keyboard only, as a player without a pointer: Enter on the focused "Story mode" of the
 // title, then Enter on the focused "Open the shop" of the morning,
 // Shift+Tab from the first shelf item (focused when the customer asks) wraps to the pause
 // button, Enter pauses, Down + Enter switches Assist on, Up + Enter resumes (focus returns
@@ -152,7 +152,7 @@ function checkQualities(run, logs, qualities, served, accept, expected) {
 async function serveFirstCustomerByKeyboard(page, run, logs, shot) {
   const key = (name) => page.keyboard.press(name);
   await key('Enter');
-  await waitForLog(page, logs, /^\[Game\] Arrived at MORNING/, 'the morning of day 1 (Enter on "Open the shop")');
+  await waitForLog(page, logs, /^\[Game\] Arrived at MORNING/, 'the morning of day 1 (Enter on "Story mode")');
   await shot('morning');
   await key('Enter');
   await waitForLog(page, logs, /^\[Game\] goto MORNING -> SHOP/, 'the shop to open (Enter on the morning\'s "Open the shop")');
@@ -207,7 +207,7 @@ async function serveFirstCustomer(page, context, run, logs) {
     return failures;
   }
   await pointer.tap(map.page(map.visible.width / 2, map.visible.height * TITLE_BUTTON_ANCHOR_Y));
-  await waitForLog(page, logs, /^\[Game\] Arrived at MORNING/, 'the morning of day 1 (tap on "Open the shop")');
+  await waitForLog(page, logs, /^\[Game\] Arrived at MORNING/, 'the morning of day 1 (tap on "Story mode")');
   await shot('morning');
   await pointer.tap(map.page(map.visible.width / 2, map.visible.height * MORNING_BUTTON_ANCHOR_Y));
   await waitForLog(page, logs, /^\[Game\] goto MORNING -> SHOP/, 'the shop to open (tap on the morning\'s "Open the shop")');

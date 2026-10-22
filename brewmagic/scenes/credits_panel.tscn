@@ -1,0 +1,84 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/credits_panel.gd" id="1_credits"]
+
+[sub_resource type="InputEventAction" id="InputEventAction_cancel"]
+action = &"ui_cancel"
+
+[sub_resource type="Shortcut" id="Shortcut_cancel"]
+events = [SubResource("InputEventAction_cancel")]
+
+[node name="CreditsPanel" type="Control"]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 270.0
+offset_bottom = 480.0
+mouse_filter = 2
+script = ExtResource("1_credits")
+
+[node name="Dim" type="ColorRect" parent="."]
+visible = false
+layout_mode = 0
+offset_right = 270.0
+offset_bottom = 480.0
+color = Color(0.11, 0.078, 0.125, 0.6)
+
+[node name="Panel" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -128.0
+offset_top = -48.0
+offset_right = 128.0
+offset_bottom = -14.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="List" type="VBoxContainer" parent="Panel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Title" type="Label" parent="Panel/List"]
+layout_mode = 2
+theme_type_variation = &"DarkTitleLabel"
+text = "Credits"
+horizontal_alignment = 1
+
+[node name="By" type="Label" parent="Panel/List"]
+layout_mode = 2
+theme_type_variation = &"DarkLabel"
+text = "Game by"
+horizontal_alignment = 1
+
+[node name="Author" type="Label" parent="Panel/List"]
+layout_mode = 2
+theme_type_variation = &"DarkLabel"
+theme_override_font_sizes/font_size = 25
+text = "linostar"
+horizontal_alignment = 1
+
+[node name="Fonts" type="Label" parent="Panel/List"]
+custom_minimum_size = Vector2(232, 0)
+layout_mode = 2
+theme_type_variation = &"DarkLabel"
+text = "Fonts: Silkscreen (c) 2001 The Silkscreen Project Authors and VT323 (c) 2011 The VT323 Project Authors, both under the SIL Open Font License 1.1."
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Engine" type="Label" parent="Panel/List"]
+layout_mode = 2
+theme_type_variation = &"DarkLabel"
+text = "Made with Godot 4.7"
+horizontal_alignment = 1
+
+[node name="CloseButton" type="Button" parent="Panel/List"]
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+accessibility_name = "Close the credits"
+shortcut_feedback = false
+shortcut = SubResource("Shortcut_cancel")
+text = "Close"

@@ -112,7 +112,7 @@ const SAVE_PATH := "user://save.json"
 const TOOL_SAVE_PATH := "user://tool_save.json"
 ## The save format's version. Every change to the format bumps it and appends one
 ## step to save_migrations(), so saves of older versions are upgraded, not discarded.
-const SAVE_VERSION := 5
+const SAVE_VERSION := 6
 ## Upper bounds a save's numbers must respect (anything else marks it corrupt);
 ## SAVE_SCORE_MAX bounds reputation (either sign) and rush_best.
 const SAVE_COINS_MAX := 999999
@@ -125,8 +125,14 @@ const SAVE_KEYS: Dictionary[String, Variant.Type] = {
 	"version": TYPE_INT, "day": TYPE_INT, "at_market": TYPE_BOOL, "coins": TYPE_INT, "reputation": TYPE_INT,
 	"stock": TYPE_DICTIONARY, "upgrades": TYPE_DICTIONARY, "codex": TYPE_DICTIONARY, "flags": TYPE_DICTIONARY,
 	"endings": TYPE_ARRAY, "rush_hour_unlocked": TYPE_BOOL, "rush_best": TYPE_INT, "rush_best_assisted": TYPE_BOOL,
-	"settings": TYPE_DICTIONARY,
+	"skill": TYPE_INT, "difficulty": TYPE_INT, "settings": TYPE_DICTIONARY,
 }
+## The skill rating and the difficulty level are saved in hundredths (whole numbers):
+## skill 0..100, difficulty Difficulty.LEVEL_MIN..LEVEL_MAX x 100.
+const SAVE_HUNDREDTHS := 100.0
+## The story's last day before the 20-day story (version 5 and older): a version 5 save
+## on the day after it with the market closed had finished that story.
+const V5_LAST_DAY := 7
 ## Version 1 kept these in flags (moved out by the version 2 step of save_migrations).
 const V1_ENDING_FLAG := "ending"
 const V1_RUSH_HOUR_FLAG := "rush_hour_unlocked"
@@ -176,6 +182,11 @@ var rush_hour_unlocked := false
 ## during that run; like the endings, new_game keeps them.
 var rush_best := 0
 var rush_best_assisted := false
+## This story's adaptive difficulty (Difficulty): the player's skill rating (0..1) and the
+## difficulty level the next story day is built at, both moved by finish_day and kept in
+## hundredths (SAVE_HUNDREDTHS) so a save round trip is exact. Rush Hour never moves them.
+var skill_rating := Difficulty.START_RATING
+var difficulty := Difficulty.START_LEVEL
 ## Where the save lives: SAVE_PATH, or TOOL_SAVE_PATH in tool runs.
 var save_path := SAVE_PATH
 
@@ -700,6 +711,16 @@ func finish_day(result: Dictionary, coins_now: int, stock_now: Dictionary[String
 	reputation += reputation_change
 	for flag in story_outcomes:
 		flags[flag] = story_outcomes[flag]
+	var grades: Array[int] = []
+	grades.assign(result.get("grades", [0, 0, 0, 0]))
+	var patience_left: Array[float] = []
+	patience_left.assign(result.get("patience_left", []))
+	var gestures: Array[float] = []
+	gestures.assign(result.get("gestures", []))
+	var score := Difficulty.day_score(grades, int(result.get("stormed_off", 0)), int(result.get("refused", 0)), patience_left, gestures)
+	skill_rating = snappedf(Difficulty.next_rating(skill_rating, score), 1.0 / SAVE_HUNDREDTHS)
+	difficulty = snappedf(Difficulty.next_level(difficulty, skill_rating), 1.0 / SAVE_HUNDREDTHS)
+	print("[Game] Day %d skill: score %.2f, rating %.2f, difficulty %.2f (patience x%.2f, arrivals %.1fs, tolerance x%.2f)" % [int(result["day"]), score, skill_rating, difficulty, Difficulty.patience_scale(difficulty), Difficulty.arrival_gap(difficulty), Difficulty.tolerance_scale(difficulty)])
 	if not story_outcomes.is_empty():
 		print("[Game] Story beats of day %d: %s" % [int(result["day"]), story_outcomes])
 	day = int(result["day"]) + 1
@@ -884,6 +905,7 @@ func save_game() -> void:
 		"version": SAVE_VERSION, "day": day, "at_market": at_market, "coins": coins, "reputation": reputation,
 		"stock": stock, "upgrades": upgrades, "codex": codex, "flags": flags, "endings": endings,
 		"rush_hour_unlocked": rush_hour_unlocked, "rush_best": rush_best, "rush_best_assisted": rush_best_assisted,
+		"skill": roundi(skill_rating * SAVE_HUNDREDTHS), "difficulty": roundi(difficulty * SAVE_HUNDREDTHS),
 		"settings": {"assist": assist_mode, "gentle": gentle_mode, "music": music_volume, "sfx": sfx_volume, "music_muted": music_muted, "sfx_muted": sfx_muted},
 	}
 	var temp := save_path + ".tmp"
@@ -902,8 +924,8 @@ func save_game() -> void:
 		DirAccess.remove_absolute(temp)
 		_report_error("Could not replace save '%s' with '%s': %s; the save is unchanged" % [save_path, temp, error_string(replaced)])
 		return
-	print("[Game] Saved to %s: day %d%s, %d coins, reputation %d, upgrades %s, flags %s, endings %s, Rush Hour %s (best %d%s), assist %s, gentle %s, music %d%s, sfx %d%s" % [
-		save_path, day, " (market)" if at_market else "", coins, reputation, upgrades, flags, endings, rush_hour_unlocked, rush_best, " assisted" if rush_best_assisted else "", assist_mode, gentle_mode, music_volume, " muted" if music_muted else "", sfx_volume, " muted" if sfx_muted else ""])
+	print("[Game] Saved to %s: day %d%s, %d coins, reputation %d, upgrades %s, flags %s, endings %s, Rush Hour %s (best %d%s), skill %.2f, difficulty %.2f, assist %s, gentle %s, music %d%s, sfx %d%s" % [
+		save_path, day, " (market)" if at_market else "", coins, reputation, upgrades, flags, endings, rush_hour_unlocked, rush_best, " assisted" if rush_best_assisted else "", skill_rating, difficulty, assist_mode, gentle_mode, music_volume, " muted" if music_muted else "", sfx_volume, " muted" if sfx_muted else ""])
 
 
 ## Loads save_path into progress and settings. A missing save starts fresh silently
@@ -941,8 +963,8 @@ func _load_save() -> void:
 		_reset_settings()
 		_discard_save("corrupt (%s)" % problem)
 		return
-	print("[Game] Loaded save from %s: day %d%s, %d coins, reputation %d, stock %s, upgrades %s, flags %s, endings %s, Rush Hour %s (best %d%s), assist %s, gentle %s, music %d%s, sfx %d%s" % [
-		save_path, day, " (market)" if at_market else "", coins, reputation, stock, upgrades, flags, endings, rush_hour_unlocked, rush_best, " assisted" if rush_best_assisted else "", assist_mode, gentle_mode, music_volume, " muted" if music_muted else "", sfx_volume, " muted" if sfx_muted else ""])
+	print("[Game] Loaded save from %s: day %d%s, %d coins, reputation %d, stock %s, upgrades %s, flags %s, endings %s, Rush Hour %s (best %d%s), skill %.2f, difficulty %.2f, assist %s, gentle %s, music %d%s, sfx %d%s" % [
+		save_path, day, " (market)" if at_market else "", coins, reputation, stock, upgrades, flags, endings, rush_hour_unlocked, rush_best, " assisted" if rush_best_assisted else "", skill_rating, difficulty, assist_mode, gentle_mode, music_volume, " muted" if music_muted else "", sfx_volume, " muted" if sfx_muted else ""])
 
 
 ## Where a corrupt save is moved: save.json -> save.corrupt.json.
@@ -1017,6 +1039,8 @@ func _reset_progress() -> void:
 	rush_hour_unlocked = false
 	rush_best = 0
 	rush_best_assisted = false
+	skill_rating = Difficulty.START_RATING
+	difficulty = Difficulty.START_LEVEL
 
 
 ## Applies a parsed save; returns "" or what is wrong with it (the caller then
@@ -1085,6 +1109,14 @@ func _apply_save(data: Variant) -> String:
 		endings.append(ending)
 	rush_hour_unlocked = saved["rush_hour_unlocked"]
 	rush_best_assisted = saved["rush_best_assisted"]
+	var skill := int(saved["skill"])
+	if skill < 0 or skill > roundi(SAVE_HUNDREDTHS):
+		return "skill %d is outside 0..%d" % [skill, roundi(SAVE_HUNDREDTHS)]
+	skill_rating = skill / SAVE_HUNDREDTHS
+	var saved_level := int(saved["difficulty"])
+	if saved_level < roundi(Difficulty.LEVEL_MIN * SAVE_HUNDREDTHS) or saved_level > roundi(Difficulty.LEVEL_MAX * SAVE_HUNDREDTHS):
+		return "difficulty %d is outside %d..%d" % [saved_level, roundi(Difficulty.LEVEL_MIN * SAVE_HUNDREDTHS), roundi(Difficulty.LEVEL_MAX * SAVE_HUNDREDTHS)]
+	difficulty = saved_level / SAVE_HUNDREDTHS
 	var settings: Dictionary = saved["settings"]
 	if settings.size() != SETTINGS_KEYS.size() or not SETTINGS_KEYS.all(func(key: String) -> bool: return settings.has(key)):
 		return "settings must be exactly %s" % [SETTINGS_KEYS]
@@ -1128,7 +1160,7 @@ static func migrate_save(saved: Dictionary, migrations: Array[Callable], target:
 ## version i + 2. Steps run before the save is validated, so they must read keys
 ## with get() and leave anything malformed for the validation to report.
 static func save_migrations() -> Array[Callable]:
-	return [_save_v1_to_v2, _save_v2_to_v3, _save_v3_to_v4, _save_v4_to_v5]
+	return [_save_v1_to_v2, _save_v2_to_v3, _save_v3_to_v4, _save_v4_to_v5, _save_v5_to_v6]
 
 
 ## Version 1 -> 2: the ending reached and the Rush Hour unlock move out of the story's
@@ -1167,6 +1199,44 @@ static func _save_v4_to_v5(saved: Dictionary) -> void:
 	if settings is Dictionary:
 		settings["music_muted"] = false
 		settings["sfx_muted"] = false
+
+
+## Version 5 -> 6: the story grew from V5_LAST_DAY to 20 days and gained adaptive
+## difficulty. The skill rating and the level start at their defaults. A finished
+## 7-day story (the day after V5_LAST_DAY, market closed) starts the 20-day story
+## afresh (day 1's coins and stock, no upgrades, flags or reputation) and keeps
+## what outlives a story (Codex, endings, Rush Hour, settings). A story in progress
+## keeps only the flags of beats that still come before its day (a beat that moved
+## later is played again).
+static func _save_v5_to_v6(saved: Dictionary) -> void:
+	saved["skill"] = roundi(Difficulty.START_RATING * SAVE_HUNDREDTHS)
+	saved["difficulty"] = roundi(Difficulty.START_LEVEL * SAVE_HUNDREDTHS)
+	if not _is_whole(saved.get("day")):
+		return
+	var saved_day := int(saved["day"])
+	if saved_day == V5_LAST_DAY + 1 and typeof(saved.get("at_market")) == TYPE_BOOL and not saved["at_market"]:
+		var first := Content.day(Content.FIRST_DAY)
+		saved["day"] = Content.FIRST_DAY
+		saved["coins"] = first.starting_coins if first != null else 0
+		saved["reputation"] = 0
+		saved["stock"] = first.starting_stock.duplicate() if first != null else {}
+		saved["upgrades"] = {}
+		saved["flags"] = {}
+		print("[Game] Save upgrade: the finished %d-day story starts the %d-day story afresh" % [V5_LAST_DAY, Content.days().size()])
+		return
+	var old_flags: Variant = saved.get("flags")
+	if not old_flags is Dictionary:
+		return
+	var beat_days := {}
+	for spec in Content.days():
+		for customer in spec.customers:
+			if customer.beat != "":
+				beat_days[customer.flag()] = spec.day
+	for flag: Variant in (old_flags as Dictionary).keys():
+		# A key that names no beat is left for Story.flags_problem to report.
+		if beat_days.has(flag) and beat_days[flag] >= saved_day:
+			(old_flags as Dictionary).erase(flag)
+			print("[Game] Save upgrade: flag '%s' dropped (its beat now comes on or after day %d)" % [flag, saved_day])
 
 
 ## Reports `problem`, moves the bad save to backup_path() and writes defaults in

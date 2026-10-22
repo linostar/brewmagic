@@ -17,101 +17,324 @@
     "id": "day_2",
     "day": 2,
     "title": "Word Gets Around",
-    "morning_note": "Honeycomb and moonmoss in stock. Moonmoss must be ground in the mortar.",
+    "morning_note": "Five new potions today! Listen for the hint words: they point the way.",
     "patience_scale": 1.0,
-    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4 },
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3 },
     "customers": [
-      { "archetype": "goat_farmer", "potion": "valour_cordial", "request": "valour_goat_farmer_1" },
-      { "archetype": "dramatic_bard", "potion": "hearthglow_tonic" },
-      { "archetype": "gossip_granny", "potion": "slumber_syrup" },
-      { "archetype": "apprentice_knight", "potion": "moonbloom_draught" },
-      { "archetype": "dramatic_bard", "potion": "valour_cordial" }
+      {},
+      {},
+      {},
+      {},
+      {}
     ]
   },
   {
     "id": "day_3",
     "day": 3,
     "title": "The Guild Comes Calling",
-    "morning_note": "A Guild inspector is in town. Five new potions on the menu. Brew neatly!",
+    "morning_note": "Moonmoss is in: grind it in the mortar! And a Guild inspector is in town.",
     "patience_scale": 1.0,
     "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4 },
     "customers": [
-      { "archetype": "goat_farmer", "potion": "greenthumb_syrup" },
+      {},
+      {},
       { "archetype": "quill", "potion": "stillwater_draught", "request": "stillwater_quill_1", "beat": "inspection", "lines": {"great": "Calm, clear and correct. Your shop passes stage one.", "poor": "Hm. Unsteady. Stage one: marked 'concerning'.", "refused": "Refusing the Guild? That goes in the file.", "stormed_off": "Late. The Guild does not wait. Stage one: failed."} },
-      { "archetype": "dramatic_bard", "potion": "nightfire_punch" },
+      {},
       { "archetype": "stranger", "potion": "dewdrop_balm", "request": "dewdrop_stranger_1", "beat": "first_sneeze", "lines": {"great": "Oh! The tickle's gone. Thank you... I'll remember this.", "poor": "Still tickly... ahh... sorry about the smoke.", "refused": "Oh. Sorry to bother you. *sniff*", "stormed_off": "I... I have to go. Ahh... AHH... sorry!"} },
-      { "archetype": "gossip_granny", "potion": "nocturne_syrup" },
-      { "archetype": "busy_baker", "potion": "stillwater_draught" }
+      {}
     ]
   },
   {
     "id": "day_4",
     "day": 4,
-    "title": "Rival Across the Street",
-    "morning_note": "Cinderroot is in! Pump the bellows to wake its fire. Who opened that shop?",
+    "title": "Garden Party",
+    "morning_note": "Garden party! Green thumbs and night owls drop by all day.",
     "morning_notes": [
-      {"when": {"stranger.first_sneeze": ["great"]}, "text": "Cinderroot is in! Pump the bellows. A hooded stranger has been praising you."}
+      {"when": {"stranger.first_sneeze": ["great"]}, "text": "A hooded stranger has been praising you. Garden party today!"}
     ],
     "patience_scale": 1.0,
-    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4, "cinderroot": 5 },
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4 },
     "customers": [
-      { "archetype": "apprentice_knight", "potion": "bonfire_tonic" },
-      { "archetype": "vexley", "potion": "steamwhistle_tonic", "request": "steamwhistle_vexley_1", "beat": "opening", "lines": {"great": "Hm! Not bad, neighbour. Not bad at all. Watch your back.", "poor": "As I thought. Customers will flock to me. Ta-ta!", "refused": "Too scared to brew for me? Delightful. Ciao!", "stormed_off": "I waited. I never wait. You'll pay for that."} },
-      { "archetype": "night_watchman", "potion": "smoulder_syrup" },
-      { "archetype": "haughty_noble", "potion": "dewdrop_balm" },
-      { "archetype": "retired_wizard", "potion": "embermoss_elixir" },
+      {},
+      {},
+      {},
+      {},
+      {},
       { "archetype": "goat_farmer", "potion": "greenthumb_syrup", "when": {"stranger.first_sneeze": ["great"]} }
     ]
   },
   {
     "id": "day_5",
     "day": 5,
-    "title": "Market Day Rush",
-    "morning_note": "Market day! More customers, less patience. Brew fast, smile faster.",
-    "morning_notes": [
-      {"when": {"quill.inspection": ["great"]}, "text": "Market day! The inspector speaks well of you. Brew fast, smile faster."},
-      {"when": {"quill.inspection": ["poor", "refused", "stormed_off"]}, "text": "Market day rush! Word is the Guild inspector is coming back. Look sharp."}
-    ],
+    "title": "Paperwork",
+    "morning_note": "Inspector Quill is back with forms. So many forms.",
     "patience_scale": 1.0,
-    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4, "cinderroot": 5 },
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4 },
     "customers": [
-      { "archetype": "busy_baker", "potion": "hearthglow_tonic" },
-      { "archetype": "dramatic_bard", "potion": "nightfire_punch" },
-      { "archetype": "quill", "potion": "steamwhistle_tonic", "request": "steamwhistle_quill_1", "beat": "audit", "when": {"quill.inspection": ["great"]}, "lines": {"great": "Even in a rush, flawless. I'm recommending you.", "poor": "Rushed. The fire won, the cool head lost. Noted.", "refused": "Refusing an audit mid-rush. Bold. Recorded.", "stormed_off": "Market day is no excuse. Audit failed."} },
-      { "archetype": "quill", "potion": "stillwater_draught", "request": "stillwater_quill_2", "beat": "audit", "when": {"quill.inspection": ["poor", "refused", "stormed_off"]}, "lines": {"great": "Much better. I'll amend the file. In pen.", "poor": "Still shaky. My report grows longer.", "refused": "No second chance taken? So be it.", "stormed_off": "I waited. The Guild does not wait twice."} },
-      { "archetype": "apprentice_knight", "potion": "bonfire_tonic" },
-      { "archetype": "haughty_noble", "potion": "dewdrop_balm" },
-      { "archetype": "goat_farmer", "potion": "greenthumb_syrup" },
-      { "archetype": "night_watchman", "potion": "smoulder_syrup" },
-      { "archetype": "gossip_granny", "potion": "nocturne_syrup", "when": {"vexley.opening": ["great"]} },
-      { "archetype": "retired_wizard", "potion": "moonbloom_draught" }
+      {},
+      {},
+      { "archetype": "quill", "potion": "nocturne_syrup", "request": "nocturne_quill_1", "beat": "paperwork", "lines": {"great": "Asleep in four minutes. Your file grows... favourably.", "poor": "I stayed up all night. Form 27-B now has a stain.", "refused": "No help with my forms? Noted. On a form.", "stormed_off": "I've wasted an hour. That is three forms' worth."} },
+      {},
+      {}
     ]
   },
   {
     "id": "day_6",
     "day": 6,
-    "title": "Rare Goods",
-    "morning_note": "Rare goods at the market: snowfire pearls, twilight blooms and starlight dew.",
-    "morning_notes": [
-      {"when": {"vexley.opening": ["great"]}, "text": "Smoke over Vexley's shop! Rare goods at market: pearls, blooms, dew."},
-      {"when": {"vexley.opening": ["poor", "refused", "stormed_off"]}, "text": "Vexley tells everyone you're a fraud. Rare goods at market today."}
-    ],
+    "title": "Rival Across the Street",
+    "morning_note": "Cinderroot is in! Pump the bellows to wake its fire. Who opened that shop?",
     "patience_scale": 1.0,
-    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4, "cinderroot": 5, "snowfire_pearl": 5, "twilight_bloom": 5, "starlight_dew": 6 },
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4, "cinderroot": 5 },
     "customers": [
-      { "archetype": "retired_wizard", "potion": "starfire_elixir" },
-      { "archetype": "stranger", "potion": "hushfire_tonic", "request": "hushfire_stranger_1", "beat": "confession", "when": {"stranger.first_sneeze": ["great"]}, "lines": {"great": "No sparks! You kept my secret AND my fire. Friend!", "poor": "It flickers still... but you didn't run. Thank you.", "refused": "I see... a dragon is too much. I understand.", "stormed_off": "Never mind... I shouldn't have said anything."} },
-      { "archetype": "stranger", "potion": "dewdrop_balm", "request": "dewdrop_stranger_2", "beat": "confession", "when": {"stranger.first_sneeze": ["poor", "refused", "stormed_off"]}, "lines": {"great": "Better... Maybe I'll tell you my secret one day.", "poor": "Still tickly. I'd better keep my hood up.", "refused": "That's alright... I'll manage. Somehow.", "stormed_off": "I'll go... before something catches fire."} },
-      { "archetype": "gossip_granny", "potion": "duskbloom_syrup" },
-      { "archetype": "vexley", "potion": "panacea", "request": "panacea_vexley_1", "beat": "truce", "when": {"vexley.opening": ["great"]}, "lines": {"great": "You saved my shop. Truce? Truce. Don't get used to it.", "poor": "It fizzled. Well... thank you for trying. I suppose.", "refused": "Fine! I'll fix it alone. Like always.", "stormed_off": "Never mind! I'll find someone who answers the door."} },
-      { "archetype": "vexley", "potion": "embermoss_elixir", "request": "embermoss_vexley_1", "beat": "truce", "when": {"vexley.opening": ["poor", "refused", "stormed_off"]}, "lines": {"great": "You... did it? Hmph. Perhaps I misjudged you.", "poor": "Ha! I knew it. See you at the Fair, amateur.", "refused": "Chicken! I'll tell the whole Fair.", "stormed_off": "Too slow, darling! The Fair will hear of this."} },
-      { "archetype": "haughty_noble", "potion": "panacea" },
-      { "archetype": "busy_baker", "potion": "hushfire_tonic" }
+      {},
+      { "archetype": "vexley", "potion": "steamwhistle_tonic", "request": "steamwhistle_vexley_1", "beat": "opening", "lines": {"great": "Hm! Not bad, neighbour. Not bad at all. Watch your back.", "poor": "As I thought. Customers will flock to me. Ta-ta!", "refused": "Too scared to brew for me? Delightful. Ciao!", "stormed_off": "I waited. I never wait. You'll pay for that."} },
+      {},
+      {},
+      {},
+      {}
     ]
   },
   {
     "id": "day_7",
     "day": 7,
+    "title": "Smoke Signals",
+    "morning_note": "Two fiery new potions. Something outside keeps hiccuping.",
+    "morning_notes": [
+      {"when": {"vexley.opening": ["great"]}, "text": "Vexley's queue is spilling over to you! Two fiery new potions."}
+    ],
+    "patience_scale": 1.0,
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4, "cinderroot": 5 },
+    "customers": [
+      {},
+      {},
+      { "archetype": "stranger", "potion": "smoulder_syrup", "request": "smoulder_stranger_1", "beat": "hiccups", "lines": {"great": "Hic... oh! They stopped! And nothing's on fire!", "poor": "Hic! Sorry about your curtains. Hic!", "refused": "Hic... I'll go hiccup somewhere less flammable.", "stormed_off": "HIC! Oh no, the bench. Sorry! Bye!"} },
+      {},
+      {},
+      {},
+      { "archetype": "gossip_granny", "potion": "nocturne_syrup", "when": {"vexley.opening": ["great"]} }
+    ]
+  },
+  {
+    "id": "day_8",
+    "day": 8,
+    "title": "The Audit",
+    "morning_note": "Audit day. Inspector Quill brought his longest quill.",
+    "morning_notes": [
+      {"when": {"quill.inspection": ["great"]}, "text": "The inspector speaks well of you. Audit today: nerves of steel!"},
+      {"when": {"quill.inspection": ["poor", "refused", "stormed_off"]}, "text": "The Guild inspector is back for a re-inspection. Look sharp."}
+    ],
+    "patience_scale": 1.0,
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4, "cinderroot": 5 },
+    "customers": [
+      {},
+      {},
+      { "archetype": "quill", "potion": "steamwhistle_tonic", "request": "steamwhistle_quill_1", "beat": "audit", "when": {"quill.inspection": ["great"]}, "lines": {"great": "Flawless, under audit. I'm recommending you.", "poor": "Hot-headed. The fire won, the cool head lost. Noted.", "refused": "Refusing an auditor. Bold. Recorded.", "stormed_off": "Auditors keep the clock, not you. Audit failed."} },
+      { "archetype": "quill", "potion": "stillwater_draught", "request": "stillwater_quill_2", "beat": "audit", "when": {"quill.inspection": ["poor", "refused", "stormed_off"]}, "lines": {"great": "Much better. I'll amend the file. In pen.", "poor": "Still shaky. My report grows longer.", "refused": "No second chance taken? So be it.", "stormed_off": "I waited. The Guild does not wait twice."} },
+      {},
+      {},
+      {}
+    ]
+  },
+  {
+    "id": "day_9",
+    "day": 9,
+    "title": "Market Day Rush",
+    "morning_note": "Market day! More customers, less patience. Brew fast, smile faster.",
+    "patience_scale": 1.0,
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4, "cinderroot": 5 },
+    "customers": [
+      {},
+      {},
+      {},
+      { "archetype": "vexley", "potion": "valour_cordial", "request": "valour_vexley_1", "beat": "spy", "lines": {"great": "Hmph. It's... excellent. I mean, for research.", "poor": "Ha! Amateur work. My notes will be brief.", "refused": "Refused? I'm a paying customer! In disguise!", "stormed_off": "Too slow! A spy has a schedule, you know."} },
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  {
+    "id": "day_10",
+    "day": 10,
+    "title": "Flying Lessons",
+    "morning_note": "A quiet day. Someone on the roof is practising... flapping?",
+    "patience_scale": 1.0,
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4, "cinderroot": 5 },
+    "customers": [
+      {},
+      {},
+      { "archetype": "stranger", "potion": "dewdrop_balm", "request": "dewdrop_stranger_3", "beat": "flight", "lines": {"great": "Steady wings! Off to fly round the mill. Well, half.", "poor": "Still wobbly. I'll aim for the duck pond.", "refused": "Oh. Maybe I'll just walk. Like a person.", "stormed_off": "The lesson's starting... I'll go nervous, then."} },
+      {},
+      {},
+      {}
+    ]
+  },
+  {
+    "id": "day_11",
+    "day": 11,
+    "title": "Surprise Inspection",
+    "morning_note": "Snowfire pearls in stock: fire and frost in one cold little gem.",
+    "patience_scale": 1.0,
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4, "cinderroot": 5, "snowfire_pearl": 5 },
+    "customers": [
+      {},
+      {},
+      { "archetype": "quill", "potion": "hushfire_tonic", "request": "hushfire_quill_1", "beat": "surprise_visit", "lines": {"great": "Spotless. I'm not supposed to smile on duty. I'm not.", "poor": "Lukewarm in every sense. Noted, in red ink.", "refused": "Turning away an inspector? Bold. Very bold.", "stormed_off": "A surprise inspection and you're the slow one. Hm."} },
+      {},
+      {},
+      {}
+    ]
+  },
+  {
+    "id": "day_12",
+    "day": 12,
+    "title": "Night Garden",
+    "morning_note": "Twilight blooms are in! Two rare potions, and Vexley's roses glow.",
+    "patience_scale": 1.0,
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4, "cinderroot": 5, "snowfire_pearl": 5, "twilight_bloom": 5 },
+    "customers": [
+      {},
+      {},
+      { "archetype": "vexley", "potion": "duskbloom_syrup", "request": "duskbloom_vexley_2", "beat": "night_garden", "lines": {"great": "My roses glow purple! The neighbours are terrified. Perfect.", "poor": "They're glowing... beige. Beige, darling.", "refused": "Fine. I'll make my roses spooky myself.", "stormed_off": "My roses wilted while I waited. Thanks."} },
+      {},
+      {},
+      {}
+    ]
+  },
+  {
+    "id": "day_13",
+    "day": 13,
+    "title": "Starlight",
+    "morning_note": "Starlight dew at the market: grind it fine! The hooded stranger lingers.",
+    "patience_scale": 1.0,
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4, "cinderroot": 5, "snowfire_pearl": 5, "twilight_bloom": 5, "starlight_dew": 6 },
+    "customers": [
+      {},
+      {},
+      { "archetype": "stranger", "potion": "hushfire_tonic", "request": "hushfire_stranger_1", "beat": "confession", "when": {"stranger.first_sneeze": ["great"]}, "lines": {"great": "No sparks! You kept my secret AND my fire. Friend!", "poor": "It flickers still... but you didn't run. Thank you.", "refused": "I see... a dragon is too much. I understand.", "stormed_off": "Never mind... I shouldn't have said anything."} },
+      { "archetype": "stranger", "potion": "dewdrop_balm", "request": "dewdrop_stranger_2", "beat": "confession", "when": {"stranger.first_sneeze": ["poor", "refused", "stormed_off"]}, "lines": {"great": "Better... Maybe I'll tell you my secret one day.", "poor": "Still tickly. I'd better keep my hood up.", "refused": "That's alright... I'll manage. Somehow.", "stormed_off": "I'll go... before something catches fire."} },
+      {},
+      {},
+      {}
+    ]
+  },
+  {
+    "id": "day_14",
+    "day": 14,
+    "title": "The Truce",
+    "morning_note": "Rare goods are flying off the shelves. Vexley is on her way over.",
+    "morning_notes": [
+      {"when": {"vexley.opening": ["great"]}, "text": "Smoke over Vexley's shop! Something has gone very wrong."},
+      {"when": {"vexley.opening": ["poor", "refused", "stormed_off"]}, "text": "Vexley tells everyone you're a fraud. She's coming to prove it."}
+    ],
+    "patience_scale": 1.0,
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4, "cinderroot": 5, "snowfire_pearl": 5, "twilight_bloom": 5, "starlight_dew": 6 },
+    "customers": [
+      {},
+      {},
+      { "archetype": "vexley", "potion": "panacea", "request": "panacea_vexley_1", "beat": "truce", "when": {"vexley.opening": ["great"]}, "lines": {"great": "You saved my shop. Truce? Truce. Don't get used to it.", "poor": "It fizzled. Well... thank you for trying. I suppose.", "refused": "Fine! I'll fix it alone. Like always.", "stormed_off": "Never mind! I'll find someone who answers the door."} },
+      { "archetype": "vexley", "potion": "embermoss_elixir", "request": "embermoss_vexley_1", "beat": "truce", "when": {"vexley.opening": ["poor", "refused", "stormed_off"]}, "lines": {"great": "You... did it? Hmph. Perhaps I misjudged you.", "poor": "Ha! I knew it. See you at the Fair, amateur.", "refused": "Chicken! I'll tell the whole Fair.", "stormed_off": "Too slow, darling! The Fair will hear of this."} },
+      {},
+      {},
+      {}
+    ]
+  },
+  {
+    "id": "day_15",
+    "day": 15,
+    "title": "Festival Eve Rush",
+    "morning_note": "The Fair is near and the village is buzzing. Busy, busy, busy!",
+    "morning_notes": [
+      {"when": {"stranger.confession": ["great"]}, "text": "A dragon was seen lighting the bakery ovens. The village is buzzing!"}
+    ],
+    "patience_scale": 1.0,
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4, "cinderroot": 5, "snowfire_pearl": 5, "twilight_bloom": 5, "starlight_dew": 6 },
+    "customers": [
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  {
+    "id": "day_16",
+    "day": 16,
+    "title": "Lantern Practice",
+    "morning_note": "The Fair lanterns arrive. Someone small and scaly offers to help.",
+    "patience_scale": 1.0,
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4, "cinderroot": 5, "snowfire_pearl": 5, "twilight_bloom": 5, "starlight_dew": 6 },
+    "customers": [
+      {},
+      {},
+      { "archetype": "stranger", "potion": "nightfire_punch", "request": "nightfire_stranger_1", "beat": "lantern_practice", "lines": {"great": "Look! One lantern, no tent fire. I am ready!", "poor": "The lantern's lit. So is my hood. Again.", "refused": "I'll practise on candles. Small ones.", "stormed_off": "The lanterns went home without me."} },
+      {},
+      {},
+      {}
+    ]
+  },
+  {
+    "id": "day_17",
+    "day": 17,
+    "title": "Dress Rehearsal",
+    "morning_note": "Inspector Quill wants a rehearsal of the Fair test.",
+    "morning_notes": [
+      {"when": {"quill.audit": ["great"]}, "text": "Quill wants a Fair rehearsal. 'A formality,' he says. Twice."},
+      {"when": {"quill.audit": ["poor", "refused", "stormed_off"]}, "text": "Quill wants a Fair rehearsal. 'Last chance,' he says, kindly."}
+    ],
+    "patience_scale": 1.0,
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4, "cinderroot": 5, "snowfire_pearl": 5, "twilight_bloom": 5, "starlight_dew": 6 },
+    "customers": [
+      {},
+      {},
+      { "archetype": "quill", "potion": "embermoss_elixir", "request": "embermoss_quill_1", "beat": "rehearsal", "lines": {"great": "Flawless rehearsal. Please do exactly that again.", "poor": "If that happens at the Fair, I'll need a bigger form.", "refused": "No rehearsal? Then pray the Fair goes well.", "stormed_off": "Rehearsals start on time. This one did not."} },
+      {},
+      {},
+      {}
+    ]
+  },
+  {
+    "id": "day_18",
+    "day": 18,
+    "title": "Recipe Swap",
+    "morning_note": "Vexley knocks with a notebook and a suspicious smile.",
+    "morning_notes": [
+      {"when": {"vexley.truce": ["great"]}, "text": "Vexley offers to swap recipes. Partners share, darling!"}
+    ],
+    "patience_scale": 1.0,
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4, "cinderroot": 5, "snowfire_pearl": 5, "twilight_bloom": 5, "starlight_dew": 6 },
+    "customers": [
+      {},
+      {},
+      { "archetype": "vexley", "potion": "moonbloom_draught", "request": "moonbloom_vexley_1", "beat": "recipe_swap", "lines": {"great": "Here's mine: add a wink. You're welcome, partner.", "poor": "Hm. I'll keep my recipe, I think.", "refused": "No swap? Your loss, darling. Truly.", "stormed_off": "I had a recipe for you. Had."} },
+      {},
+      {},
+      {}
+    ]
+  },
+  {
+    "id": "day_19",
+    "day": 19,
+    "title": "Calm Before the Fair",
+    "morning_note": "The Guild Fair is tomorrow! Stock up well tonight. Breathe.",
+    "patience_scale": 1.0,
+    "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4, "cinderroot": 5, "snowfire_pearl": 5, "twilight_bloom": 5, "starlight_dew": 6 },
+    "customers": [
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  {
+    "id": "day_20",
+    "day": 20,
     "title": "The Guild Fair",
     "morning_note": "The Guild Fair! Everyone you've met is here. The licence is decided today.",
     "morning_notes": [
@@ -120,15 +343,15 @@
     "patience_scale": 1.2,
     "market": { "ember_pepper": 2, "frost_mint": 2, "sunpetal": 2, "nightshade_cap": 3, "honeycomb": 4, "moonmoss": 4, "cinderroot": 5, "snowfire_pearl": 5, "twilight_bloom": 5, "starlight_dew": 6 },
     "customers": [
-      { "archetype": "goat_farmer", "potion": "valour_cordial" },
+      {},
       { "archetype": "vexley", "potion": "starfire_elixir", "request": "starfire_vexley_1", "beat": "fair", "when": {"vexley.truce": ["great"]}, "lines": {"great": "The crowd adores it! Partners? Partners, darling!", "poor": "Hm, the crowd's lukewarm. Next year, partner.", "refused": "You'd leave our stall empty? Oh. I see.", "stormed_off": "The stall's closing! Where's my showpiece?"} },
       { "archetype": "vexley", "potion": "duskbloom_syrup", "request": "duskbloom_vexley_1", "beat": "fair", "when": {"vexley.truce": ["poor", "refused", "stormed_off"]}, "lines": {"great": "You win, darling. Rivals... and maybe friends?", "poor": "Victory is mine! Still... thanks for the duel.", "refused": "Forfeit! The duel goes to Vexley! Hmph.", "stormed_off": "No-show? Then I win by default. Boring."} },
-      { "archetype": "dramatic_bard", "potion": "hearthglow_tonic" },
+      {},
       { "archetype": "stranger", "potion": "panacea", "request": "panacea_stranger_1", "beat": "fair", "when": {"stranger.confession": ["great"]}, "lines": {"great": "The lanterns glow and the tent is fine! I'm a hero!", "poor": "One lantern lit... and a small tent. Mostly fine.", "refused": "Oh. I'll just watch from the hill, then.", "stormed_off": "Too many people... I'll fly home."} },
       { "archetype": "stranger", "potion": "hushfire_tonic", "request": "hushfire_stranger_2", "beat": "fair", "when": {"stranger.confession": ["poor", "refused", "stormed_off"]}, "lines": {"great": "Phew! No sneezes! I even danced. Badly.", "poor": "Ah... AHH... the Guild tent is a bit toasty now.", "refused": "Then I'd better leave before I... ahh...", "stormed_off": "AHH-CHOO! Oh no. Oh no. I'm so sorry!"} },
       { "archetype": "quill", "potion": "panacea", "request": "panacea_quill_1", "beat": "fair", "when": {"quill.audit": ["great"]}, "lines": {"great": "Balanced. Perfect. By Guild authority: licence granted!", "poor": "So close. The Guild cannot grant a licence for close.", "refused": "You refuse the final test? Then no licence.", "stormed_off": "The judges leave. No potion, no licence."} },
       { "archetype": "quill", "potion": "starfire_elixir", "request": "starfire_quill_1", "beat": "fair", "when": {"quill.audit": ["poor", "refused", "stormed_off"]}, "lines": {"great": "Against the odds: splendid! Licence granted!", "poor": "Not enough, I'm afraid. No licence this year.", "refused": "No potion, no licence. I'm sorry.", "stormed_off": "Time's up. The Guild's verdict: no licence."} },
-      { "archetype": "apprentice_knight", "potion": "bonfire_tonic" }
+      {}
     ]
   }
 ]

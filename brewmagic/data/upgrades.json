@@ -20,7 +20,7 @@
     "station": "mortar",
     "name": "Granite Pestle",
     "description": "Heavy, honest and slightly smug. Grinding is more forgiving.",
-    "unlock_day": 2,
+    "unlock_day": 3,
     "levels": [ { "tolerance": 1.25, "cost": 35 }, { "tolerance": 1.5, "cost": 80 } ]
   },
   {
@@ -28,7 +28,7 @@
     "station": "bellows",
     "name": "Steady Bellows",
     "description": "Patched twice, wheezes once. Keeping the heat in the band is more forgiving.",
-    "unlock_day": 4,
+    "unlock_day": 6,
     "levels": [ { "tolerance": 1.25, "cost": 35 }, { "tolerance": 1.5, "cost": 80 } ]
   }
 ]

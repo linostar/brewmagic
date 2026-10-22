@@ -31,7 +31,7 @@ const HEADS: Array[String] = ["round", "long", "square", "snout"]
 const HAIRS: Array[String] = ["witch_hat", "straw_hat", "curly", "bald_beard", "beehive", "top_hat", "hood"]
 const ACCESSORIES: Array[String] = ["none", "goat", "lantern", "flask", "scroll", "smoke"]
 const FIRST_DAY := 1
-const LAST_DAY := 7
+const LAST_DAY := 20
 const NAME_MAX := 26
 const DESCRIPTION_MAX := 120
 const SPEECH_STYLE_MAX := 200
@@ -630,8 +630,14 @@ static func _load_customers(entry: Dictionary, item: DaySpec) -> void:
 			_error(path.trim_suffix("."), "expected Dictionary, got %s" % type_string(typeof(list[i])))
 			continue
 		var spec: Dictionary = list[i]
-		_check_keys(spec, ["archetype", "potion"], ["request", "beat", "lines", "when"], path)
 		var customer := DayCustomer.new()
+		# No archetype, potion, request or beat: an ordinary visitor slot (Shift.story fills it).
+		if not ["archetype", "potion", "request", "beat", "lines"].any(func(key: String) -> bool: return spec.has(key)):
+			_check_keys(spec, [], ["when"], path)
+			customer.when = _when(spec, path)
+			item.customers.append(customer)
+			continue
+		_check_keys(spec, ["archetype", "potion"], ["request", "beat", "lines", "when"], path)
 		customer.archetype = _reference(spec, "archetype", _archetypes, "archetype", path)
 		customer.potion = _reference(spec, "potion", _potions, "potion", path)
 		if customer.potion != "" and _potions[customer.potion].unlock_day > item.day:
@@ -716,7 +722,7 @@ static func _load_morning_notes(entry: Dictionary, item: DaySpec) -> void:
 
 
 ## Story checks across days: the visits (variants) of one beat flag lie on one day, and every
-## `when` names only flags of beats on earlier days.
+## `when` names only flags of beats on earlier days, a beat's only those of its own character.
 static func _check_story() -> void:
 	_begin_file("days.json")
 	var beat_days: Dictionary[String, int] = {}
@@ -736,6 +742,13 @@ static func _check_story() -> void:
 		var spec := _days[number]
 		for i in spec.customers.size():
 			_check_when_flags(spec.customers[i].when, "customers[%d]." % i, number, beat_days)
+			# A beat follows only its own character's story (data/SCHEMA.md I13).
+			var customer := spec.customers[i]
+			if customer.beat == "":
+				continue
+			for flag in customer.when:
+				if not flag.begins_with(customer.archetype + "."):
+					_error("customers[%d].when.%s" % [i, flag], "a beat of %s may only depend on %s's beats" % [customer.archetype, customer.archetype])
 		for i in spec.morning_notes.size():
 			_check_when_flags(spec.morning_notes[i]["when"], "morning_notes[%d]." % i, number, beat_days)
 

@@ -7,11 +7,9 @@ extends Resource
 
 enum Mode { STORY, RUSH }
 
-## Seconds between arrivals on a story day while the line has room.
-const STORY_ARRIVAL_GAP := 8.0
 
 var mode := Mode.STORY
-## Story day number (1..7); 0 in a Rush Hour run.
+## Story day number (1..Content.LAST_DAY); 0 in a Rush Hour run.
 var day := 1
 var title := ""
 ## The scheduled customers on this story path, in arrival order (empty in RUSH:
@@ -26,6 +24,10 @@ var ingredients: Array[Ingredient] = []
 var patience_scale := 1.0
 ## RUSH: seeds the shop's RandomNumberGenerator, so a run's customers and looks repeat.
 var run_seed := 0
+## STORY: seconds between arrivals while the line has room (Difficulty.arrival_gap).
+var story_arrival_gap := Difficulty.GAP_START
+## Multiplies every station's tolerance (with upgrades and Gentle mode; Difficulty.tolerance_scale on a story day, 1 in RUSH).
+var tolerance_scale := 1.0
 
 
 func is_rush() -> bool:
@@ -46,7 +48,7 @@ func customer_at(index: int, served: int, rng: RandomNumberGenerator) -> DayCust
 
 ## Seconds between arrivals after `served` were served (Rush Hour's shrinks).
 func arrival_gap(served: int) -> float:
-	return Rush.arrival_gap(served) if is_rush() else STORY_ARRIVAL_GAP
+	return Rush.arrival_gap(served) if is_rush() else story_arrival_gap
 
 
 ## The patience scale of a customer arriving after `served` were served.

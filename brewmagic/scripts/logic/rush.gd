@@ -18,11 +18,14 @@ const PATIENCE_FLOOR := 0.8
 ## Customers served per wave; wave i allows the potions unlocked by story day
 ## WAVE_DAYS[i] (Stir and Pour, + Mortar, + Bellows, everything); the last wave lasts.
 const WAVE_SIZE := 5
-const WAVE_DAYS: Array[int] = [1, 3, 4, 7]
+const WAVE_DAYS: Array[int] = [1, 4, 7, 13]
 ## Each wave's banner: its number in words (the banner's Silkscreen draws no digits)
 ## and what it adds. It names the stations, never the potions (requests never do).
 const WAVE_NAMES: Array[String] = ["WAVE ONE", "WAVE TWO", "WAVE THREE", "WAVE FOUR"]
 const WAVE_NOTES: Array[String] = ["Stir and pour potions", "New: potions for the mortar", "New: potions for the bellows", "New: the rare potions"]
+
+## voices_for's cache: potion instance id -> its ordinary voices.
+static var _voices: Dictionary[int, Array] = {}
 
 
 ## The run's reputation change for a delivered `grade`: only the story's losses
@@ -55,11 +58,16 @@ static func potions_of_wave(index: int) -> Array[PotionType]:
 
 
 ## The ordinary archetypes (never a story character) with a request for `potion`.
+## Cached per potion instance (Shift.story asks for every potion of every day); a content
+## reload makes new instances, so a stale entry is never read.
 static func voices_for(potion: PotionType) -> Array[Archetype]:
-	var voices: Array[Archetype] = []
-	voices.assign(Content.archetypes().filter(
-		func(who: Archetype) -> bool: return not who.is_story() and not Content.requests_for(potion.id, who.id).is_empty()))
-	return voices
+	var key := potion.get_instance_id()
+	if not _voices.has(key):
+		var voices: Array[Archetype] = []
+		voices.assign(Content.archetypes().filter(
+			func(who: Archetype) -> bool: return not who.is_story() and not Content.requests_for(potion.id, who.id).is_empty()))
+		_voices[key] = voices
+	return _voices[key]
 
 
 ## The next customer of a run after `served` customers, drawn from `rng`: a potion of
@@ -67,11 +75,17 @@ static func voices_for(potion: PotionType) -> Array[Archetype]:
 ## requests (pinned). Deterministic for a given rng state.
 static func customer(rng: RandomNumberGenerator, served: int) -> DayCustomer:
 	var potions := potions_of_wave(wave(served))
-	var potion: PotionType = potions[rng.randi_range(0, potions.size() - 1)]
+	return visit(potions[rng.randi_range(0, potions.size() - 1)], rng)
+
+
+## An ordinary visitor who wants `potion`: an ordinary archetype with a request for it
+## and one of those requests (pinned), drawn from `rng`. Also the story's ordinary
+## visitors (Shift.story).
+static func visit(potion: PotionType, rng: RandomNumberGenerator) -> DayCustomer:
 	var voices := voices_for(potion)
-	var visit := DayCustomer.new()
-	visit.potion = potion.id
-	visit.archetype = voices[rng.randi_range(0, voices.size() - 1)].id
-	var lines := Content.requests_for(potion.id, visit.archetype)
-	visit.request = lines[rng.randi_range(0, lines.size() - 1)].id
-	return visit
+	var visitor := DayCustomer.new()
+	visitor.potion = potion.id
+	visitor.archetype = voices[rng.randi_range(0, voices.size() - 1)].id
+	var lines := Content.requests_for(potion.id, visitor.archetype)
+	visitor.request = lines[rng.randi_range(0, lines.size() - 1)].id
+	return visitor

@@ -39,7 +39,7 @@ func _ready() -> void:
 		_open_button.disabled = true
 		_game.abort_to(GameState.Flow.TITLE, "Day %d is missing from data/days.json; the morning cannot start." % _game.day)
 		return
-	($Column/DayLabel as Label).text = "Day %d" % spec.day
+	($Column/DayLabel as Label).text = "Day %d of %d" % [spec.day, Content.days().size()]
 	($Column/TitleLabel as Label).text = spec.title
 	($Column/Card/Note as Label).text = "\n".join(Content.wrap_bubble(Story.morning_note(spec, _game.flags)))
 	var in_stock := 0
