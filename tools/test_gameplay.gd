@@ -2688,6 +2688,38 @@ func _test_difficulty_shift() -> void:
 		if means[n] < means[n - 1] - 0.1:
 			dips.append("day %d %.2f after %.2f" % [n + 1, means[n], means[n - 1]])
 	_check(dips.is_empty(), "difficulty: days 1 to %d grow harder in stations per customer, never easier than the day before" % means.size(), ", ".join(dips))
+	# Variety (playtest 2026-10-22: the same orders every day): a visitor slot repeats a
+	# potion of the day only when none of its station count is left unordered, and days
+	# 2-5 at the start level order at least 5 different potions (or every one they have).
+	var repeats := PackedStringArray()
+	for level: float in [Difficulty.LEVEL_MIN, Difficulty.START_LEVEL, Difficulty.LEVEL_MAX]:
+		for spec in Content.days():
+			var shift := Shift.story(spec.day, flags, level)
+			var slots := Story.customers_of(spec, flags)
+			var ordered := PackedStringArray()
+			for i in shift.customers.size():
+				var potion := Content.potion(shift.customers[i].potion)
+				if slots[i].is_generated() and potion.id in ordered:
+					var unordered := shift.allowed_potions.filter(func(other: PotionType) -> bool: return other.steps.size() == potion.steps.size() and not other.id in ordered and not Rush.voices_for(other).is_empty())
+					if not unordered.is_empty():
+						repeats.append("day %d at level %.2f: %s again while %s was not ordered" % [spec.day, level, potion.id, (unordered[0] as PotionType).id])
+				ordered.append(potion.id)
+			if level == Difficulty.START_LEVEL and spec.day >= 2 and spec.day <= 5:
+				var distinct := {}
+				for id in ordered:
+					distinct[id] = true
+				if distinct.size() < mini(5, shift.allowed_potions.size()):
+					repeats.append("day %d: only %d different potions %s" % [spec.day, distinct.size(), ordered])
+	_check(repeats.is_empty(), "difficulty: visitor slots vary their potions within a day, days 2-5 order at least 5 different ones", "\n".join(repeats))
+	var rng := RandomNumberGenerator.new()
+	var pool: Array[PotionType] = []
+	pool.assign([Content.potion("stillwater_draught"), Content.potion("dewdrop_balm"), Content.potion("nightfire_punch")])
+	var picks := PackedStringArray()
+	for n in 20:
+		picks.append(Difficulty.pick_for(rng, pool, 2.0, [PackedStringArray(["stillwater_draught"]), PackedStringArray(["dewdrop_balm"])]).id)
+	var fallback := Difficulty.pick_for(rng, pool, 2.0, [PackedStringArray(["stillwater_draught", "dewdrop_balm"]), PackedStringArray(["nightfire_punch"])]).id
+	var repeat := Difficulty.pick_for(rng, pool, 2.0, [PackedStringArray(["stillwater_draught", "dewdrop_balm", "nightfire_punch"])])
+	_check(Array(picks).all(func(id: String) -> bool: return id == "nightfire_punch") and fallback == "nightfire_punch" and pool.has(repeat), "difficulty: picks skip every avoided list while a potion is left, else all but the last, down to none", "%s / %s / %s" % [picks, fallback, repeat])
 
 
 ## Game.finish_day scores the day and moves the skill rating and the level (saved in
