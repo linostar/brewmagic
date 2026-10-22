@@ -10,7 +10,8 @@ extends Control
 ## day, "The ending" (the ending scene). The button is focused from the start and
 ## sits in the thumb zone; the layout stretches with the column (ScreenFit).
 
-## Every key Shop.day_result() provides.
+## Every key of Shop.day_result() the summary needs (not the skill measures
+## patience_left and gestures, which only Game.finish_day reads).
 const RESULT_KEYS: Array[String] = ["day", "title", "customers", "served", "stormed_off", "refused", "grades", "earned", "tips", "reputation", "coins"]
 const GRADE_WORDS: Array[String] = ["Perfect", "Good", "Meh", "Misbrew"]
 const STAT_TILE := preload("res://scenes/stat_tile.tscn")

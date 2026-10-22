@@ -127,7 +127,7 @@
     "customers": [
       {},
       {},
-      { "archetype": "quill", "potion": "steamwhistle_tonic", "request": "steamwhistle_quill_1", "beat": "audit", "when": {"quill.inspection": ["great"]}, "lines": {"great": "Even in a rush, flawless. I'm recommending you.", "poor": "Rushed. The fire won, the cool head lost. Noted.", "refused": "Refusing an audit mid-rush. Bold. Recorded.", "stormed_off": "Market day is no excuse. Audit failed."} },
+      { "archetype": "quill", "potion": "steamwhistle_tonic", "request": "steamwhistle_quill_1", "beat": "audit", "when": {"quill.inspection": ["great"]}, "lines": {"great": "Flawless, under audit. I'm recommending you.", "poor": "Hot-headed. The fire won, the cool head lost. Noted.", "refused": "Refusing an auditor. Bold. Recorded.", "stormed_off": "Auditors keep the clock, not you. Audit failed."} },
       { "archetype": "quill", "potion": "stillwater_draught", "request": "stillwater_quill_2", "beat": "audit", "when": {"quill.inspection": ["poor", "refused", "stormed_off"]}, "lines": {"great": "Much better. I'll amend the file. In pen.", "poor": "Still shaky. My report grows longer.", "refused": "No second chance taken? So be it.", "stormed_off": "I waited. The Guild does not wait twice."} },
       {},
       {},
@@ -163,7 +163,7 @@
     "customers": [
       {},
       {},
-      { "archetype": "stranger", "potion": "dewdrop_balm", "request": "dewdrop_stranger_3", "beat": "flight", "lines": {"great": "I flew all the way round the mill! Well, half.", "poor": "Still wobbly. I landed in the duck pond.", "refused": "Oh. Maybe I'll just walk. Like a person.", "stormed_off": "The lesson's starting... I'll go nervous, then."} },
+      { "archetype": "stranger", "potion": "dewdrop_balm", "request": "dewdrop_stranger_3", "beat": "flight", "lines": {"great": "Steady wings! Off to fly round the mill. Well, half.", "poor": "Still wobbly. I'll aim for the duck pond.", "refused": "Oh. Maybe I'll just walk. Like a person.", "stormed_off": "The lesson's starting... I'll go nervous, then."} },
       {},
       {},
       {}

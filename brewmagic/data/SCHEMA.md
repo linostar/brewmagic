@@ -155,7 +155,8 @@ Only the beats some `when` names, and only whether each outcome is in the named 
 enumerate one path per combination of those outcome classes (64 today: the six branching beats, each great or not).
 **Levels.** The ordinary visitors and the patience depend on the difficulty level, so every story invariant (I7, I8,
 I13, I15) is checked at the kindest (`Difficulty.LEVEL_MIN`), the authored (0) and the hardest (`LEVEL_MAX`) level, each
-held for the whole story.
+held for the whole story; I8 also along the levels a struggling, middling and strong player reaches (from 0, moved each day
+by `Difficulty.next_level` at a constant rating of 0.2, 0.5 and 1, snapped to hundredths as `Game.finish_day` does).
 
 ## endings.json
 The three endings of the story, chosen by `Story.ending(flags, reputation)` (rule under "Story" below). Exactly the

@@ -153,6 +153,7 @@ func _tests() -> Array[Callable]:
 		_test_shop_customer_look,
 		_test_shop_queue,
 		_test_shop_queue_double_storm,
+		_test_shop_difficulty_inputs,
 		_test_shop_refuse,
 		_test_shop_refuse_ends_day,
 		_test_bubble_blips,
@@ -2048,6 +2049,57 @@ func _test_shop_queue_double_storm() -> void:
 
 ## The bubble blips on the 1st typed character and every BLIP_EVERY after (one per
 ## frame at most), not after skip() completes the line.
+## The day's skill measures (Difficulty.day_score's inputs) as the shop records them on
+## day 1: a queued customer storming off adds 0 to patience_left; a delivery adds the
+## fraction of patience left and each station finished by gesture its quality to
+## gestures; an Assist press adds none, and the counter customer storming off adds 0;
+## day_result() carries both lists.
+func _test_shop_difficulty_inputs() -> void:
+	var shop := await _open_shop()
+	var full := await _until(func() -> bool: return shop.queue.size() == 2 and shop.queue.all(func(c: Customer) -> bool: return c.state == Customer.State.QUEUED), FLOW_FRAMES * 3)
+	_check(full, "skill measures: the line is full", "queue %d" % shop.queue.size())
+	if not full:
+		await _close_shop()
+		return
+	shop.queue[1].patience_left = 0.1
+	_check(await _until(func() -> bool: return shop.stormed_off == 1, FLOW_FRAMES) and shop.patience_left == [0.0], "skill measures: a queue storm-off adds 0 patience left", str(shop.patience_left))
+	if await _wait_for_order(shop, "skill measures by gesture"):
+		_refill_patience(shop)
+		var who := shop.customer
+		for id in _exact_recipe(who.potion, shop.stock):
+			await _tap_item(shop, id)
+		await _tap(shop.brew_button())
+		for step in who.potion.steps:
+			if not await _until(func() -> bool: return shop.station != null and shop.station.is_running(), FLOW_FRAMES):
+				_check(false, "skill measures: %s runs" % step, "no station")
+				break
+			if shop.station is Stir:
+				_stir_circles(shop.station as Stir, Stir.DEFAULT_TEMPO, Stir.ROTATIONS, 0.0)
+			else:
+				_pour_to(shop.station as Pour, (shop.station as Pour).target_line())
+			await _until(func() -> bool: return shop.station == null or not shop.station.is_running(), FLOW_FRAMES)
+		_check(await _until(func() -> bool: return shop.served == 1, FLOW_FRAMES), "skill measures: served by gesture", "served %d" % shop.served)
+		_check(shop.gestures.size() == who.potion.steps.size() and shop.patience_left.size() == 2 and shop.patience_left[1] > 0.0 and is_equal_approx(shop.patience_left[1], who.patience_left / who.patience_total), "skill measures: a delivery adds its patience left, each gesture its quality", "gestures %s patience %s" % [shop.gestures, shop.patience_left])
+	await _skip_lines(shop)
+	_game.assist_mode = true
+	if await _wait_for_order(shop, "skill measures by Assist"):
+		_refill_patience(shop)
+		var gestures := shop.gestures.duplicate()
+		for id in _exact_recipe(shop.customer.potion, shop.stock):
+			await _tap_item(shop, id)
+		await _tap(shop.brew_button())
+		if await _until(func() -> bool: return shop.station != null and shop.station.assist_button() != null, FLOW_FRAMES):
+			await _tap(shop.station.assist_button())
+			_check(shop.gestures == gestures, "skill measures: an Assist press adds no gesture", str(shop.gestures))
+		else:
+			_check(false, "skill measures: Assist station runs", "no station")
+		shop.customer.patience_left = 0.2
+		_check(await _until(func() -> bool: return shop.stormed_off == 2, FLOW_FRAMES) and shop.patience_left.size() == 3 and shop.patience_left[2] == 0.0, "skill measures: a counter storm-off adds 0 patience left", str(shop.patience_left))
+	var result := shop.day_result()
+	_check(result.get("patience_left") == shop.patience_left and result.get("gestures") == shop.gestures and not shop.gestures.is_empty(), "skill measures: day_result carries patience_left and gestures", str(result))
+	await _close_shop()
+
+
 func _test_bubble_blips() -> void:
 	var bubble := SPEECH_BUBBLE_SCENE.instantiate() as SpeechBubble
 	root.add_child(bubble)
@@ -2291,6 +2343,14 @@ func _test_save_missing_and_corrupt() -> void:
 		"huge reputation": JSON.stringify(_with(good, "reputation", 1e300)),
 		"huge rush_best": JSON.stringify(_with(good, "rush_best", GameState.SAVE_SCORE_MAX + 1)),
 		"rush_best_assisted not a bool": JSON.stringify(_with(good, "rush_best_assisted", "yes")),
+		"skill above 100": JSON.stringify(_with(good, "skill", 101)),
+		"negative skill": JSON.stringify(_with(good, "skill", -1)),
+		"skill not a number": JSON.stringify(_with(good, "skill", "high")),
+		"skill missing": JSON.stringify(_without(good, "skill")),
+		"difficulty above the hardest level": JSON.stringify(_with(good, "difficulty", roundi(Difficulty.LEVEL_MAX * GameState.SAVE_HUNDREDTHS) + 1)),
+		"difficulty below the kindest level": JSON.stringify(_with(good, "difficulty", roundi(Difficulty.LEVEL_MIN * GameState.SAVE_HUNDREDTHS) - 1)),
+		"fractional difficulty": JSON.stringify(_with(good, "difficulty", 0.5)),
+		"difficulty missing": JSON.stringify(_without(good, "difficulty")),
 		"unknown story flag": JSON.stringify(_with(good, "flags", {"goat_trusts_you": true})),
 		"bad beat outcome": JSON.stringify(_with(good, "flags", {"quill.inspection": "splendid"})),
 		"ending left in flags": JSON.stringify(_with(good, "flags", {"ending": "cosy_corner"})),
@@ -2379,6 +2439,8 @@ func _test_save_migrations() -> void:
 			before[flag] = "great"
 	var in_progress := {"version": 5, "day": 5, "at_market": true, "flags": all_flags.duplicate()}
 	_check(GameState.migrate_save(in_progress, GameState.save_migrations(), GameState.SAVE_VERSION) == "" and in_progress == {"version": 6, "day": 5, "at_market": true, "flags": before, "skill": 50, "difficulty": 0} and not before.is_empty() and before.size() < all_flags.size(), "version 5 -> 6: a story in progress keeps the flags of beats before its day", str(in_progress))
+	var unknown := {"version": 5, "day": 5, "at_market": false, "flags": {"goat_trusts_you": true}}
+	_check(GameState.migrate_save(unknown, GameState.save_migrations(), GameState.SAVE_VERSION) == "" and unknown["flags"] == {"goat_trusts_you": true}, "version 5 -> 6: a flag key that names no beat is left for validation", str(unknown))
 	# A whole version 2 save file (the format before Rush Hour) loads, best kept and not assisted.
 	_game.new_game()
 	_game.rush_hour_unlocked = true
@@ -2406,6 +2468,21 @@ func _test_save_migrations() -> void:
 	errors = _game.reported_errors.size()
 	_game.load_game()
 	_check(_game.reported_errors.size() == errors and _game.music_volume == GameState.DEFAULT_MUSIC_VOLUME and _game.sfx_volume == GameState.DEFAULT_SFX_VOLUME and _game.rush_best == 40, "a version 3 save file loads with the default volumes", "music %d sfx %d, errors %s" % [_game.music_volume, _game.sfx_volume, _game.reported_errors.slice(errors)])
+	# A whole version 5 save file with a flag key that names no beat loads as corrupt.
+	_game.save_game()
+	var v5_file: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	v5_file["version"] = 5
+	v5_file.erase("skill")
+	v5_file.erase("difficulty")
+	v5_file["flags"] = {"goat_trusts_you": true}
+	_write_save(JSON.stringify(v5_file))
+	_game.quiet_errors = true
+	errors = _game.reported_errors.size()
+	_game.load_game()
+	_game.quiet_errors = false
+	var reported := _game.reported_errors.slice(errors)
+	_check(reported.size() == 1 and "corrupt" in reported[0] and _game.flags.is_empty() and FileAccess.file_exists(_game.backup_path()), "a version 5 save file with an unknown flag key loads as corrupt and is backed up", str(reported))
+	(_game.get_node("Fade/ErrorLabel") as Label).hide()
 	_delete_saves()
 	_game.load_game()
 	var v1_two_day_end := {"version": 1, "day": 3.0, "at_market": false, "flags": {}}
@@ -2503,6 +2580,14 @@ func _test_shop_passes_station_tolerance() -> void:
 			var upgrade := Economy.upgrade_tolerance(Content.upgrade_for(step), _game.upgrades[step])
 			var expected := upgrade * Difficulty.tolerance_scale(0.5)
 			_check(is_equal_approx(shop.station.tolerance_scale, expected) and upgrade > 1.0 and expected < upgrade, "station tolerance: %s gets the upgrade's x%.2f times the difficulty's, x%.2f" % [step, upgrade, expected], str(shop.station.tolerance_scale))
+			var pause := shop.get_node("Column/Hud/PauseButton") as Button
+			var gentle := shop.get_node("Modal/Panel/List/GentleRow/GentleButton") as Button
+			await _tap(pause)
+			await _tap(gentle)
+			var gentle_scale := shop.station.tolerance_scale
+			await _tap(gentle)
+			await _tap(shop.get_node("Modal/Panel/List/ResumeButton") as Button)
+			_check(is_equal_approx(gentle_scale, expected * GameState.GENTLE_TOLERANCE_SCALE) and is_equal_approx(shop.station.tolerance_scale, expected), "station tolerance: Gentle toggled on the running %s gives upgrade x Gentle x the difficulty's, and back" % step, "%f then %f" % [gentle_scale, shop.station.tolerance_scale])
 			await _tap(shop.station.assist_button())
 	await _close_shop()
 	_game.new_game()

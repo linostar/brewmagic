@@ -1233,7 +1233,8 @@ static func _save_v5_to_v6(saved: Dictionary) -> void:
 			if customer.beat != "":
 				beat_days[customer.flag()] = spec.day
 	for flag: Variant in (old_flags as Dictionary).keys():
-		if beat_days.get(flag, saved_day) >= saved_day:
+		# A key that names no beat is left for Story.flags_problem to report.
+		if beat_days.has(flag) and beat_days[flag] >= saved_day:
 			(old_flags as Dictionary).erase(flag)
 			print("[Game] Save upgrade: flag '%s' dropped (its beat now comes on or after day %d)" % [flag, saved_day])
 

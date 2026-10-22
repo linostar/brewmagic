@@ -1,9 +1,10 @@
 class_name Shop
 extends Control
 ## The shop shift (flow SHOP): runs the ShiftConfig of story day n on the story path
-## of Game.flags (Shift.story(n, flags), n from Game.flow_args["day"], default
-## Game.day): its customers in order, its
-## shelf, its patience scale, starting from the saved coins and stock (Game). Layout per CLAUDE.md "Shop scene
+## of Game.flags at Game.difficulty (Shift.story(n, flags, difficulty), n from
+## Game.flow_args["day"], default Game.day; the level sets its visitors, patience,
+## arrival gap and station tolerance): its customers in order, its shelf, starting
+## from the saved coins and stock (Game). Layout per CLAUDE.md "Shop scene
 ## layout": the 270x480 Stage sits at the bottom of the ScreenFit column (extra
 ## height on tall phones goes above it, covered by shop_ceiling copies stacked up
 ## from the backdrop's top edge), and its edge rows and columns are stretched

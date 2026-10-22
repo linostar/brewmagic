@@ -34,6 +34,9 @@ const QUEUE_WAIT := 25.0
 ## The difficulty levels every story check runs at: the kindest, the authored and the
 ## hardest (Difficulty; the level picks the ordinary visitors and scales patience).
 const LEVELS: Array[float] = [Difficulty.LEVEL_MIN, Difficulty.START_LEVEL, Difficulty.LEVEL_MAX]
+## Constant skill ratings (struggling, middling, strong) whose day-by-day level
+## trajectories I8 also runs (_level_trajectory: the level moves as in Game.finish_day).
+const RATINGS: Array[float] = [0.2, 0.5, 1.0]
 
 ## _customers' memo: "<DaySpec instance id>|<flags>|<level>" -> the shift's customers.
 var _shifts: Dictionary[String, Array] = {}
@@ -301,11 +304,19 @@ func _test_i8_day1_stock_serves_day1() -> void:
 func _test_i8_market_serves_later_days() -> void:
 	var problems: Array[String] = []
 	var paths := _flag_paths()
+	var trajectories: Dictionary[String, Array] = {}
+	for level in LEVELS:
+		var constant: Array[float] = []
+		constant.resize(Content.days().size())
+		constant.fill(level)
+		trajectories["level %.2f every day" % level] = constant
+	for rating in RATINGS:
+		trajectories["rating %.2f every day" % rating] = _level_trajectory(func(level: float) -> float: return snappedf(Difficulty.next_level(level, rating), 1.0 / GameState.SAVE_HUNDREDTHS))
 	for path in paths:
-		for level in LEVELS:
-			for problem in _market_shortfalls(path, level):
-				problems.append("path %s, level %.2f: %s" % [path, level, problem])
-	_check(problems.is_empty(), "I8 on all %d flag paths at every level, day N-1 Perfect pay (beats unpaid) plus the carried-over stock buys every day-N customer at day N's market" % paths.size(), "\n".join(problems))
+		for name: String in trajectories:
+			for problem in _market_shortfalls(path, trajectories[name]):
+				problems.append("path %s, %s: %s" % [path, name, problem])
+	_check(problems.is_empty(), "I8 on all %d flag paths at a constant level (%s) and along the level the next_level steps reach at a constant rating (%s), day N-1 Perfect pay (beats unpaid) plus the carried-over stock buys every day-N customer at day N's market" % [paths.size(), LEVELS, RATINGS], "\n".join(problems))
 	var texts := _real_texts()
 	var data: Array = JSON.parse_string(texts["days.json"])
 	data[1]["market"]["moonmoss"] = 30
@@ -675,7 +686,7 @@ func _test_malformed_data_errors() -> void:
 
 
 ## With content errors the title shows the banner with their count and disables the shop
-## button; with clean content the banner is hidden and the button enabled.
+## and Rush Hour buttons; with clean content the banner is hidden and both are enabled.
 func _test_title_shows_content_errors() -> void:
 	var texts := _real_texts()
 	texts.erase("days.json")
@@ -687,6 +698,7 @@ func _test_title_shows_content_errors() -> void:
 	var button := title.get_node("Column/OpenShopButton") as Button
 	_check(errors.size() == 1 and banner.visible and banner.text == Title.CONTENT_ERROR_MESSAGE % errors.size(), "title shows content error banner", "%s / %s" % [banner.text, errors])
 	_check(button.disabled, "title disables the shop button on content errors", "button enabled")
+	_check((title.get_node("Column/RushButton") as Button).disabled, "title disables Rush Hour on content errors", "Rush Hour enabled")
 	title.free()
 	Content.reload()
 	title = TITLE_SCENE.instantiate() as Title
@@ -694,7 +706,7 @@ func _test_title_shows_content_errors() -> void:
 	await process_frame
 	banner = title.get_node("Column/ContentErrorBanner") as Label
 	button = title.get_node("Column/OpenShopButton") as Button
-	_check(not banner.visible and not button.disabled, "title with clean content has no banner", banner.text)
+	_check(not banner.visible and not button.disabled and not (title.get_node("Column/RushButton") as Button).disabled, "title with clean content has no banner, the shop and Rush Hour enabled", banner.text)
 	title.free()
 
 
@@ -759,21 +771,23 @@ func _overshoots(brew: Vector4i, target: Vector4i) -> bool:
 ## some carried-over stock, the cheapest Perfect plan (an exact recipe per customer)
 ## buys more at day N's market (Economy.market_price) than day N-1's Perfect pay
 ## (Economy.pay, no tips, no other coins; story beats pay nothing, since they may be
-## refused, but their ingredients count as used) covers.
-func _market_shortfalls(flags: Dictionary = {}, level := Difficulty.START_LEVEL) -> Array[String]:
+## refused, but their ingredients count as used) covers. `levels[i]` is the level of
+## day i + 1 (Difficulty.START_LEVEL past its end).
+func _market_shortfalls(flags: Dictionary = {}, levels: Array = []) -> Array[String]:
 	var problems: Array[String] = []
 	var days := Content.days()
+	var level := func(n: int) -> float: return levels[n] if n < levels.size() else Difficulty.START_LEVEL
 	var carried: Array[Dictionary] = []
-	for plan in _plans(days[0], flags, level):
+	for plan in _plans(days[0], flags, level.call(0)):
 		if plan.keys().all(func(id: String) -> bool: return plan[id] <= days[0].starting_stock.get(id, 0)):
 			_add_unique(carried, _leftover(days[0].starting_stock, plan))
 	for n in range(1, days.size()):
 		var spec := days[n]
 		var budget := 0
-		for customer in _customers(days[n - 1], flags, level):
+		for customer in _customers(days[n - 1], flags, level.call(n - 1)):
 			if customer.beat == "":
 				budget += Economy.pay(Content.potion(customer.potion).price, Brew.Grade.PERFECT)
-		var plans := _plans(spec, flags, level)
+		var plans := _plans(spec, flags, level.call(n))
 		if plans.is_empty() or carried.is_empty():
 			problems.append("%s: %s" % [spec.id, "a customer has no exact recipe" if plans.is_empty() else "no Perfect day %d to carry stock over from" % days[n - 1].day])
 			carried = []
@@ -798,6 +812,15 @@ func _market_shortfalls(flags: Dictionary = {}, level := Difficulty.START_LEVEL)
 			problems.append("%s: with stock %s left from day %d, the cheapest exact recipes cost %d at its market, day %d Perfect pay is %d" % [spec.id, worst_stock, days[n - 1].day, worst, days[n - 1].day, budget])
 		carried = next
 	return problems
+
+
+## The level of each story day: day 1 at Difficulty.START_LEVEL, each next one
+## `step`(the level before).
+func _level_trajectory(step: Callable) -> Array[float]:
+	var levels: Array[float] = [Difficulty.START_LEVEL]
+	while levels.size() < Content.days().size():
+		levels.append(step.call(levels.back()))
+	return levels
 
 
 ## Every distinct Perfect plan of `spec` on the story path `flags`: one exact recipe
