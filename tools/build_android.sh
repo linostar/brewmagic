@@ -63,6 +63,6 @@ if [ "$preset" = "Android" ]; then
   aapt2="$(ls -d "$ANDROID_SDK"/build-tools/*/aapt2 | sort -V | tail -1)"
   badging="$("$aapt2" dump badging "$out")"
   echo "$badging" | grep -E "^(package|sdkVersion|targetSdkVersion|application-label|native-code):"
-  echo "$badging" | grep -q "name='com.linostar.brewmagic'" || { echo "FAIL $out has the wrong package" >&2; exit 1; }
+  echo "$badging" | grep -q "name='com.uniquity.brewmagic'" || { echo "FAIL $out has the wrong package" >&2; exit 1; }
 fi
 echo "PASS build: $out ($(du -h "$out" | cut -f1))"
