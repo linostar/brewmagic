@@ -901,6 +901,9 @@ func _update_pot() -> void:
 		_slots[i].accessibility_name = ("Take %s out of the pot" % pot[i].name) if filled else "Empty pot slot"
 	var mix := _pot_essence()
 	var ordered := customer != null and customer.state == Customer.State.WAIT_ORDER
+	# Only a waiting order's targets show: from Brew until the next order the row is
+	# hidden, so the last order's numbers are not read as the next one's (playtest 2026-10-22).
+	_essences.visible = ordered
 	for k in _essence_counts.size():
 		var needed: int = customer.potion.target[k] if ordered else 0
 		var need := Need.NONE
@@ -987,10 +990,10 @@ func _on_brew_pressed() -> void:
 	_brew_ids = used
 	print("[Shop] Brewing %s for %s: essence %s, target %s, distance %d, tier %s" % [used, wants.id, _brew, wants.target, distance, Brew.Grade.keys()[_tier]])
 	pot.clear()
-	_update_pot()
 	Juice.squash(_brew_button, 0.2)
 	Juice.squash(_cauldron, 0.25)
 	customer.start_brew()
+	_update_pot()
 	_qualities.clear()
 	_step = 0
 	_start_step()
@@ -1023,7 +1026,6 @@ func _show_station_layer(on: bool) -> void:
 	_station_dim.visible = on
 	_cauldron.visible = not on
 	_slot_row.visible = not on
-	_essences.visible = not on
 	# The shelf and Brew stay visible under the dim; keep keyboard focus off them.
 	var behavior := Control.FOCUS_BEHAVIOR_DISABLED if on else Control.FOCUS_BEHAVIOR_INHERITED
 	_shelf_row.focus_behavior_recursive = behavior

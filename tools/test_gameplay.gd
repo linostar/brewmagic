@@ -2967,7 +2967,10 @@ func _serve(shop: Shop, recipe: Array[String], label: String) -> bool:
 	_check(shop.pot.size() == recipe.size() and not shop.brew_button().disabled, label + ": Brew enabled", "pot %d" % shop.pot.size())
 	var served := shop.served
 	var steps := shop.customer.potion.steps
+	var row := shop.get_node("Column/Stage/Essences") as Control
+	_check(row.visible, label + ": the essence row shows the waiting order", "hidden")
 	await _tap(shop.brew_button())
+	_check(not row.visible, label + ": the essence row hides on Brew", "shown")
 	for step in steps:
 		var ready := await _until(func() -> bool: return shop.station != null and shop.station.is_running() and shop.station.get_node_or_null("AssistButton") != null, FLOW_FRAMES)
 		_check(ready, "%s: %s station shows Assist" % [label, step], "no station")
@@ -2976,6 +2979,7 @@ func _serve(shop: Shop, recipe: Array[String], label: String) -> bool:
 		await _tap(shop.station.get_node("AssistButton") as Button)
 	var done := await _until(func() -> bool: return shop.served == served + 1, FLOW_FRAMES)
 	_check(done, label + ": served", "served %d" % shop.served)
+	_check(not row.visible or (shop.customer != null and shop.customer.state == Customer.State.WAIT_ORDER), label + ": the essence row stays hidden after the last station until the next order", "shown")
 	return done
 
 
@@ -4185,6 +4189,7 @@ func _check_preview(shop: Shop, mix: Vector4i, label: String) -> void:
 			expected_needs.append(Shop.Need.NONE)
 		expected_shown.append(expected_needs[k] != Shop.Need.NONE)
 	_check(counts == expected, label + ": essence counts", "%s, expected %s" % [counts, expected])
+	_check((shop.get_node("Column/Stage/Essences") as Control).visible == ordered, label + ": essence row shown only for a waiting order", "visible %s, ordered %s" % [(shop.get_node("Column/Stage/Essences") as Control).visible, ordered])
 	_check(shop.essence_needs == expected_needs and marks_shown == expected_shown, label + ": need marks", "%s shown %s, expected %s" % [shop.essence_needs, marks_shown, expected_needs])
 	await _frames(30)
 	var liquid := (shop.get_node("Column/Stage/Cauldron/Liquid") as Sprite2D).modulate
