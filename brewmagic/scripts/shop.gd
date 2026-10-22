@@ -901,9 +901,10 @@ func _update_pot() -> void:
 		_slots[i].accessibility_name = ("Take %s out of the pot" % pot[i].name) if filled else "Empty pot slot"
 	var mix := _pot_essence()
 	var ordered := customer != null and customer.state == Customer.State.WAIT_ORDER
-	# Only a waiting order's targets show: from Brew until the next order the row is
-	# hidden, so the last order's numbers are not read as the next one's (playtest 2026-10-22).
-	_essences.visible = ordered
+	# A waiting order's targets show, and a pot filled ahead of the next order shows its
+	# plain amounts; from Brew until then the row is hidden (the pot is empty after Brew),
+	# so the last order's numbers are not read as the next one's (playtest 2026-10-22).
+	_essences.visible = ordered or (not pot.is_empty() and not _brewing)
 	for k in _essence_counts.size():
 		var needed: int = customer.potion.target[k] if ordered else 0
 		var need := Need.NONE

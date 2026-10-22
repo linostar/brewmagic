@@ -1638,6 +1638,13 @@ func _test_shop_shelf_essence_pips() -> void:
 func _test_shop_pot_preview_needs() -> void:
 	var shop := await _open_shop()
 	await _check_preview(shop, Vector4i.ZERO, "preview without an order")
+	var early: String = shop.stock.keys()[0]
+	await _tap_item(shop, early)
+	_check(shop.customer == null or shop.customer.state != Customer.State.WAIT_ORDER, "pre-fill: no order waits yet", "an order waits")
+	_check((shop.get_node("Column/Stage/Essences") as Control).visible, "pre-fill: the row shows the pot's amounts before the order", "hidden")
+	await _check_preview(shop, Content.ingredient(early).essence, "preview of a pot filled ahead")
+	await _tap(shop.slot_button(0))
+	await _check_preview(shop, Vector4i.ZERO, "preview after emptying the pot filled ahead")
 	if await _wait_for_order(shop, "preview"):
 		await _check_preview(shop, Vector4i.ZERO, "preview of an empty pot")
 		var recipe := _exact_recipe(shop.customer.potion, shop.stock)
@@ -3021,9 +3028,9 @@ func _serve(shop: Shop, recipe: Array[String], label: String) -> bool:
 		if not ready:
 			return false
 		await _tap(shop.station.get_node("AssistButton") as Button)
+	_check(not row.visible, label + ": the essence row stays hidden through the last station's Assist", "shown")
 	var done := await _until(func() -> bool: return shop.served == served + 1, FLOW_FRAMES)
 	_check(done, label + ": served", "served %d" % shop.served)
-	_check(not row.visible or (shop.customer != null and shop.customer.state == Customer.State.WAIT_ORDER), label + ": the essence row stays hidden after the last station until the next order", "shown")
 	return done
 
 
@@ -4238,7 +4245,8 @@ func _check_preview(shop: Shop, mix: Vector4i, label: String) -> void:
 			expected_needs.append(Shop.Need.NONE)
 		expected_shown.append(expected_needs[k] != Shop.Need.NONE)
 	_check(counts == expected, label + ": essence counts", "%s, expected %s" % [counts, expected])
-	_check((shop.get_node("Column/Stage/Essences") as Control).visible == ordered, label + ": essence row shown only for a waiting order", "visible %s, ordered %s" % [(shop.get_node("Column/Stage/Essences") as Control).visible, ordered])
+	var shown := ordered or (not shop.pot.is_empty() and not shop.is_brewing())
+	_check((shop.get_node("Column/Stage/Essences") as Control).visible == shown, label + ": essence row shown for a waiting order or a pot filled ahead", "visible %s, ordered %s, pot %d" % [(shop.get_node("Column/Stage/Essences") as Control).visible, ordered, shop.pot.size()])
 	_check(shop.essence_needs == expected_needs and marks_shown == expected_shown, label + ": need marks", "%s shown %s, expected %s" % [shop.essence_needs, marks_shown, expected_needs])
 	await _frames(30)
 	var liquid := (shop.get_node("Column/Stage/Cauldron/Liquid") as Sprite2D).modulate
