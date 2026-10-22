@@ -18,8 +18,9 @@ Portrait, one thumb:
 - Tap or drag 2 or 3 ingredients into the cauldron, then Brew.
 - Brew by hand: stir in circles with the ghost ladle, hold to pour and release on the line, scrub the pestle from
   mark to mark, tap the bellows to keep the heat in the band.
-- A 7-day story with three endings, an evening market for stock and upgrades, a Codex of what you've learned, and
-  an endless Rush Hour once the story is done. Gentle and Assist modes are in Settings.
+- Story mode: a 20-day story with three endings whose days adapt to how well you brew, an evening market for stock
+  and upgrades, and a Codex of what you've learned. Rush Hour, endless, is open from the start. Gentle and Assist
+  modes are in Settings; Credits is next to them.
 
 ## Build and check
 

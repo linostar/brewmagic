@@ -823,7 +823,7 @@ func _test_shop_day1_assist() -> void:
 	await _until(func() -> bool: return _game.state == GameState.Flow.MORNING and not _game.is_transitioning(), FLOW_FRAMES)
 	_check(current_scene is Morning and _game.day == 1, "loop: the title opens the morning of day 1", "%s day %d" % [current_scene, _game.day])
 	var morning_text := (current_scene.get_node("Column/DayLabel") as Label).text + " " + (current_scene.get_node("Column/Card/Note") as Label).text
-	_check(morning_text.begins_with("Day 1") and Content.day(1).morning_note.get_slice(" ", 0) in morning_text, "loop: the morning shows day 1 and its note", morning_text)
+	_check(morning_text.begins_with("Day 1 of %d" % Content.days().size()) and Content.day(1).morning_note.get_slice(" ", 0) in morning_text, "loop: the morning shows day 1 and its note", morning_text)
 	await _tap(current_scene.get_node("Column/OpenShopButton") as Button)
 	await _until(func() -> bool: return _game.state == GameState.Flow.SHOP and not _game.is_transitioning(), FLOW_FRAMES)
 	var shop := current_scene as Shop
@@ -872,7 +872,7 @@ func _test_shop_day1_assist() -> void:
 	_check(_game.stock["moonmoss"] == 1 and _game.coins == expected_coins - price, "loop: a market tap buys one moonmoss", "%s %d" % [_game.stock, _game.coins])
 	await _tap(market.get_node("Column/Shop/NextDayButton") as Button)
 	await _until(func() -> bool: return _game.state == GameState.Flow.MORNING and not _game.is_transitioning(), FLOW_FRAMES)
-	_check(current_scene is Morning and (current_scene.get_node("Column/DayLabel") as Label).text == "Day 2" and not _game.at_market, "loop: next day opens the morning of day 2", str(current_scene))
+	_check(current_scene is Morning and (current_scene.get_node("Column/DayLabel") as Label).text == "Day 2 of %d" % Content.days().size() and not _game.at_market, "loop: next day opens the morning of day 2", str(current_scene))
 	await _tap(current_scene.get_node("Column/OpenShopButton") as Button)
 	await _until(func() -> bool: return _game.state == GameState.Flow.SHOP and not _game.is_transitioning(), FLOW_FRAMES)
 	shop = current_scene as Shop

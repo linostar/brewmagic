@@ -24,6 +24,9 @@ const WAVE_DAYS: Array[int] = [1, 4, 7, 13]
 const WAVE_NAMES: Array[String] = ["WAVE ONE", "WAVE TWO", "WAVE THREE", "WAVE FOUR"]
 const WAVE_NOTES: Array[String] = ["Stir and pour potions", "New: potions for the mortar", "New: potions for the bellows", "New: the rare potions"]
 
+## voices_for's cache: potion instance id -> its ordinary voices.
+static var _voices: Dictionary[int, Array] = {}
+
 
 ## The run's reputation change for a delivered `grade`: only the story's losses
 ## (Economy.reputation_delta below 0, a Misbrew); a good serve never raises it, so
@@ -55,11 +58,16 @@ static func potions_of_wave(index: int) -> Array[PotionType]:
 
 
 ## The ordinary archetypes (never a story character) with a request for `potion`.
+## Cached per potion instance (Shift.story asks for every potion of every day); a content
+## reload makes new instances, so a stale entry is never read.
 static func voices_for(potion: PotionType) -> Array[Archetype]:
-	var voices: Array[Archetype] = []
-	voices.assign(Content.archetypes().filter(
-		func(who: Archetype) -> bool: return not who.is_story() and not Content.requests_for(potion.id, who.id).is_empty()))
-	return voices
+	var key := potion.get_instance_id()
+	if not _voices.has(key):
+		var voices: Array[Archetype] = []
+		voices.assign(Content.archetypes().filter(
+			func(who: Archetype) -> bool: return not who.is_story() and not Content.requests_for(potion.id, who.id).is_empty()))
+		_voices[key] = voices
+	return _voices[key]
 
 
 ## The next customer of a run after `served` customers, drawn from `rng`: a potion of

@@ -28,8 +28,6 @@ var run_seed := 0
 var story_arrival_gap := Difficulty.GAP_START
 ## Multiplies every station's tolerance (with upgrades and Gentle mode; Difficulty.tolerance_scale on a story day, 1 in RUSH).
 var tolerance_scale := 1.0
-## STORY: the difficulty level the shift was built at (Game.difficulty).
-var level := Difficulty.START_LEVEL
 
 
 func is_rush() -> bool:

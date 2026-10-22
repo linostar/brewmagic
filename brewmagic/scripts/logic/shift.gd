@@ -23,7 +23,6 @@ static func story(number: int, flags: Dictionary = {}, level := Difficulty.START
 	config.patience_scale = spec.patience_scale * Difficulty.patience_scale(level)
 	config.story_arrival_gap = Difficulty.arrival_gap(level)
 	config.tolerance_scale = Difficulty.tolerance_scale(level)
-	config.level = level
 	var pool: Array[PotionType] = []
 	pool.assign(config.allowed_potions.filter(func(potion: PotionType) -> bool: return not Rush.voices_for(potion).is_empty()))
 	var weights := PackedFloat32Array()

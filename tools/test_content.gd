@@ -35,6 +35,8 @@ const QUEUE_WAIT := 25.0
 ## hardest (Difficulty; the level picks the ordinary visitors and scales patience).
 const LEVELS: Array[float] = [Difficulty.LEVEL_MIN, Difficulty.START_LEVEL, Difficulty.LEVEL_MAX]
 
+## _customers' memo: "<DaySpec instance id>|<flags>|<level>" -> the shift's customers.
+var _shifts: Dictionary[String, Array] = {}
 var _failures: Array[String] = []
 var _passed := 0
 var _deadline_msec := 0
@@ -469,9 +471,9 @@ func _test_i15_patience() -> void:
 	for path in _flag_paths():
 		for level in LEVELS:
 			for spec in Content.days():
-				var shift := Shift.story(spec.day, path, level)
-				for customer in shift.customers:
-					var patience := Content.archetype(customer.archetype).patience_seconds * shift.patience_scale - QUEUE_WAIT * Customer.QUEUE_PATIENCE_RATE
+				var scale := spec.patience_scale * Difficulty.patience_scale(level)
+				for customer in _customers(spec, path, level):
+					var patience := Content.archetype(customer.archetype).patience_seconds * scale - QUEUE_WAIT * Customer.QUEUE_PATIENCE_RATE
 					var problem := "%s at level %.2f, %s: %.2f s at the counter" % [spec.id, level, customer.archetype, patience]
 					if patience < MIN_PATIENCE and not problem in problems:
 						problems.append(problem)
@@ -817,8 +819,13 @@ func _plans(spec: DaySpec, flags: Dictionary = {}, level := Difficulty.START_LEV
 
 ## The customers of `spec` on the story path `flags` at difficulty `level`, as the shop
 ## runs them (Shift.story: the ordinary visitor slots filled).
+## Memoized per DaySpec instance (a reload of the content makes new ones), path and level:
+## the story checks ask for the same lists thousands of times.
 func _customers(spec: DaySpec, flags: Dictionary, level: float) -> Array[DayCustomer]:
-	return Shift.story(spec.day, flags, level).customers
+	var key := "%d|%s|%.2f" % [spec.get_instance_id(), flags, level]
+	if not _shifts.has(key):
+		_shifts[key] = Shift.story(spec.day, flags, level).customers
+	return _shifts[key]
 
 
 ## What is left of `stock` after a plan using `used`, buying exactly what is missing.

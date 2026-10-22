@@ -52,6 +52,9 @@ const TOLERANCE_CEILING := 1.06
 const HARDNESS_BIAS := 2.0
 const NEW_POTION_WEIGHT := 3.0
 
+## hardness()'s cache: potion instance id -> hardness.
+static var _hardness: Dictionary[int, float] = {}
+
 
 ## The day's score in 0..1. `grades`: a count per Brew.Grade of the customers served;
 ## `stormed_off`, `refused`: how many left unserved; `patience_left`: per delivery the
@@ -95,8 +98,12 @@ static func tolerance_scale(level: float) -> float:
 
 ## How hard `potion` is to brew, 0..1: its stations beyond Stir and Pour (0..2) plus its
 ## smallest exact recipe's ingredients beyond 2 (0..1), over 3.
+## Cached per potion instance, like Rush.voices_for.
 static func hardness(potion: PotionType) -> float:
-	return clampf((potion.steps.size() - 2 + recipe_size(potion) - Brew.MIN_INGREDIENTS) / 3.0, 0.0, 1.0)
+	var key := potion.get_instance_id()
+	if not _hardness.has(key):
+		_hardness[key] = clampf((potion.steps.size() - 2 + recipe_size(potion) - Brew.MIN_INGREDIENTS) / 3.0, 0.0, 1.0)
+	return _hardness[key]
 
 
 ## The fewest ingredients (2 or 3, those unlocked by the potion's day) that brew `potion`
