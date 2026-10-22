@@ -1409,9 +1409,8 @@ func _test_shop_keyboard_day1_assist() -> void:
 
 ## Criterion 3: the pause button shows the menu icon, is at least 32x32 in the top-right
 ## corner of the safe area and has an accessibility name. Mode help (no hover,
-## no always-visible text): each toggle keeps its description as an instant
-## tooltip, and the "?" right after it (32x32+, focusable, named) opens the same
-## text in a callout inside the pause panel and the safe area at 9:16, 9:19.5 and
+## no always-visible text, no tooltip): the "?" right after each toggle (32x32+,
+## focusable, named) opens its description in a callout inside the pause panel and the safe area at 9:16, 9:19.5 and
 ## 16:9. A tap on the callout, a tap on the dim, Enter and Escape each close it,
 ## Tab cannot leave it, and focus goes back to the "?".
 func _test_shop_menu_and_mode_info() -> void:
@@ -1438,7 +1437,7 @@ func _test_shop_menu_and_mode_info() -> void:
 		var toggle := list.get_node("%sRow/%sButton" % [mode[0], mode[0]]) as Button
 		var question := list.get_node("%sRow/%sHelp" % [mode[0], mode[0]]) as Button
 		var label := "%s \"?\"" % mode[0]
-		_check(toggle.tooltip_text == mode[1], "%s tooltip is its description" % toggle.name, toggle.tooltip_text)
+		_check(toggle.tooltip_text == "", "%s has no tooltip (its \"?\" explains it)" % toggle.name, toggle.tooltip_text)
 		_check(question.text == "?" and question.get_index() == toggle.get_index() + 1 and question.focus_mode == Control.FOCUS_ALL and question.accessibility_name == "What does %s mode do?" % mode[0], label + " sits right after its toggle, focusable and named", "index %d/%d '%s'" % [question.get_index(), toggle.get_index(), question.accessibility_name])
 		await _tap(question)
 		_check(help.visible and text.text.replace("\n", " ") == mode[1] and root.gui_get_focus_owner() == help, label + " tap shows its description", "visible %s '%s' focus %s" % [help.visible, text.text, root.gui_get_focus_owner()])
@@ -1471,7 +1470,6 @@ func _test_shop_menu_and_mode_info() -> void:
 		_check(not help.visible and root.gui_get_focus_owner() == question and paused, label + " Escape closes it, focus back on the \"?\"", "visible %s focus %s" % [help.visible, root.gui_get_focus_owner()])
 	_check("Good" in Shop.ASSIST_INFO and "never Perfect" in Shop.ASSIST_INFO, "Assist info says Good, never Perfect", Shop.ASSIST_INFO)
 	_check(("%sx" % GameState.GENTLE_TOLERANCE_SCALE) in Shop.GENTLE_INFO, "Gentle info names the tolerance scale", Shop.GENTLE_INFO)
-	_check(is_zero_approx(float(ProjectSettings.get_setting("gui/timers/tooltip_delay_sec", -1.0))), "tooltips appear without delay", str(ProjectSettings.get_setting("gui/timers/tooltip_delay_sec")))
 	shop.close_pause()
 	await _close_shop()
 

@@ -125,7 +125,7 @@ const COIN_FLIGHTS_MAX := 8
 ## Each pour's fill line lies in this range of the bottle's liquid height.
 const POUR_LINE_MIN := 0.45
 const POUR_LINE_MAX := 0.85
-## What each mode does: its toggle's tooltip, and the callout its "?" button opens.
+## What each mode does: the callout its "?" button opens.
 const ASSIST_INFO := SettingsPanel.ASSIST_INFO
 const GENTLE_INFO := SettingsPanel.GENTLE_INFO
 const GOLD := Color("#ffc95c")
