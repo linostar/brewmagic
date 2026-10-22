@@ -267,6 +267,14 @@ One upgrade per station: exactly one entry for each of `"stir"`, `"pour"`, `"mor
 | hushfire_tonic | 1,3,0,0 | 11 | stir, pour | frost_mint + snowfire_pearl |
 | duskbloom_syrup | 0,0,1,3 | 12 | stir, pour | nightshade_cap + twilight_bloom |
 | starfire_elixir | 2,1,1,1 | 13 | mortar, stir, pour | ember_pepper + starlight_dew |
+| frostfire_fizz | 2,2,0,0 | 1 | stir, pour | ember_pepper + frost_mint |
+| blazeheart_brew | 4,0,0,0 | 2 | stir, pour | ember_pepper + ember_pepper |
+| gravegarden_syrup | 0,0,2,2 | 2 | stir, pour | sunpetal + nightshade_cap |
+| meadowmist_cordial | 1,2,2,0 | 3 | stir, pour | frost_mint + honeycomb |
+| daybreak_elixir | 2,2,2,0 | 4 | stir, pour | ember_pepper + frost_mint + sunpetal |
+| mistwood_draught | 0,2,2,2 | 4 | stir, pour | frost_mint + sunpetal + nightshade_cap |
+| witchwind_tonic | 2,2,0,2 | 5 | stir, pour | ember_pepper + frost_mint + nightshade_cap |
+| lanternbloom_syrup | 2,0,2,2 | 5 | stir, pour | ember_pepper + sunpetal + nightshade_cap |
 
 Every potion has exactly one exact recipe from the ingredients of its unlock day, so its `steps` follow from that
 recipe: moonmoss and starlight dew are the `grind` ingredients (I11), cinderroot the only `heat` one (I12). Rare
@@ -275,8 +283,10 @@ the steps stay those of the potion. The day-1 ingredients each sum to 2, so on d
 pick gives Meh or Misbrew, never Good. Later ingredients sum to 2 or 3, so near misses become possible (for Valour
 Cordial, ember_pepper + nightshade_cap is Good).
 
-The unlocks are paced over the 20 days: day 2 the five two-station potions, day 3 the Mortar (honeycomb, moonmoss, its upgrade), day 6 the simple potions, day 6 the
-Bellows (cinderroot, its upgrade on sale from then), day 7 the hardest fire potions, days 11-13 one rare ingredient each
+The unlocks are paced over the 20 days: day 1 three two-ingredient potions, day 2 seven more, day 3 the Mortar
+(honeycomb, moonmoss, its upgrade) with two Mortar potions and one honeycomb potion without it, days 4 and 5 two
+three-ingredient potions each (all day-1 ingredients, Stir and Pour only), day 6 the Bellows (cinderroot, its upgrade
+on sale from then), day 7 the hardest fire potions, days 11-13 one rare ingredient each
 (snowfire pearl, twilight bloom, starlight dew) with their potions. Rush Hour's waves follow (`Rush.WAVE_DAYS`
 1, 4, 7, 13).
 

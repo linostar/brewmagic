@@ -185,5 +185,93 @@
     "steps": ["mortar", "stir", "pour"],
     "price": 28,
     "description": "Ground starlight with a brave spark. Makes the drinker glow at parties, literally."
+  },
+  {
+    "id": "frostfire_fizz",
+    "name": "Frostfire Fizz",
+    "target": [2, 2, 0, 0],
+    "color": "#3a74b4",
+    "bottle": "flask",
+    "unlock_day": 1,
+    "steps": ["stir", "pour"],
+    "price": 12,
+    "description": "Hot and cold at once. Fizzes on the tongue and fogs up spectacles."
+  },
+  {
+    "id": "blazeheart_brew",
+    "name": "Blazeheart Brew",
+    "target": [4, 0, 0, 0],
+    "color": "#8a5a3c",
+    "bottle": "round",
+    "unlock_day": 2,
+    "steps": ["stir", "pour"],
+    "price": 14,
+    "description": "Pure warmth, doubled. Keeps a knight brave and a kettle jealous."
+  },
+  {
+    "id": "gravegarden_syrup",
+    "name": "Gravegarden Syrup",
+    "target": [0, 0, 2, 2],
+    "color": "#1c4632",
+    "bottle": "teardrop",
+    "unlock_day": 2,
+    "steps": ["stir", "pour"],
+    "price": 14,
+    "description": "Growth for gloomy places. Graveyard roses love it; so do mushrooms."
+  },
+  {
+    "id": "meadowmist_cordial",
+    "name": "Meadowmist Cordial",
+    "target": [1, 2, 2, 0],
+    "color": "#cce878",
+    "bottle": "tall",
+    "unlock_day": 3,
+    "steps": ["stir", "pour"],
+    "price": 16,
+    "description": "A honeyed morning in a bottle: a little warm, mostly cool and green."
+  },
+  {
+    "id": "daybreak_elixir",
+    "name": "Daybreak Elixir",
+    "target": [2, 2, 2, 0],
+    "color": "#e8789a",
+    "bottle": "round",
+    "unlock_day": 4,
+    "steps": ["stir", "pour"],
+    "price": 19,
+    "description": "Warm, cool and fresh, three ingredients deep. Tastes like a sunrise."
+  },
+  {
+    "id": "mistwood_draught",
+    "name": "Mistwood Draught",
+    "target": [0, 2, 2, 2],
+    "color": "#38883e",
+    "bottle": "flask",
+    "unlock_day": 4,
+    "steps": ["stir", "pour"],
+    "price": 19,
+    "description": "Calm, green and a touch spooky, like a forest after dark."
+  },
+  {
+    "id": "witchwind_tonic",
+    "name": "Witchwind Tonic",
+    "target": [2, 2, 0, 2],
+    "color": "#583088",
+    "bottle": "tall",
+    "unlock_day": 5,
+    "steps": ["stir", "pour"],
+    "price": 19,
+    "description": "Brave, cool and moonlit. Brooms fly straighter after a sip."
+  },
+  {
+    "id": "lanternbloom_syrup",
+    "name": "Lanternbloom Syrup",
+    "target": [2, 0, 2, 2],
+    "color": "#d0a0e8",
+    "bottle": "teardrop",
+    "unlock_day": 5,
+    "steps": ["stir", "pour"],
+    "price": 19,
+    "description": "Warm light for things that grow at night. Glows faintly in the dark."
   }
 ]
