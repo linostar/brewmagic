@@ -138,7 +138,7 @@ a story beat always pins its request (I13), so a story character's requests need
 | `starting_coins` | int | 0..9999 | **Day 1 only (required there, an error on other days).** |
 | `starting_stock` | object `{ingredient id: int 0..99}` | keys ⊆ ingredients unlocked on day 1 | **Day 1 only (required there, an error on other days).** Missing keys mean 0. |
 | `market` | object `{ingredient id: int 1..999}` | keys == exactly the ingredients with `unlock_day <= day` | **Days >= 2 only (required there, an error on day 1).** Prices in the market screen held the evening *before* this day, so the player shops for this day. The market sells any quantity. |
-| `customers` | array of object | non-empty | In arrival order. An entry with none of `archetype`, `potion`, `request`, `beat`, `lines` (only an optional `when`, e.g. `{}`) is an **ordinary visitor slot**: `Shift.story` fills it at the player's difficulty level with a potion of the day (first the day's new potions no authored customer of the day asks for, in file order, then picks by `Difficulty.pick_for` that bring the day's mean stations per customer, authored customers included, to `Difficulty.target_stations(level, day)`: 2.4 on day 1, +1 by day 20, +0.5 per level), an ordinary archetype with a request for it and one of those requests (pinned, `Rush.visit`), from a generator seeded by the day and the level. |
+| `customers` | array of object | non-empty | In arrival order. An entry with none of `archetype`, `potion`, `request`, `beat`, `lines` (only an optional `when`, e.g. `{}`) is an **ordinary visitor slot**: `Shift.story` fills it at the player's difficulty level with a potion of the day (first the day's new potions no authored customer of the day asks for, in file order, then picks by `Difficulty.pick_for` that bring the day's mean stations per customer, authored customers included, to `Difficulty.target_stations(level, day)`: 2.4 on day 1, +1 by day 20, +0.5 per level; each pick skips the potions already ordered that day and, while others of its station count are left, those ordered on the day before: the ids the shop actually ordered on the last finished story day, saved as `Game.last_orders`), an ordinary archetype with a request for it and one of those requests (pinned, `Rush.visit`), from a generator seeded by the day and the level. |
 | `customers[].archetype` | string | archetype id | Required on every entry that is not a visitor slot. |
 | `customers[].potion` | string | potion id with `unlock_day <= day` | Required on every entry that is not a visitor slot. |
 | `customers[].request` | string | *optional*, request id | Pins the line. Its `potion` and `archetype` must equal the customer's. Absent: random, as above. Required on a story beat. |
@@ -150,7 +150,7 @@ a story beat always pins its request (I13), so a story character's requests need
 Stock carries over between days. The stock on day N >= 2 is what is left from day N-1 plus what the player bought.
 
 **Flag paths.** A *flag path* is one recorded outcome for every beat. The customers of day N on a path are the
-customers whose `when` matches it, visitor slots filled; the shop runs exactly that list (`Shift.story(n, flags, level)`).
+customers whose `when` matches it, visitor slots filled; the shop runs exactly that list (`Shift.story(n, flags, level, yesterday)`, yesterday = `Game.last_orders`).
 Only the beats some `when` names, and only whether each outcome is in the named lists, can change a day, so the tests
 enumerate one path per combination of those outcome classes (64 today: the six branching beats, each great or not).
 **Levels.** The ordinary visitors and the patience depend on the difficulty level, so every story invariant (I7, I8,
@@ -210,7 +210,7 @@ One upgrade per station: exactly one entry for each of `"stir"`, `"pour"`, `"mor
   >= 3 requests. Every essence has >= 5 misbrews, each with its fixed effect.
   Every archetype has >= 3 lines for every grade. Visitor slots are exempt from the pair rule (their request is pinned). Potions with `unlock_day == 1` have `steps == ["stir", "pour"]`
   and day-1 ingredients have `grind == false` (day 1 teaches only Stir and Pour). At least one potion with
-  `unlock_day == 3` lists `"mortar"` (the Mortar is introduced on day 3, after a day 2 of five two-station potions). The Bellows first appears on day 6: at least
+  `unlock_day == 3` lists `"mortar"` (the Mortar is introduced on day 3, after a day 2 of seven two-station potions). The Bellows first appears on day 6: at least
   one potion with `unlock_day == 6` lists `"bellows"`, none unlocked earlier does, and no ingredient unlocked before
   day 6 has `heat == true`.
 - **I11** Mortar consistency. A potion lists `"mortar"` in `steps` exactly when every exact recipe of it (2-3
@@ -267,6 +267,14 @@ One upgrade per station: exactly one entry for each of `"stir"`, `"pour"`, `"mor
 | hushfire_tonic | 1,3,0,0 | 11 | stir, pour | frost_mint + snowfire_pearl |
 | duskbloom_syrup | 0,0,1,3 | 12 | stir, pour | nightshade_cap + twilight_bloom |
 | starfire_elixir | 2,1,1,1 | 13 | mortar, stir, pour | ember_pepper + starlight_dew |
+| frostfire_fizz | 2,2,0,0 | 1 | stir, pour | ember_pepper + frost_mint |
+| blazeheart_brew | 4,0,0,0 | 2 | stir, pour | ember_pepper + ember_pepper |
+| gravegarden_syrup | 0,0,2,2 | 2 | stir, pour | sunpetal + nightshade_cap |
+| meadowmist_cordial | 1,2,2,0 | 3 | stir, pour | frost_mint + honeycomb |
+| daybreak_elixir | 2,2,2,0 | 4 | stir, pour | ember_pepper + frost_mint + sunpetal |
+| mistwood_draught | 0,2,2,2 | 4 | stir, pour | frost_mint + sunpetal + nightshade_cap |
+| witchwind_tonic | 2,2,0,2 | 5 | stir, pour | ember_pepper + frost_mint + nightshade_cap |
+| lanternbloom_syrup | 2,0,2,2 | 5 | stir, pour | ember_pepper + sunpetal + nightshade_cap |
 
 Every potion has exactly one exact recipe from the ingredients of its unlock day, so its `steps` follow from that
 recipe: moonmoss and starlight dew are the `grind` ingredients (I11), cinderroot the only `heat` one (I12). Rare
@@ -275,8 +283,10 @@ the steps stay those of the potion. The day-1 ingredients each sum to 2, so on d
 pick gives Meh or Misbrew, never Good. Later ingredients sum to 2 or 3, so near misses become possible (for Valour
 Cordial, ember_pepper + nightshade_cap is Good).
 
-The unlocks are paced over the 20 days: day 2 the five two-station potions, day 3 the Mortar (honeycomb, moonmoss, its upgrade), day 6 the simple potions, day 6 the
-Bellows (cinderroot, its upgrade on sale from then), day 7 the hardest fire potions, days 11-13 one rare ingredient each
+The unlocks are paced over the 20 days: day 1 three two-ingredient potions, day 2 seven more, day 3 the Mortar
+(honeycomb, moonmoss, its upgrade) with two Mortar potions and one honeycomb potion without it, days 4 and 5 two
+three-ingredient potions each (all day-1 ingredients, Stir and Pour only), day 6 the Bellows (cinderroot, its upgrade
+on sale from then), day 7 the hardest fire potions, days 11-13 one rare ingredient each
 (snowfire pearl, twilight bloom, starlight dew) with their potions. Rush Hour's waves follow (`Rush.WAVE_DAYS`
 1, 4, 7, 13).
 

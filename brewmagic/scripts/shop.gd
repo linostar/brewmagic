@@ -1,8 +1,9 @@
 class_name Shop
 extends Control
 ## The shop shift (flow SHOP): runs the ShiftConfig of story day n on the story path
-## of Game.flags at Game.difficulty (Shift.story(n, flags, difficulty), n from
-## Game.flow_args["day"], default Game.day; the level sets its visitors, patience,
+## of Game.flags at Game.difficulty (Shift.story(n, flags, difficulty, yesterday), n from
+## Game.flow_args["day"], default Game.day; yesterday is Game.last_orders when n is
+## Game.day, the day after the last finished one, else empty; the level sets its visitors, patience,
 ## arrival gap and station tolerance): its customers in order, its shelf, starting
 ## from the saved coins and stock (Game). Layout per CLAUDE.md "Shop scene
 ## layout": the 270x480 Stage sits at the bottom of the ScreenFit column (extra
@@ -346,7 +347,7 @@ func _ready() -> void:
 			stock[item.id] = ShelfItem.UNLIMITED
 	else:
 		var number := int(_game.flow_args.get("day", _game.day))
-		shift = Shift.story(number, _game.flags, _game.difficulty)
+		shift = Shift.story(number, _game.flags, _game.difficulty, _game.last_orders if number == _game.day else PackedStringArray())
 		if shift == null:
 			# The title screen is the only safe place to go; the player sees why there.
 			_game.abort_to(GameState.Flow.TITLE, "Day %d is missing from data/days.json; the shop cannot open." % number)
@@ -901,6 +902,10 @@ func _update_pot() -> void:
 		_slots[i].accessibility_name = ("Take %s out of the pot" % pot[i].name) if filled else "Empty pot slot"
 	var mix := _pot_essence()
 	var ordered := customer != null and customer.state == Customer.State.WAIT_ORDER
+	# A waiting order's targets show, and a pot filled ahead of the next order shows its
+	# plain amounts; from Brew until then the row is hidden (the pot is empty after Brew),
+	# so the last order's numbers are not read as the next one's (playtest 2026-10-22).
+	_essences.visible = ordered or (not pot.is_empty() and not _brewing)
 	for k in _essence_counts.size():
 		var needed: int = customer.potion.target[k] if ordered else 0
 		var need := Need.NONE
@@ -987,10 +992,10 @@ func _on_brew_pressed() -> void:
 	_brew_ids = used
 	print("[Shop] Brewing %s for %s: essence %s, target %s, distance %d, tier %s" % [used, wants.id, _brew, wants.target, distance, Brew.Grade.keys()[_tier]])
 	pot.clear()
-	_update_pot()
 	Juice.squash(_brew_button, 0.2)
 	Juice.squash(_cauldron, 0.25)
 	customer.start_brew()
+	_update_pot()
 	_qualities.clear()
 	_step = 0
 	_start_step()
@@ -1023,7 +1028,6 @@ func _show_station_layer(on: bool) -> void:
 	_station_dim.visible = on
 	_cauldron.visible = not on
 	_slot_row.visible = not on
-	_essences.visible = not on
 	# The shelf and Brew stay visible under the dim; keep keyboard focus off them.
 	var behavior := Control.FOCUS_BEHAVIOR_DISABLED if on else Control.FOCUS_BEHAVIOR_INHERITED
 	_shelf_row.focus_behavior_recursive = behavior
@@ -1387,13 +1391,17 @@ func _check_day_done() -> void:
 ## The day's results as the summary scene reads them (Game.flow_args): day, title,
 ## customers, served, stormed_off, refused, grades (a count per Brew.Grade), earned (pay
 ## without tips), tips, reputation (today's change), coins (now) and the skill measures
-## patience_left and gestures (Game.finish_day scores them, Difficulty.day_score).
+## patience_left and gestures (Game.finish_day scores them, Difficulty.day_score) and orders
+## (the potion ids of the day's customers, in order: Game.last_orders).
 func day_result() -> Dictionary:
 	var counts: Array[int] = [0, 0, 0, 0]
 	for grade in grades:
 		counts[grade] += 1
+	var orders := PackedStringArray()
+	for visit in shift.customers:
+		orders.append(visit.potion)
 	return {
-		"day": shift.day, "title": shift.title, "customers": shift.customers.size(), "served": served,
+		"orders": orders, "day": shift.day, "title": shift.title, "customers": shift.customers.size(), "served": served,
 		"stormed_off": stormed_off, "refused": refused, "grades": counts, "earned": coins - _starting_coins - tips, "tips": tips,
 		"reputation": reputation, "coins": coins, "patience_left": patience_left.duplicate(), "gestures": gestures.duplicate(),
 	}

@@ -105,8 +105,11 @@ static func target_stations(level: float, day: int) -> float:
 ## One of `pool` (non-empty) for a visitor who should need `wanted` stations: the station
 ## counts the pool offers either side of it, the higher one with the chance of how far
 ## `wanted` is past the lower (so the picks average `wanted`), then one of the potions with
-## that count, all from `rng`. Clamped to the counts the pool has.
-static func pick_for(rng: RandomNumberGenerator, pool: Array[PotionType], wanted: float) -> PotionType:
+## that count, all from `rng`. Clamped to the counts the pool has. Among the potions of that
+## count it skips the ids in `avoid`'s lists (most important first): all of them while some
+## potion is left, else all but the last list, down to none (so a day repeats a potion only
+## when the pool has no other of that count).
+static func pick_for(rng: RandomNumberGenerator, pool: Array[PotionType], wanted: float, avoid: Array[PackedStringArray] = []) -> PotionType:
 	var counts: Array[int] = []
 	for potion in pool:
 		if not potion.steps.size() in counts:
@@ -122,6 +125,12 @@ static func pick_for(rng: RandomNumberGenerator, pool: Array[PotionType], wanted
 	upper = maxi(upper, lower)
 	var steps := upper if upper > lower and rng.randf() < (wanted - lower) / float(upper - lower) else lower
 	var matching := pool.filter(func(potion: PotionType) -> bool: return potion.steps.size() == steps)
+	for skipped in range(avoid.size(), 0, -1):
+		var fresh := matching.filter(func(potion: PotionType) -> bool:
+			return avoid.slice(0, skipped).all(func(ids: PackedStringArray) -> bool: return not potion.id in ids))
+		if not fresh.is_empty():
+			matching = fresh
+			break
 	return matching[rng.randi_range(0, matching.size() - 1)]
 
 

@@ -985,6 +985,7 @@ func _test_shop_patience_timeout() -> void:
 		_game.sfx_log.clear()
 		shop.customer.patience_left = 0.2
 		_check(await _until(func() -> bool: return shop.stormed_off == 1, FLOW_FRAMES), "patience timeout storms off", str(shop.stormed_off))
+		_check(not (shop.get_node("Column/Stage/Essences") as Control).visible, "storming off hides the essence row", "shown")
 		_check(_heard(&"storm_off"), "storming off plays its sound", str(_game.sfx_log))
 		var bubble := shop.get_node("Column/Stage/Bubble") as SpeechBubble
 		_check(bubble.text in who.reactions["stormed_off"], "storming off says a stormed_off line", bubble.text)
@@ -1637,6 +1638,13 @@ func _test_shop_shelf_essence_pips() -> void:
 func _test_shop_pot_preview_needs() -> void:
 	var shop := await _open_shop()
 	await _check_preview(shop, Vector4i.ZERO, "preview without an order")
+	var early: String = shop.stock.keys()[0]
+	await _tap_item(shop, early)
+	_check(shop.customer == null or shop.customer.state != Customer.State.WAIT_ORDER, "pre-fill: no order waits yet", "an order waits")
+	_check((shop.get_node("Column/Stage/Essences") as Control).visible, "pre-fill: the row shows the pot's amounts before the order", "hidden")
+	await _check_preview(shop, Content.ingredient(early).essence, "preview of a pot filled ahead")
+	await _tap(shop.slot_button(0))
+	await _check_preview(shop, Vector4i.ZERO, "preview after emptying the pot filled ahead")
 	if await _wait_for_order(shop, "preview"):
 		await _check_preview(shop, Vector4i.ZERO, "preview of an empty pot")
 		var recipe := _exact_recipe(shop.customer.potion, shop.stock)
@@ -1980,8 +1988,10 @@ func _test_shop_refuse() -> void:
 	_check(shop.refused == 1 and shop.reputation == Economy.REFUSED_REPUTATION and shop.coins == coins and shop.served == 0, "refuse: -1 reputation, no pay", "refused %d rep %d coins %d" % [shop.refused, shop.reputation, shop.coins])
 	_check(shop.pot.is_empty() and shop.stock == stock, "refuse: the pot's ingredients go back to stock", "%s %s" % [shop.pot, shop.stock])
 	_check(bubble.text in counter.archetype.reactions["refused"] and not (shop.get_node("Column/Stage/Stamp") as Control).visible and refuse.disabled, "refuse: a refused line, no stamp, the button disabled", "'%s'" % bubble.text)
+	_check(not (shop.get_node("Column/Stage/Essences") as Control).visible, "refuse: the essence row hides with the refused order", "shown")
 	await _skip_lines(shop)
 	_check(await _until(func() -> bool: return shop.customer == next and next.state == Customer.State.WAIT_ORDER, FLOW_FRAMES), "refuse: the next customer steps up", "customer %s" % shop.customer)
+	await _check_preview(shop, Vector4i.ZERO, "refuse: the next order's targets")
 	_refill_patience(shop)
 	refuse.grab_focus()
 	await _action(&"ui_accept")
@@ -2350,6 +2360,10 @@ func _test_save_missing_and_corrupt() -> void:
 		"difficulty below the kindest level": JSON.stringify(_with(good, "difficulty", roundi(Difficulty.LEVEL_MIN * GameState.SAVE_HUNDREDTHS) - 1)),
 		"fractional difficulty": JSON.stringify(_with(good, "difficulty", 0.5)),
 		"difficulty missing": JSON.stringify(_without(good, "difficulty")),
+		"last_orders missing": JSON.stringify(_without(good, "last_orders")),
+		"last_orders not a list": JSON.stringify(_with(good, "last_orders", "hearthglow_tonic")),
+		"last_orders with an unknown potion": JSON.stringify(_with(good, "last_orders", ["elixir_of_life"])),
+		"last_orders with a number": JSON.stringify(_with(good, "last_orders", [3])),
 		"unknown story flag": JSON.stringify(_with(good, "flags", {"goat_trusts_you": true})),
 		"bad beat outcome": JSON.stringify(_with(good, "flags", {"quill.inspection": "splendid"})),
 		"ending left in flags": JSON.stringify(_with(good, "flags", {"ending": "cosy_corner"})),
@@ -2424,7 +2438,7 @@ func _test_save_migrations() -> void:
 	# progress keeps only the flags of beats that still come before its day.
 	var finished := {"version": 5, "day": GameState.V5_LAST_DAY + 1, "at_market": false, "coins": 300, "reputation": 25, "stock": {"cinderroot": 4}, "upgrades": {"stir": 2}, "flags": {"quill.fair": "great"}, "codex": {"words": ["hint_warmth"]}, "endings": ["cosy_corner"], "rush_hour_unlocked": true}
 	var first := Content.day(Content.FIRST_DAY)
-	_check(GameState.migrate_save(finished, GameState.save_migrations(), GameState.SAVE_VERSION) == "" and finished == {"version": 6, "day": Content.FIRST_DAY, "at_market": false, "coins": first.starting_coins, "reputation": 0, "stock": first.starting_stock, "upgrades": {}, "flags": {}, "codex": {"words": ["hint_warmth"]}, "endings": ["cosy_corner"], "rush_hour_unlocked": true, "skill": 50, "difficulty": 0}, "version 5 -> 6: a finished 7-day story starts the 20-day story afresh, keeping the Codex and the endings", str(finished))
+	_check(GameState.migrate_save(finished, GameState.save_migrations().slice(0, 5), 6) == "" and finished == {"version": 6, "day": Content.FIRST_DAY, "at_market": false, "coins": first.starting_coins, "reputation": 0, "stock": first.starting_stock, "upgrades": {}, "flags": {}, "codex": {"words": ["hint_warmth"]}, "endings": ["cosy_corner"], "rush_hour_unlocked": true, "skill": 50, "difficulty": 0}, "version 5 -> 6: a finished 7-day story starts the 20-day story afresh, keeping the Codex and the endings", str(finished))
 	var beat_days := {}
 	for spec in Content.days():
 		for customer in spec.customers:
@@ -2437,9 +2451,11 @@ func _test_save_migrations() -> void:
 		if beat_days[flag] < 5:
 			before[flag] = "great"
 	var in_progress := {"version": 5, "day": 5, "at_market": true, "flags": all_flags.duplicate()}
-	_check(GameState.migrate_save(in_progress, GameState.save_migrations(), GameState.SAVE_VERSION) == "" and in_progress == {"version": 6, "day": 5, "at_market": true, "flags": before, "skill": 50, "difficulty": 0} and not before.is_empty() and before.size() < all_flags.size(), "version 5 -> 6: a story in progress keeps the flags of beats before its day", str(in_progress))
+	_check(GameState.migrate_save(in_progress, GameState.save_migrations().slice(0, 5), 6) == "" and in_progress == {"version": 6, "day": 5, "at_market": true, "flags": before, "skill": 50, "difficulty": 0} and not before.is_empty() and before.size() < all_flags.size(), "version 5 -> 6: a story in progress keeps the flags of beats before its day", str(in_progress))
 	var unknown := {"version": 5, "day": 5, "at_market": false, "flags": {"goat_trusts_you": true}}
 	_check(GameState.migrate_save(unknown, GameState.save_migrations(), GameState.SAVE_VERSION) == "" and unknown["flags"] == {"goat_trusts_you": true}, "version 5 -> 6: a flag key that names no beat is left for validation", str(unknown))
+	var v6 := {"version": 6, "day": 4}
+	_check(GameState.migrate_save(v6, GameState.save_migrations().slice(0, 6), 7) == "" and v6 == {"version": 7, "day": 4, "last_orders": []}, "version 6 -> 7: the save gains an empty list of yesterday's orders", str(v6))
 	# A whole version 2 save file (the format before Rush Hour) loads, best kept and not assisted.
 	_game.new_game()
 	_game.rush_hour_unlocked = true
@@ -2467,12 +2483,23 @@ func _test_save_migrations() -> void:
 	errors = _game.reported_errors.size()
 	_game.load_game()
 	_check(_game.reported_errors.size() == errors and _game.music_volume == GameState.DEFAULT_MUSIC_VOLUME and _game.sfx_volume == GameState.DEFAULT_SFX_VOLUME and _game.rush_best == 40, "a version 3 save file loads with the default volumes", "music %d sfx %d, errors %s" % [_game.music_volume, _game.sfx_volume, _game.reported_errors.slice(errors)])
+	# A whole version 6 save file (before yesterday's orders) loads with none.
+	_game.last_orders = PackedStringArray(["hearthglow_tonic"])
+	_game.save_game()
+	var v6_file: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	v6_file["version"] = 6
+	v6_file.erase("last_orders")
+	_write_save(JSON.stringify(v6_file))
+	errors = _game.reported_errors.size()
+	_game.load_game()
+	_check(_game.reported_errors.size() == errors and _game.last_orders.is_empty() and _game.rush_best == 40, "a version 6 save file loads with no orders from yesterday", "%s, errors %s" % [_game.last_orders, _game.reported_errors.slice(errors)])
 	# A whole version 5 save file with a flag key that names no beat loads as corrupt.
 	_game.save_game()
 	var v5_file: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
 	v5_file["version"] = 5
 	v5_file.erase("skill")
 	v5_file.erase("difficulty")
+	v5_file.erase("last_orders")
 	v5_file["flags"] = {"goat_trusts_you": true}
 	_write_save(JSON.stringify(v5_file))
 	_game.quiet_errors = true
@@ -2688,6 +2715,48 @@ func _test_difficulty_shift() -> void:
 		if means[n] < means[n - 1] - 0.1:
 			dips.append("day %d %.2f after %.2f" % [n + 1, means[n], means[n - 1]])
 	_check(dips.is_empty(), "difficulty: days 1 to %d grow harder in stations per customer, never easier than the day before" % means.size(), ", ".join(dips))
+	# Variety (playtest 2026-10-22: the same orders every day): a visitor slot repeats a
+	# potion of the day only when none of its station count is left unordered, takes one
+	# of `yesterday` (the ids passed in: here the day before's orders, as the shop passes
+	# Game.last_orders) only when none of its station count is left unordered nor out of
+	# yesterday, and days 2-5 at the start level order at least 5 different potions (or
+	# every one they have).
+	var repeats := PackedStringArray()
+	for level: float in [Difficulty.LEVEL_MIN, Difficulty.START_LEVEL, Difficulty.LEVEL_MAX]:
+		var yesterday := PackedStringArray()
+		for spec in Content.days():
+			var shift := Shift.story(spec.day, flags, level, yesterday)
+			var slots := Story.customers_of(spec, flags)
+			var authored := slots.filter(func(slot: DayCustomer) -> bool: return not slot.is_generated()).map(func(slot: DayCustomer) -> String: return slot.potion)
+			var ordered := PackedStringArray()
+			for i in shift.customers.size():
+				var potion := Content.potion(shift.customers[i].potion)
+				if slots[i].is_generated() and potion.id in yesterday and not potion.id in ordered and potion.unlock_day < spec.day:
+					var unseen := shift.allowed_potions.filter(func(other: PotionType) -> bool: return other.steps.size() == potion.steps.size() and not other.id in ordered and not other.id in authored and not other.id in yesterday and not Rush.voices_for(other).is_empty())
+					if not unseen.is_empty():
+						repeats.append("day %d at level %.2f: %s from the day before while %s was not ordered" % [spec.day, level, potion.id, (unseen[0] as PotionType).id])
+				if slots[i].is_generated() and potion.id in ordered:
+					var unordered := shift.allowed_potions.filter(func(other: PotionType) -> bool: return other.steps.size() == potion.steps.size() and not other.id in ordered and not Rush.voices_for(other).is_empty())
+					if not unordered.is_empty():
+						repeats.append("day %d at level %.2f: %s again while %s was not ordered" % [spec.day, level, potion.id, (unordered[0] as PotionType).id])
+				ordered.append(potion.id)
+			if level == Difficulty.START_LEVEL and spec.day >= 2 and spec.day <= 5:
+				var distinct := {}
+				for id in ordered:
+					distinct[id] = true
+				if distinct.size() < mini(5, shift.allowed_potions.size()):
+					repeats.append("day %d: only %d different potions %s" % [spec.day, distinct.size(), ordered])
+			yesterday = ordered
+	_check(repeats.is_empty(), "difficulty: visitor slots vary their potions within a day and from the day before, days 2-5 order at least 5 different ones", "\n".join(repeats))
+	var rng := RandomNumberGenerator.new()
+	var pool: Array[PotionType] = []
+	pool.assign([Content.potion("stillwater_draught"), Content.potion("dewdrop_balm"), Content.potion("nightfire_punch")])
+	var picks := PackedStringArray()
+	for n in 20:
+		picks.append(Difficulty.pick_for(rng, pool, 2.0, [PackedStringArray(["stillwater_draught"]), PackedStringArray(["dewdrop_balm"])]).id)
+	var fallback := Difficulty.pick_for(rng, pool, 2.0, [PackedStringArray(["stillwater_draught", "dewdrop_balm"]), PackedStringArray(["nightfire_punch"])]).id
+	var repeat := Difficulty.pick_for(rng, pool, 2.0, [PackedStringArray(["stillwater_draught", "dewdrop_balm", "nightfire_punch"])])
+	_check(Array(picks).all(func(id: String) -> bool: return id == "nightfire_punch") and fallback == "nightfire_punch" and pool.has(repeat), "difficulty: picks skip every avoided list while a potion is left, else all but the last, down to none", "%s / %s / %s" % [picks, fallback, repeat])
 
 
 ## Game.finish_day scores the day and moves the skill rating and the level (saved in
@@ -2695,21 +2764,26 @@ func _test_difficulty_shift() -> void:
 func _test_finish_day_moves_difficulty() -> void:
 	_game.new_game()
 	_check(is_equal_approx(_game.skill_rating, Difficulty.START_RATING) and is_equal_approx(_game.difficulty, Difficulty.START_LEVEL), "difficulty: a new game starts at the default rating and level", "%f %f" % [_game.skill_rating, _game.difficulty])
-	var result := {"day": 1, "title": "t", "customers": 3, "served": 3, "stormed_off": 0, "refused": 0, "grades": [3, 0, 0, 0], "earned": 0, "tips": 0, "reputation": 0, "coins": _game.coins, "patience_left": [0.9, 0.9, 0.9], "gestures": [1.0, 1.0]}
+	var orders := PackedStringArray(["hearthglow_tonic", "stillwater_draught", "hearthglow_tonic"])
+	var result := {"day": 1, "title": "t", "customers": 3, "served": 3, "stormed_off": 0, "refused": 0, "grades": [3, 0, 0, 0], "earned": 0, "tips": 0, "reputation": 0, "coins": _game.coins, "patience_left": [0.9, 0.9, 0.9], "gestures": [1.0, 1.0], "orders": orders}
 	_game.finish_day(result, _game.coins, _game.stock, 0)
 	await _game.transition_finished
 	var rating := Difficulty.next_rating(Difficulty.START_RATING, Difficulty.day_score([3, 0, 0, 0] as Array[int], 0, 0, [0.9, 0.9, 0.9] as Array[float], [1.0, 1.0] as Array[float]))
 	_check(is_equal_approx(_game.skill_rating, snappedf(rating, 0.01)) and _game.difficulty > Difficulty.START_LEVEL, "difficulty: a strong day raises the rating and the level", "%f %f" % [_game.skill_rating, _game.difficulty])
 	var saved := _read_save()
 	_check(saved.get("skill") == roundi(_game.skill_rating * 100) and saved.get("difficulty") == roundi(_game.difficulty * 100), "difficulty: rating and level are saved in hundredths", str(saved))
+	_check(_game.last_orders == orders and saved.get("last_orders") == Array(orders), "the day's orders are recorded and saved as yesterday's", "%s %s" % [_game.last_orders, saved.get("last_orders")])
 	var kept := [_game.skill_rating, _game.difficulty]
+	_game.last_orders = PackedStringArray()
 	_game.load_game()
 	_check(is_equal_approx(_game.skill_rating, kept[0]) and is_equal_approx(_game.difficulty, kept[1]), "difficulty: a reload gives the same rating and level", "%f %f" % [_game.skill_rating, _game.difficulty])
+	_check(_game.last_orders == orders, "a reload gives the same orders from yesterday", str(_game.last_orders))
 	_game.finish_rush({"score": 5, "served": 1, "stormed_off": 4, "refused": 0, "grades": [0, 0, 0, 1], "tips": 0, "wave": 1, "assisted": false})
 	await _game.transition_finished
 	_check(is_equal_approx(_game.skill_rating, kept[0]) and is_equal_approx(_game.difficulty, kept[1]), "difficulty: a Rush Hour run leaves the rating and the level", "%f %f" % [_game.skill_rating, _game.difficulty])
 	_game.new_game()
 	_check(is_equal_approx(_game.skill_rating, Difficulty.START_RATING) and is_equal_approx(_game.difficulty, Difficulty.START_LEVEL), "difficulty: a new game starts them over", "%f %f" % [_game.skill_rating, _game.difficulty])
+	_check(_game.last_orders.is_empty() and _read_save().get("last_orders") == [], "a new game clears yesterday's orders", str(_game.last_orders))
 	_game.rush_best = 0
 	_game.rush_best_assisted = false
 	await _goto_scene(GameState.Flow.TITLE)
@@ -2967,13 +3041,17 @@ func _serve(shop: Shop, recipe: Array[String], label: String) -> bool:
 	_check(shop.pot.size() == recipe.size() and not shop.brew_button().disabled, label + ": Brew enabled", "pot %d" % shop.pot.size())
 	var served := shop.served
 	var steps := shop.customer.potion.steps
+	var row := shop.get_node("Column/Stage/Essences") as Control
+	_check(row.visible, label + ": the essence row shows the waiting order", "hidden")
 	await _tap(shop.brew_button())
+	_check(not row.visible, label + ": the essence row hides on Brew", "shown")
 	for step in steps:
 		var ready := await _until(func() -> bool: return shop.station != null and shop.station.is_running() and shop.station.get_node_or_null("AssistButton") != null, FLOW_FRAMES)
 		_check(ready, "%s: %s station shows Assist" % [label, step], "no station")
 		if not ready:
 			return false
 		await _tap(shop.station.get_node("AssistButton") as Button)
+	_check(not row.visible, label + ": the essence row stays hidden through the last station's Assist", "shown")
 	var done := await _until(func() -> bool: return shop.served == served + 1, FLOW_FRAMES)
 	_check(done, label + ": served", "served %d" % shop.served)
 	return done
@@ -3831,7 +3909,7 @@ func _play_story(refuse_beats: bool, expected_ending: String, beats: Dictionary[
 			_check(false, "%s: day %d morning" % [label, number], str(current_scene))
 			finished = false
 			break
-		var expected := Shift.story(number, _game.flags, _game.difficulty).customers
+		var expected := Shift.story(number, _game.flags, _game.difficulty, _game.last_orders).customers
 		await _tap(current_scene.get_node("Column/OpenShopButton") as Button)
 		await _until(func() -> bool: return current_scene is Shop and not _game.is_transitioning(), FLOW_FRAMES)
 		var shop := current_scene as Shop
@@ -3863,6 +3941,8 @@ func _play_story(refuse_beats: bool, expected_ending: String, beats: Dictionary[
 			_check(false, "%s: day %d summary" % [label, number], str(current_scene))
 			finished = false
 			break
+		var potions := PackedStringArray(expected.map(func(visit: DayCustomer) -> String: return visit.potion))
+		_check(_game.last_orders == potions, "%s: day %d's orders are kept as yesterday's" % [label, number], "%s, expected %s" % [_game.last_orders, potions])
 		var day_summary := current_scene as Summary
 		await _until(func() -> bool: return not day_summary.is_tallying(), FLOW_FRAMES)
 		await _tap(day_summary.get_node("Column/Layout/ContinueButton") as Button)
@@ -3894,13 +3974,19 @@ func _buy_for_day(number: int) -> bool:
 	var spec := Content.day(number)
 	var pool := Content.ingredients_unlocked_by(number)
 	var needed: Dictionary[String, int] = {}
-	for customer in Shift.story(number, _game.flags, _game.difficulty).customers:
+	for customer in Shift.story(number, _game.flags, _game.difficulty, _game.last_orders).customers:
 		var target := Content.potion(customer.potion).target
 		var recipe: Array[String] = []
 		for a in pool:
 			for b in pool:
 				if recipe.is_empty() and a.essence + b.essence == target:
 					recipe = [a.id, b.id]
+		if recipe.is_empty():
+			for a in pool:
+				for b in pool:
+					for c in pool:
+						if recipe.is_empty() and a.essence + b.essence + c.essence == target:
+							recipe = [a.id, b.id, c.id]
 		for id in recipe:
 			needed[id] = needed.get(id, 0) + 1
 	for id in needed:
@@ -4185,6 +4271,8 @@ func _check_preview(shop: Shop, mix: Vector4i, label: String) -> void:
 			expected_needs.append(Shop.Need.NONE)
 		expected_shown.append(expected_needs[k] != Shop.Need.NONE)
 	_check(counts == expected, label + ": essence counts", "%s, expected %s" % [counts, expected])
+	var shown := ordered or (not shop.pot.is_empty() and not shop.is_brewing())
+	_check((shop.get_node("Column/Stage/Essences") as Control).visible == shown, label + ": essence row shown for a waiting order or a pot filled ahead", "visible %s, ordered %s, pot %d" % [(shop.get_node("Column/Stage/Essences") as Control).visible, ordered, shop.pot.size()])
 	_check(shop.essence_needs == expected_needs and marks_shown == expected_shown, label + ": need marks", "%s shown %s, expected %s" % [shop.essence_needs, marks_shown, expected_needs])
 	await _frames(30)
 	var liquid := (shop.get_node("Column/Stage/Cauldron/Liquid") as Sprite2D).modulate

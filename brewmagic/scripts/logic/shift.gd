@@ -8,10 +8,12 @@ class_name Shift
 ## is_generated) filled from the day's potions (those with an ordinary voice, Rush.voices_for):
 ## first the potions new that day that no authored customer of the day asks for, in file
 ## order, then picks (Difficulty.pick_for) that bring the day's mean stations per customer
-## to Difficulty.target_stations, voiced by Rush.visit, all from a generator seeded by the
-## day and the level, so a day replays alike. The level also sets the patience (times the day's), the arrival gap and
+## to Difficulty.target_stations, each preferring a potion not yet ordered that day nor in
+## `yesterday` (the potion ids ordered on the day before, Game.last_orders), voiced by
+## Rush.visit, all from a generator seeded by the day and the level, so the same inputs
+## give the same shift. The level also sets the patience (times the day's), the arrival gap and
 ## the stations' tolerance. Null when there is no such day (Content.day reports it).
-static func story(number: int, flags: Dictionary = {}, level := Difficulty.START_LEVEL) -> ShiftConfig:
+static func story(number: int, flags: Dictionary = {}, level := Difficulty.START_LEVEL, yesterday := PackedStringArray()) -> ShiftConfig:
 	var spec := Content.day(number)
 	if spec == null:
 		return null
@@ -39,12 +41,16 @@ static func story(number: int, flags: Dictionary = {}, level := Difficulty.START
 			slots += 1
 		else:
 			owed -= Content.potion(customer.potion).steps.size()
+	# Variety: a slot's pick skips the potions already ordered today and, while others are
+	# left, those of the day before.
+	var today := PackedStringArray(asked)
 	var generated := 0
 	for customer in visits:
 		if not customer.is_generated():
 			config.customers.append(customer)
 			continue
-		var potion: PotionType = fresh[generated] if generated < fresh.size() else Difficulty.pick_for(rng, pool, owed / (slots - generated))
+		var potion: PotionType = fresh[generated] if generated < fresh.size() else Difficulty.pick_for(rng, pool, owed / (slots - generated), [today, yesterday])
+		today.append(potion.id)
 		owed -= potion.steps.size()
 		generated += 1
 		var visitor := Rush.visit(potion, rng)
