@@ -22,6 +22,20 @@ if [ "${1:-}" = "--play" ]; then
   preset="Android (Play Store)"
   mode="--export-release"
   out="build/android/brewmagic.aab"
+  # The upload key, passed to Godot through its GODOT_ANDROID_KEYSTORE_RELEASE_* variables so
+  # nothing secret is in the preset. The password comes from the macOS Keychain entry
+  # "brewmagic-release-keystore" unless GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD is already set.
+  export GODOT_ANDROID_KEYSTORE_RELEASE_PATH="${GODOT_ANDROID_KEYSTORE_RELEASE_PATH:-$HOME/cpan/Perso/uniquity-apps-sign-key-2018.keystore}"
+  export GODOT_ANDROID_KEYSTORE_RELEASE_USER="${GODOT_ANDROID_KEYSTORE_RELEASE_USER:-uniquity apps 2018}"
+  if [ -z "${GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD:-}" ]; then
+    GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD="$(security find-generic-password -s brewmagic-release-keystore -w 2>/dev/null)" || {
+      echo "FAIL no keystore password: add it once with" >&2
+      echo "  security add-generic-password -s brewmagic-release-keystore -a \"\$USER\" -w" >&2
+      exit 1
+    }
+    export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD
+  fi
+  [ -f "$GODOT_ANDROID_KEYSTORE_RELEASE_PATH" ] || { echo "FAIL keystore not found: $GODOT_ANDROID_KEYSTORE_RELEASE_PATH" >&2; exit 1; }
 fi
 
 tools/validate.sh
