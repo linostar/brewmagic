@@ -985,6 +985,7 @@ func _test_shop_patience_timeout() -> void:
 		_game.sfx_log.clear()
 		shop.customer.patience_left = 0.2
 		_check(await _until(func() -> bool: return shop.stormed_off == 1, FLOW_FRAMES), "patience timeout storms off", str(shop.stormed_off))
+		_check(not (shop.get_node("Column/Stage/Essences") as Control).visible, "storming off hides the essence row", "shown")
 		_check(_heard(&"storm_off"), "storming off plays its sound", str(_game.sfx_log))
 		var bubble := shop.get_node("Column/Stage/Bubble") as SpeechBubble
 		_check(bubble.text in who.reactions["stormed_off"], "storming off says a stormed_off line", bubble.text)
@@ -1980,8 +1981,10 @@ func _test_shop_refuse() -> void:
 	_check(shop.refused == 1 and shop.reputation == Economy.REFUSED_REPUTATION and shop.coins == coins and shop.served == 0, "refuse: -1 reputation, no pay", "refused %d rep %d coins %d" % [shop.refused, shop.reputation, shop.coins])
 	_check(shop.pot.is_empty() and shop.stock == stock, "refuse: the pot's ingredients go back to stock", "%s %s" % [shop.pot, shop.stock])
 	_check(bubble.text in counter.archetype.reactions["refused"] and not (shop.get_node("Column/Stage/Stamp") as Control).visible and refuse.disabled, "refuse: a refused line, no stamp, the button disabled", "'%s'" % bubble.text)
+	_check(not (shop.get_node("Column/Stage/Essences") as Control).visible, "refuse: the essence row hides with the refused order", "shown")
 	await _skip_lines(shop)
 	_check(await _until(func() -> bool: return shop.customer == next and next.state == Customer.State.WAIT_ORDER, FLOW_FRAMES), "refuse: the next customer steps up", "customer %s" % shop.customer)
+	await _check_preview(shop, Vector4i.ZERO, "refuse: the next order's targets")
 	_refill_patience(shop)
 	refuse.grab_focus()
 	await _action(&"ui_accept")
@@ -2697,8 +2700,17 @@ func _test_difficulty_shift() -> void:
 			var shift := Shift.story(spec.day, flags, level)
 			var slots := Story.customers_of(spec, flags)
 			var ordered := PackedStringArray()
+			var yesterday := PackedStringArray()
+			if spec.day > Content.FIRST_DAY:
+				for customer in Shift.story(spec.day - 1, flags, level, false).customers:
+					yesterday.append(customer.potion)
 			for i in shift.customers.size():
 				var potion := Content.potion(shift.customers[i].potion)
+				if slots[i].is_generated() and potion.id in yesterday and not potion.id in ordered and potion.unlock_day < spec.day:
+					var authored := slots.filter(func(slot: DayCustomer) -> bool: return not slot.is_generated()).map(func(slot: DayCustomer) -> String: return slot.potion)
+					var unseen := shift.allowed_potions.filter(func(other: PotionType) -> bool: return other.steps.size() == potion.steps.size() and not other.id in ordered and not other.id in authored and not other.id in yesterday and not Rush.voices_for(other).is_empty())
+					if not unseen.is_empty():
+						repeats.append("day %d at level %.2f: %s from the day before while %s was not ordered" % [spec.day, level, potion.id, (unseen[0] as PotionType).id])
 				if slots[i].is_generated() and potion.id in ordered:
 					var unordered := shift.allowed_potions.filter(func(other: PotionType) -> bool: return other.steps.size() == potion.steps.size() and not other.id in ordered and not Rush.voices_for(other).is_empty())
 					if not unordered.is_empty():
@@ -2710,7 +2722,7 @@ func _test_difficulty_shift() -> void:
 					distinct[id] = true
 				if distinct.size() < mini(5, shift.allowed_potions.size()):
 					repeats.append("day %d: only %d different potions %s" % [spec.day, distinct.size(), ordered])
-	_check(repeats.is_empty(), "difficulty: visitor slots vary their potions within a day, days 2-5 order at least 5 different ones", "\n".join(repeats))
+	_check(repeats.is_empty(), "difficulty: visitor slots vary their potions within a day and from the day before, days 2-5 order at least 5 different ones", "\n".join(repeats))
 	var rng := RandomNumberGenerator.new()
 	var pool: Array[PotionType] = []
 	pool.assign([Content.potion("stillwater_draught"), Content.potion("dewdrop_balm"), Content.potion("nightfire_punch")])

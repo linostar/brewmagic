@@ -210,7 +210,7 @@ One upgrade per station: exactly one entry for each of `"stir"`, `"pour"`, `"mor
   >= 3 requests. Every essence has >= 5 misbrews, each with its fixed effect.
   Every archetype has >= 3 lines for every grade. Visitor slots are exempt from the pair rule (their request is pinned). Potions with `unlock_day == 1` have `steps == ["stir", "pour"]`
   and day-1 ingredients have `grind == false` (day 1 teaches only Stir and Pour). At least one potion with
-  `unlock_day == 3` lists `"mortar"` (the Mortar is introduced on day 3, after a day 2 of five two-station potions). The Bellows first appears on day 6: at least
+  `unlock_day == 3` lists `"mortar"` (the Mortar is introduced on day 3, after a day 2 of seven two-station potions). The Bellows first appears on day 6: at least
   one potion with `unlock_day == 6` lists `"bellows"`, none unlocked earlier does, and no ingredient unlocked before
   day 6 has `heat == true`.
 - **I11** Mortar consistency. A potion lists `"mortar"` in `steps` exactly when every exact recipe of it (2-3
