@@ -200,13 +200,13 @@ func _shot_misbrew(shop: Shop) -> void:
 	_save_window("5-misbrew")
 
 
-## 6: the market the evening before day 4 (cinderroot and the Bellows arrive).
+## 6: the market the evening before day 6 (cinderroot and the Bellows arrive).
 func _shot_market() -> void:
 	_game.new_game()
-	_game.day = 4
+	_game.day = 6
 	_game.at_market = true
 	_game.coins = 96
-	for item in Content.ingredients_unlocked_by(3):
+	for item in Content.ingredients_unlocked_by(5):
 		_game.stock[item.id] = 2
 	await _goto(GameState.Flow.MARKET)
 	await _frames(40)

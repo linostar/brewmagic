@@ -722,7 +722,7 @@ static func _load_morning_notes(entry: Dictionary, item: DaySpec) -> void:
 
 
 ## Story checks across days: the visits (variants) of one beat flag lie on one day, and every
-## `when` names only flags of beats on earlier days.
+## `when` names only flags of beats on earlier days, a beat's only those of its own character.
 static func _check_story() -> void:
 	_begin_file("days.json")
 	var beat_days: Dictionary[String, int] = {}
@@ -742,6 +742,13 @@ static func _check_story() -> void:
 		var spec := _days[number]
 		for i in spec.customers.size():
 			_check_when_flags(spec.customers[i].when, "customers[%d]." % i, number, beat_days)
+			# A beat follows only its own character's story (data/SCHEMA.md I13).
+			var customer := spec.customers[i]
+			if customer.beat == "":
+				continue
+			for flag in customer.when:
+				if not flag.begins_with(customer.archetype + "."):
+					_error("customers[%d].when.%s" % [i, flag], "a beat of %s may only depend on %s's beats" % [customer.archetype, customer.archetype])
 		for i in spec.morning_notes.size():
 			_check_when_flags(spec.morning_notes[i]["when"], "morning_notes[%d]." % i, number, beat_days)
 

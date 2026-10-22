@@ -1819,7 +1819,7 @@ func _test_look_distinct_per_shift() -> void:
 	var shifts: Dictionary[String, Array] = {}
 	for day in Content.days():
 		var archetypes: Array[Archetype] = []
-		for spec in day.customers:
+		for spec in Shift.story(day.day).customers:
 			archetypes.append(Content.archetype(spec.archetype))
 		shifts["day %d" % day.day] = archetypes
 	var rng := RandomNumberGenerator.new()
@@ -3380,12 +3380,12 @@ func _test_story_rules() -> void:
 	var helped := Story.customers_of(day4, {"stranger.first_sneeze": "great"})
 	var not_helped := Story.customers_of(day4, {"stranger.first_sneeze": "poor"})
 	_check(helped.size() == not_helped.size() + 1 and helped[-1].archetype == "goat_farmer", "story: a great first sneeze sends the goat farmer on day 4", "%d vs %d" % [helped.size(), not_helped.size()])
-	var day5 := Content.day(5)
-	var audit_great := Story.customers_of(day5, {"quill.inspection": "great"}).filter(func(c: DayCustomer) -> bool: return c.flag() == "quill.audit")
-	var audit_retest := Story.customers_of(day5, {"quill.inspection": "stormed_off"}).filter(func(c: DayCustomer) -> bool: return c.flag() == "quill.audit")
+	var day8 := Content.day(8)
+	var audit_great := Story.customers_of(day8, {"quill.inspection": "great"}).filter(func(c: DayCustomer) -> bool: return c.flag() == "quill.audit")
+	var audit_retest := Story.customers_of(day8, {"quill.inspection": "stormed_off"}).filter(func(c: DayCustomer) -> bool: return c.flag() == "quill.audit")
 	_check(audit_great.size() == 1 and audit_retest.size() == 1 and audit_great[0].potion != audit_retest[0].potion, "story: Quill's audit asks for a different potion after a poor inspection", "%s / %s" % [audit_great.map(func(c: DayCustomer) -> String: return c.potion), audit_retest.map(func(c: DayCustomer) -> String: return c.potion)])
-	_check(Story.morning_note(day5, {"quill.inspection": "great"}) != Story.morning_note(day5, {"quill.inspection": "poor"}) and Story.morning_note(Content.day(3), {}) == Content.day(3).morning_note, "story: morning notes follow the flags, else the day's note", Story.morning_note(day5, {}))
-	_check(Story.beat_flags().size() == 9 and Story.final_flags() == PackedStringArray(["vexley.fair", "stranger.fair", "quill.fair"]), "story: nine beats, three final ones on day 7", "%s / %s" % [Story.beat_flags(), Story.final_flags()])
+	_check(Story.morning_note(day8, {"quill.inspection": "great"}) != Story.morning_note(day8, {"quill.inspection": "poor"}) and Story.morning_note(Content.day(3), {}) == Content.day(3).morning_note, "story: morning notes follow the flags, else the day's note", Story.morning_note(day8, {}))
+	_check(Story.beat_flags().size() == 18 and Story.final_flags() == PackedStringArray(["vexley.fair", "stranger.fair", "quill.fair"]), "story: eighteen beats, six per character, three final ones on day %d" % Content.LAST_DAY, "%s / %s" % [Story.beat_flags(), Story.final_flags()])
 	var problems := PackedStringArray()
 	for bad: Dictionary in [{"nobody.waves": "great"}, {"quill.inspection": "splendid"}, {"ending": "guild_master"}, {"rush_hour_unlocked": true}, {"quill.inspection": 3}]:
 		if Story.flags_problem(bad) == "":
@@ -3431,11 +3431,11 @@ func _test_shop_story_beats() -> void:
 	var expected := {"quill.inspection": "poor", "stranger.first_sneeze": "stormed_off"}
 	_check(ended and _game.flags.recursive_equal(expected, 1) and expected.recursive_equal(_read_save().get("flags", {}), 1), "story: the day's beats are committed to Game.flags and saved", "%s %s" % [_game.flags, _read_save().get("flags")])
 	_game.assist_mode = false
-	_game.day = 5
+	_game.day = 8
 	_game.at_market = false
 	var morning: Morning = await _goto_scene(GameState.Flow.MORNING)
 	var note := (morning.get_node("Column/Card/Note") as Label).text.replace("\n", " ")
-	_check(note == Story.morning_note(Content.day(5), expected) and note != Content.day(5).morning_note, "story: the morning shows the note for the flags", note)
+	_check(note == Story.morning_note(Content.day(8), expected) and note != Content.day(8).morning_note, "story: the morning shows the note for the flags", note)
 	await _close_shop()
 	_game.new_game()
 
@@ -3653,27 +3653,48 @@ func _test_ending_scene() -> void:
 ## day's prices), so the run also checks that the pay covers the next day.
 ## Each day's beats are checked against the request each path must bring (written out
 ## here from data/SCHEMA.md "Story"), and the conditioned extra customers (the goat
-## farmer on day 4, Vexley's overflow on day 5) against whether the path sends them.
+## farmer on day 4, Vexley's overflow on day 7) against whether the path sends them.
+## The ordinary visitors are the ones Shift.story picks at the day's difficulty level.
 func _test_story_playthrough_helpful() -> void:
 	var beats: Dictionary[int, Dictionary] = {
 		3: {"quill.inspection": "stillwater_quill_1", "stranger.first_sneeze": "dewdrop_stranger_1"},
-		4: {"vexley.opening": "steamwhistle_vexley_1"},
-		5: {"quill.audit": "steamwhistle_quill_1"},
-		6: {"stranger.confession": "hushfire_stranger_1", "vexley.truce": "panacea_vexley_1"},
-		7: {"vexley.fair": "starfire_vexley_1", "stranger.fair": "panacea_stranger_1", "quill.fair": "panacea_quill_1"},
+		5: {"quill.paperwork": "nocturne_quill_1"},
+		6: {"vexley.opening": "steamwhistle_vexley_1"},
+		7: {"stranger.hiccups": "smoulder_stranger_1"},
+		8: {"quill.audit": "steamwhistle_quill_1"},
+		9: {"vexley.spy": "valour_vexley_1"},
+		10: {"stranger.flight": "dewdrop_stranger_3"},
+		11: {"quill.surprise_visit": "hushfire_quill_1"},
+		12: {"vexley.night_garden": "duskbloom_vexley_2"},
+		13: {"stranger.confession": "hushfire_stranger_1"},
+		14: {"vexley.truce": "panacea_vexley_1"},
+		16: {"stranger.lantern_practice": "nightfire_stranger_1"},
+		17: {"quill.rehearsal": "embermoss_quill_1"},
+		18: {"vexley.recipe_swap": "moonbloom_vexley_1"},
+		20: {"vexley.fair": "starfire_vexley_1", "stranger.fair": "panacea_stranger_1", "quill.fair": "panacea_quill_1"},
 	}
-	await _play_story(false, Story.GUILD_MASTER, beats, {4: 1, 5: 1})
+	await _play_story(false, Story.GUILD_MASTER, beats, {4: 1, 7: 1})
 
 
 func _test_story_playthrough_refusing() -> void:
 	var beats: Dictionary[int, Dictionary] = {
 		3: {"quill.inspection": "stillwater_quill_1", "stranger.first_sneeze": "dewdrop_stranger_1"},
-		4: {"vexley.opening": "steamwhistle_vexley_1"},
-		5: {"quill.audit": "stillwater_quill_2"},
-		6: {"stranger.confession": "dewdrop_stranger_2", "vexley.truce": "embermoss_vexley_1"},
-		7: {"vexley.fair": "duskbloom_vexley_1", "stranger.fair": "hushfire_stranger_2", "quill.fair": "starfire_quill_1"},
+		5: {"quill.paperwork": "nocturne_quill_1"},
+		6: {"vexley.opening": "steamwhistle_vexley_1"},
+		7: {"stranger.hiccups": "smoulder_stranger_1"},
+		8: {"quill.audit": "stillwater_quill_2"},
+		9: {"vexley.spy": "valour_vexley_1"},
+		10: {"stranger.flight": "dewdrop_stranger_3"},
+		11: {"quill.surprise_visit": "hushfire_quill_1"},
+		12: {"vexley.night_garden": "duskbloom_vexley_2"},
+		13: {"stranger.confession": "dewdrop_stranger_2"},
+		14: {"vexley.truce": "embermoss_vexley_1"},
+		16: {"stranger.lantern_practice": "nightfire_stranger_1"},
+		17: {"quill.rehearsal": "embermoss_quill_1"},
+		18: {"vexley.recipe_swap": "moonbloom_vexley_1"},
+		20: {"vexley.fair": "duskbloom_vexley_1", "stranger.fair": "hushfire_stranger_2", "quill.fair": "starfire_quill_1"},
 	}
-	await _play_story(true, Story.CHARMING_CHAOS, beats, {4: 0, 5: 0})
+	await _play_story(true, Story.CHARMING_CHAOS, beats, {4: 0, 7: 0})
 
 
 ## `beats`: day -> {beat flag: the request id its visit must pin} for every beat of that
@@ -3694,7 +3715,7 @@ func _play_story(refuse_beats: bool, expected_ending: String, beats: Dictionary[
 			_check(false, "%s: day %d morning" % [label, number], str(current_scene))
 			finished = false
 			break
-		var expected := Shift.story(number, _game.flags).customers
+		var expected := Shift.story(number, _game.flags, _game.difficulty).customers
 		await _tap(current_scene.get_node("Column/OpenShopButton") as Button)
 		await _until(func() -> bool: return current_scene is Shop and not _game.is_transitioning(), FLOW_FRAMES)
 		var shop := current_scene as Shop
@@ -3714,7 +3735,8 @@ func _play_story(refuse_beats: bool, expected_ending: String, beats: Dictionary[
 			await _skip_lines(shop)
 		if not finished:
 			break
-		_check(seen == expected, "%s: day %d brings its %d customers for the flags" % [label, number, expected.size()], "%d of %d" % [seen.size(), expected.size()])
+		var keys := func(visits: Array[DayCustomer]) -> Array: return visits.map(func(visit: DayCustomer) -> String: return "%s/%s/%s" % [visit.archetype, visit.potion, visit.request])
+		_check(keys.call(seen) == keys.call(expected), "%s: day %d brings its %d customers for the flags" % [label, number, expected.size()], "%d of %d" % [seen.size(), expected.size()])
 		var seen_beats := {}
 		for visit in seen:
 			if visit.beat != "":
@@ -3756,7 +3778,7 @@ func _buy_for_day(number: int) -> bool:
 	var spec := Content.day(number)
 	var pool := Content.ingredients_unlocked_by(number)
 	var needed: Dictionary[String, int] = {}
-	for customer in Shift.story(number, _game.flags).customers:
+	for customer in Shift.story(number, _game.flags, _game.difficulty).customers:
 		var target := Content.potion(customer.potion).target
 		var recipe: Array[String] = []
 		for a in pool:
@@ -3824,17 +3846,17 @@ func _shown_items(shop: Shop) -> Array[ShelfItem]:
 	return shown
 
 
-## Opens the day-6 shop (ten ingredients, three of each in stock), or null.
+## Opens the day-13 shop (ten ingredients, three of each in stock), or null.
 func _open_day6_shop(label: String) -> Shop:
 	_game.new_game()
-	for item in Content.ingredients_unlocked_by(6):
+	for item in Content.ingredients_unlocked_by(13):
 		_game.stock[item.id] = 3
-	var shop := await _goto_scene(GameState.Flow.SHOP, {"day": 6}) as Shop
-	_check(shop != null and shop.stock.size() == 10, label + ": the day-6 shop opens with ten ingredients", str(current_scene))
+	var shop := await _goto_scene(GameState.Flow.SHOP, {"day": 13}) as Shop
+	_check(shop != null and shop.stock.size() == 10, label + ": the day-13 shop opens with ten ingredients", str(current_scene))
 	return shop
 
 
-## A shelf wider than the row (day 6, ten ingredients) shows one page at a time
+## A shelf wider than the row (day 13, ten ingredients) shows one page at a time
 ## between two arrows: every item is on exactly one page, at least 4 whole items per
 ## page between the arrows, the arrows and items are big enough and in the thumb zone
 ## at 9:16, 9:19.5 and 16:9, the ends disable their arrow, a tap and Enter flip a

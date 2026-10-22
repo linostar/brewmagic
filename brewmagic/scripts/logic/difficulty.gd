@@ -24,8 +24,8 @@ const RATING_SMOOTHING := 0.5
 ## LEVEL_MIN..LEVEL_MAX (below 0 is kinder than the authored days).
 const START_LEVEL := 0.0
 const LOW_RATING := 0.3
-const SLOPE_MIN := 0.02
-const SLOPE_MAX := 0.1
+const SLOPE_MIN := 0.015
+const SLOPE_MAX := 0.08
 const FALL_STEP := 0.05
 const LEVEL_MIN := -0.3
 const LEVEL_MAX := 1.0

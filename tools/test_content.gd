@@ -21,7 +21,7 @@ const MIN_MISBREWS_PER_ESSENCE := 5
 ## Distance from target at which a brew is a Misbrew.
 const MISBREW_DISTANCE := 3
 ## The day the Bellows first appears (SCHEMA.md I10).
-const BELLOWS_DAY := 4
+const BELLOWS_DAY := 6
 ## Beats each story character has at least (SCHEMA.md I13).
 const MIN_BEATS := 3
 ## Seconds of patience every customer has left at the counter at least (SCHEMA.md I15).
@@ -593,8 +593,10 @@ func _test_malformed_data_errors() -> void:
 			"data/potions.json [hearthglow_tonic] price: expected int, got String"],
 		["out of range", "archetypes.json", func(data: Array) -> void: data[0]["patience_seconds"] = 5,
 			"data/archetypes.json [goat_farmer] patience_seconds: 5 is outside 10..300"],
-		["bad cross-reference", "days.json", func(data: Array) -> void: data[1]["customers"][1]["archetype"] = "nobody",
-			"data/days.json [day_2] customers[1].archetype: unknown archetype id 'nobody'"],
+		["bad cross-reference", "days.json", func(data: Array) -> void: data[0]["customers"][1]["archetype"] = "nobody",
+			"data/days.json [day_1] customers[1].archetype: unknown archetype id 'nobody'"],
+		["visitor slot with an archetype only", "days.json", func(data: Array) -> void: data[1]["customers"][0]["archetype"] = "goat_farmer",
+			"data/days.json [day_2] customers[0].potion: missing key"],
 		["duplicate id", "misbrews.json", func(data: Array) -> void: data.append((data[0] as Dictionary).duplicate()),
 			"data/misbrews.json [misbrew_ember_1] id: duplicate id 'misbrew_ember_1'"],
 		["upgrade level not stronger", "upgrades.json", func(data: Array) -> void: data[0]["levels"][1]["tolerance"] = 1.1,
@@ -615,19 +617,21 @@ func _test_malformed_data_errors() -> void:
 			"data/ingredients.json [ember_pepper] heat: expected bool, got String"],
 		["when names an unknown beat", "days.json", func(data: Array) -> void: data[1]["customers"][0]["when"] = {"nobody.waves": ["great"]},
 			"data/days.json [day_2] customers[0].when.nobody.waves: unknown story beat flag 'nobody.waves'"],
-		["beat on two days", "days.json", func(data: Array) -> void: data[3]["customers"].append(data[2]["customers"][1].duplicate(true)),
+		["beat on two days", "days.json", func(data: Array) -> void: data[3]["customers"].append(data[2]["customers"][2].duplicate(true)),
 			"data/days.json [day_4] customers[6].beat: 'quill.inspection' is already a beat of day 3"],
-		["when names a beat of the same day", "days.json", func(data: Array) -> void: data[3]["customers"][0]["when"] = {"vexley.opening": ["great"]},
-			"data/days.json [day_4] customers[0].when.vexley.opening: 'vexley.opening' is a beat of day 4, not an earlier day"],
+		["when names a beat of the same day", "days.json", func(data: Array) -> void: data[5]["customers"][0]["when"] = {"vexley.opening": ["great"]},
+			"data/days.json [day_6] customers[0].when.vexley.opening: 'vexley.opening' is a beat of day 6, not an earlier day"],
 		["when names a beat of a later day", "days.json", func(data: Array) -> void: data[1]["morning_notes"] = [{"when": {"quill.fair": ["great"]}, "text": "A note from the future."}],
-			"data/days.json [day_2] morning_notes[0].when.quill.fair: 'quill.fair' is a beat of day 7, not an earlier day"],
+			"data/days.json [day_2] morning_notes[0].when.quill.fair: 'quill.fair' is a beat of day 20, not an earlier day"],
+		["beat follows another character", "days.json", func(data: Array) -> void: data[7]["customers"][2]["when"] = {"stranger.first_sneeze": ["great"]},
+			"data/days.json [day_8] customers[2].when.stranger.first_sneeze: a beat of quill may only depend on quill's beats"],
 		["when is empty", "days.json", func(data: Array) -> void: data[1]["customers"][0]["when"] = {},
 			"data/days.json [day_2] customers[0].when: is empty"],
-		["beat on an ordinary visitor", "days.json", func(data: Array) -> void: data[1]["customers"][0]["beat"] = "chat",
-			["data/days.json [day_2] customers[0].beat: only story characters have beats; 'goat_farmer' has no look",
-			"data/days.json [day_2] customers[0].lines: missing key (required on a story beat)"]],
-		["lines without a beat", "days.json", func(data: Array) -> void: data[1]["customers"][0]["lines"] = {},
-			"data/days.json [day_2] customers[0].lines: only story beats have lines"],
+		["beat on an ordinary visitor", "days.json", func(data: Array) -> void: data[0]["customers"][0]["beat"] = "chat",
+			["data/days.json [day_1] customers[0].beat: only story characters have beats; 'gossip_granny' has no look",
+			"data/days.json [day_1] customers[0].lines: missing key (required on a story beat)"]],
+		["lines without a beat", "days.json", func(data: Array) -> void: data[0]["customers"][0]["lines"] = {},
+			"data/days.json [day_1] customers[0].lines: only story beats have lines"],
 		["morning notes empty", "days.json", func(data: Array) -> void: data[1]["morning_notes"] = [],
 			"data/days.json [day_2] morning_notes: is empty"],
 		["look with one cloth twice", "archetypes.json", func(data: Array) -> void: data[0]["look"] = {"cloth_a": "red", "cloth_b": "red", "hair": "black", "skin": "light"},

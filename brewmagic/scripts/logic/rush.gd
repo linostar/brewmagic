@@ -18,7 +18,7 @@ const PATIENCE_FLOOR := 0.8
 ## Customers served per wave; wave i allows the potions unlocked by story day
 ## WAVE_DAYS[i] (Stir and Pour, + Mortar, + Bellows, everything); the last wave lasts.
 const WAVE_SIZE := 5
-const WAVE_DAYS: Array[int] = [1, 3, 4, 7]
+const WAVE_DAYS: Array[int] = [1, 4, 7, 13]
 ## Each wave's banner: its number in words (the banner's Silkscreen draws no digits)
 ## and what it adds. It names the stations, never the potions (requests never do).
 const WAVE_NAMES: Array[String] = ["WAVE ONE", "WAVE TWO", "WAVE THREE", "WAVE FOUR"]
