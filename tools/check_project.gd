@@ -168,5 +168,7 @@ func _collect_files(dir_path: String, out: Array[String]) -> void:
 	for file in dir.get_files():
 		out.append(dir_path.path_join(file))
 	for sub in dir.get_directories():
-		if not sub.begins_with("."):
+		# A .gdignore keeps a directory out of the project, as in Godot's import (the Android
+		# build template's android/build/ ships one, with test scripts of its own).
+		if not sub.begins_with(".") and not FileAccess.file_exists(dir_path.path_join(sub).path_join(".gdignore")):
 			_collect_files(dir_path.path_join(sub), out)
