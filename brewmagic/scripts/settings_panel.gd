@@ -28,7 +28,7 @@ extends Control
 signal assist_changed(on: bool)
 signal gentle_changed(on: bool)
 
-## What each mode does: its toggle's tooltip, and the callout its "?" button opens.
+## What each mode does: the callout its "?" button opens (the only place it shows).
 const ASSIST_INFO := "Auto stir, grind, pour & pump; scores Good, never Perfect"
 const GENTLE_INFO := "Stir, grind, pour & pump timing is %sx more forgiving" % GameState.GENTLE_TOLERANCE_SCALE
 ## Height of every row (buttons, toggles, their "?" and the sliders).
@@ -65,8 +65,6 @@ func _ready() -> void:
 	_game = get_node(GameState.AUTOLOAD_PATH) as GameState
 	_game.screen_fit_changed.connect(_fit)
 	_fit()
-	_assist_button.tooltip_text = ASSIST_INFO
-	_gentle_button.tooltip_text = GENTLE_INFO
 	_assist_button.toggled.connect(_on_assist_toggled)
 	_gentle_button.toggled.connect(_on_gentle_toggled)
 	_assist_help.pressed.connect(open_mode_help.bind(_assist_help))
