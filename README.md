@@ -36,6 +36,11 @@ Node 22 and Google Chrome.
   Android SDK set in Editor Settings > Export > Android.
 - Google Play App Bundle: `tools/build_android.sh --play` -> `build/android/brewmagic.aab` (Gradle build; needs a
   release keystore in the "Android (Play Store)" preset). Store icon, feature graphic and listing notes: `store/play/`.
+- iOS simulator app: `tools/build_ios.sh` (validate, export the "iOS" preset as an Xcode project into `build/ios/`,
+  build it unsigned for the simulator, install and launch it on a booted simulator). Needs Xcode and the Godot 4.7.1
+  iOS export template.
+- Signed iOS app: `tools/build_ios.sh --ipa debugging` (a registered device) or `--ipa app-store-connect` (App Store,
+  needs a paid Apple Developer team in the preset's `application/app_store_team_id`) -> `build/ios/ipa/`.
 - Re-render the itch cover and screenshots into `submission/` (needs a window):
   `"$GODOT" --path brewmagic --audio-driver Dummy --resolution 1080x1920 --fixed-fps 60 --script "$PWD/tools/capture.gd"`
 

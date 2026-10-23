@@ -14,6 +14,7 @@ Writes (res:// files are used by the Android export preset and project.godot):
     brewmagic/icons/icon_512.png                  project icon (window, web) = Play hi-res icon
     store/play/icon_512.png                       Play Console hi-res icon (opaque 512x512)
     store/play/feature_graphic.png                Play Console feature graphic (1024x500, no alpha)
+    brewmagic/icons/icon_1024.png                 iOS app icon = App Store icon (opaque 1024x1024)
 """
 import io
 import json
@@ -112,6 +113,13 @@ def icon_512():
     return scaled(canvas, 4)
 
 
+def icon_1024():
+    # iOS masks the corners itself and rejects an alpha channel.
+    canvas = starry(128, 128, STARS)
+    paste(canvas, hero(), 8, 24)
+    return scaled(canvas, 8).convert("RGB")
+
+
 def icon_192():
     canvas = starry(96, 96, STARS)
     paste(canvas, shop_cauldron(), 16, 24)
@@ -158,6 +166,7 @@ OUTPUTS = {
     "brewmagic/icons/icon_512.png": icon_512,
     "store/play/icon_512.png": lambda: icon_512().convert("RGB"),
     "store/play/feature_graphic.png": feature_graphic,
+    "brewmagic/icons/icon_1024.png": icon_1024,
 }
 
 
